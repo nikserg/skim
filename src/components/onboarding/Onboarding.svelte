@@ -145,7 +145,14 @@
 <div class="onboarding" data-tauri-drag-region>
   {#if step === "welcome"}
     <div class="card welcome">
-      <div class="wordmark">Skim</div>
+      <div class="wordmark">
+        <svg class="mark" width="22" height="22" viewBox="0 0 96 96" aria-hidden="true">
+          <circle cx="48" cy="48" r="48" fill="#6b46f2" />
+          <rect x="28" y="41" width="40" height="6.5" rx="3.25" fill="#fff" />
+          <rect x="28" y="54" width="26" height="6.5" rx="3.25" fill="#fff" fill-opacity="0.62" />
+        </svg>
+        Skim
+      </div>
       <h1>
         {t("onb.tagline_1")}<br />
         <em>{t("onb.tagline_2")}</em>
@@ -335,6 +342,12 @@
     font-weight: 800;
     font-size: 15px;
     margin-bottom: 48px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mark {
+    flex-shrink: 0;
   }
   h1 {
     font-size: 44px;

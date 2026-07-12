@@ -11,6 +11,9 @@ src-tauri/target/
 .vscode/
 .idea/
 
+# Design sources (kept locally, not shipped)
+design/
+
 # OS
 Thumbs.db
 .DS_Store

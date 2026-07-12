@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="src-tauri/icons/128x128.png" alt="Skim logo" width="88">
+
 # Skim
 
 **Email at the speed of thought.**

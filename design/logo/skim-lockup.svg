@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="360" height="104" viewBox="0 0 360 104" role="img" aria-label="Skim logo">
-  <circle cx="52" cy="52" r="52" fill="#6b46f2"></circle>
-  <rect x="30" y="45" width="44" height="7" rx="3.5" fill="#fff"></rect>
-  <rect x="30" y="59" width="28" height="7" rx="3.5" fill="#fff" fill-opacity="0.62"></rect>
-  <text x="128" y="70" font-family="Hanken Grotesk, sans-serif" font-size="56" font-weight="700" letter-spacing="-2" fill="#17171b">Skim</text>
-</svg>
