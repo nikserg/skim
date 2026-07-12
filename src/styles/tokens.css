@@ -1,0 +1,68 @@
+/* Skim design tokens — single source of truth for both themes.
+   Violet is reserved exclusively for AI moments. */
+
+:root {
+  /* type */
+  --font-ui: "Hanken Grotesk Variable", "Hanken Grotesk", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
+
+  /* light theme (default) */
+  --bg: #f7f7f6;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --text: #17171b;
+  --text-dim: #6f6f76;
+  --text-faint: #a3a3ab;
+  --hairline: rgba(17, 17, 20, 0.07);
+  --hairline-strong: rgba(17, 17, 20, 0.12);
+  --hover: rgba(17, 17, 20, 0.035);
+  --active: rgba(17, 17, 20, 0.06);
+  --selected: #eeeeec;
+
+  /* the one violet — AI only */
+  --accent: #6b46f2;
+  --accent-soft: #eae7fd;
+  --accent-dim: rgba(107, 70, 242, 0.55);
+  --on-accent: #ffffff;
+
+  --danger: #d64545;
+  --success: #2f9e63;
+
+  /* shape & rhythm */
+  --radius-s: 6px;
+  --radius-m: 10px;
+  --radius-l: 14px;
+  --titlebar-h: 40px;
+  --sidebar-w: 224px;
+  --list-w: 372px;
+
+  --shadow-pop: 0 8px 32px rgba(17, 17, 20, 0.14), 0 1px 4px rgba(17, 17, 20, 0.08);
+
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #0d0d10;
+  --surface: #141418;
+  --surface-raised: #1a1a20;
+  --text: #ececef;
+  --text-dim: #94949c;
+  --text-faint: #5c5c64;
+  --hairline: rgba(236, 236, 239, 0.08);
+  --hairline-strong: rgba(236, 236, 239, 0.14);
+  --hover: rgba(236, 236, 239, 0.045);
+  --active: rgba(236, 236, 239, 0.08);
+  --selected: #1e1e25;
+
+  --accent: #8b6cf7;
+  --accent-soft: rgba(107, 70, 242, 0.18);
+  --accent-dim: rgba(139, 108, 247, 0.6);
+  --on-accent: #ffffff;
+
+  --danger: #e06c6c;
+  --success: #4dbd82;
+
+  --shadow-pop: 0 8px 32px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.4);
+
+  color-scheme: dark;
+}
