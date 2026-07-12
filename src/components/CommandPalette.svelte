@@ -101,11 +101,22 @@
         run: () => mail.syncNow(),
       },
     ];
+    const roleKey: Record<string, string> = {
+      inbox: "nav.inbox",
+      starred: "nav.starred",
+      sent: "nav.sent",
+      drafts: "nav.drafts",
+      archive: "nav.archive",
+      trash: "nav.trash",
+      junk: "nav.junk",
+    };
     for (const folder of mail.folders) {
       if (folder.role === "all") continue;
+      const name =
+        folder.role && roleKey[folder.role] ? t(roleKey[folder.role]) : folder.displayName;
       list.push({
         id: `goto-${folder.id}`,
-        label: t("palette.goto", { folder: folder.displayName }),
+        label: t("palette.goto", { folder: name }),
         run: () => mail.selectFolder(folder.id),
       });
     }

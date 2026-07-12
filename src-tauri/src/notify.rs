@@ -9,14 +9,36 @@ use tauri_winrt_notification::Toast;
 
 const AUMID: &str = "com.skim.app";
 
-/// Toasts from unpackaged apps only display when the AppUserModelID is
-/// known to Windows; a per-user registry entry is enough.
-pub fn register_aumid() {
-    use winreg::enums::HKEY_CURRENT_USER;
-    use winreg::RegKey;
+/// Register the AppUserModelID so toasts carry Skim's name and icon.
+///
+/// Note: the registry entry alone is not enough on current Windows 11
+/// builds — toasts actually display because the installer's Start Menu
+/// shortcut carries `System.AppUserModel.ID`. This entry supplements it
+/// with the display name and icon.
+pub fn register_aumid(data_dir: &std::path::Path) {
+    use winreg::enums::{HKEY_CURRENT_USER, REG_EXPAND_SZ};
+    use winreg::{RegKey, RegValue};
+
+    fn expand_sz(value: &str) -> RegValue {
+        let bytes: Vec<u8> = value
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .flat_map(|u| u.to_le_bytes())
+            .collect();
+        RegValue {
+            vtype: REG_EXPAND_SZ,
+            bytes,
+        }
+    }
+
+    // Drop the toast icon into app data so IconUri has a stable path.
+    let icon_path = data_dir.join("notify-icon.png");
+    let _ = std::fs::write(&icon_path, include_bytes!("../icons/128x128.png"));
+
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     if let Ok((key, _)) = hkcu.create_subkey(format!(r"Software\Classes\AppUserModelId\{AUMID}")) {
-        let _ = key.set_value("DisplayName", &"Skim");
+        let _ = key.set_raw_value("DisplayName", &expand_sz("Skim"));
+        let _ = key.set_raw_value("IconUri", &expand_sz(&icon_path.to_string_lossy()));
     }
 }
 

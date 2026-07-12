@@ -79,8 +79,9 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            notify::register_aumid();
             let data_dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&data_dir).ok();
+            notify::register_aumid(&data_dir);
             let db = db::Db::open(&data_dir.join("skim.db"))?;
             app.manage(AppState::new(db.clone(), data_dir.clone()));
 
