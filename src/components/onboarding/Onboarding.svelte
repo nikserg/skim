@@ -1,13 +1,43 @@
 <script lang="ts">
-  import { api, errorMessage, type AddAccountInput } from "../../lib/api";
+  import { aiApi, api, errorMessage, type AddAccountInput } from "../../lib/api";
   import { LOCALES, setLocale, t, type Locale } from "../../lib/i18n/index.svelte";
   import { mail } from "../../lib/stores/mail.svelte";
   import type { Account, ServerPreset } from "../../lib/types";
 
   let { oncomplete }: { oncomplete: (account: Account) => void } = $props();
 
-  let step: "welcome" | "connect" = $state("welcome");
+  let step: "welcome" | "connect" | "ai" = $state("welcome");
   let locale: Locale = $state("en");
+  let connectedAccount = $state<Account | null>(null);
+
+  // AI step
+  let aiKey = $state("");
+  let aiBusy = $state(false);
+  let aiVerified = $state(false);
+  let aiError = $state("");
+
+  function accountConnected(account: Account) {
+    connectedAccount = account;
+    step = "ai";
+  }
+
+  async function enableAi() {
+    aiBusy = true;
+    aiError = "";
+    try {
+      await aiApi.setKey(aiKey);
+      aiVerified = true;
+      setTimeout(() => finish(), 400);
+    } catch (e) {
+      aiError = errorMessage(e);
+    } finally {
+      aiBusy = false;
+    }
+  }
+
+  function finish() {
+    if (connectedAccount) oncomplete(connectedAccount);
+  }
 
   // connect form
   let oauthAvailable = $state(false);
@@ -65,7 +95,7 @@
     error = "";
     try {
       const account = await api.startGoogleOauth();
-      oncomplete(account);
+      accountConnected(account);
     } catch (e) {
       error = errorMessage(e);
     } finally {
@@ -88,7 +118,7 @@
         smtpSecurity,
       };
       const account = await api.addAccount(input, password);
-      oncomplete(account);
+      accountConnected(account);
     } catch (e) {
       error = errorMessage(e);
     } finally {
@@ -138,6 +168,45 @@
       </div>
 
       <div class="footer microlabel">{t("onb.footer")} · v0.1</div>
+    </div>
+  {:else if step === "ai"}
+    <div class="card connect">
+      <div class="microlabel step-label">
+        {t("onb.step", { n: 2, total: 2 })} · {t("onb.ai_optional")}
+      </div>
+      <h2 class="ai-title">✦ {t("onb.ai_title")}</h2>
+      <p class="subtitle">{t("onb.ai_subtitle")}</p>
+
+      <label class="ai-key">
+        <span class="microlabel">{t("onb.ai_key_label")}</span>
+        <input
+          bind:value={aiKey}
+          placeholder="sk-ant-…"
+          spellcheck="false"
+          autocomplete="off"
+        />
+      </label>
+
+      <ul class="features">
+        <li>{t("onb.ai_feature_draft")}</li>
+        <li>{t("onb.ai_feature_summarize")}</li>
+        <li>{t("onb.ai_feature_ask")}</li>
+      </ul>
+
+      {#if aiError}
+        <div class="error">{aiError}</div>
+      {/if}
+
+      <div class="ai-actions">
+        <button class="linkish" onclick={finish}>{t("onb.ai_skip")}</button>
+        <button class="primary ai-enable" onclick={enableAi} disabled={aiBusy || !aiKey.trim()}>
+          {aiVerified
+            ? t("onb.ai_verified")
+            : aiBusy
+              ? t("onb.ai_verifying")
+              : `${t("onb.ai_enable")} →`}
+        </button>
+      </div>
     </div>
   {:else}
     <div class="card connect">
@@ -441,5 +510,54 @@
   }
   .step-label {
     margin-bottom: 4px;
+  }
+
+  /* AI step — the one place violet is allowed */
+  .ai-title {
+    color: var(--accent);
+  }
+  .ai-key {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 24px;
+  }
+  .ai-key input {
+    padding: 10px 12px;
+    border: 1px solid var(--accent-dim);
+    border-radius: var(--radius-s);
+    background: var(--surface);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    user-select: text;
+  }
+  .ai-key input:focus {
+    border-color: var(--accent);
+  }
+  .features {
+    margin: 20px 0 0 18px;
+    color: var(--text-dim);
+    font-size: 13.5px;
+    line-height: 2;
+  }
+  .ai-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 28px;
+    gap: 16px;
+  }
+  .ai-enable {
+    margin-top: 0;
+    width: auto;
+    padding: 12px 28px;
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .error {
+    color: var(--danger);
+    font-size: 13px;
+    margin-top: 14px;
+    line-height: 1.45;
   }
 </style>

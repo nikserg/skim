@@ -1,10 +1,67 @@
 <script lang="ts">
-  import { api } from "../lib/api";
+  import { aiStream, api } from "../lib/api";
   import { t } from "../lib/i18n/index.svelte";
+  import { ai } from "../lib/stores/ai.svelte";
   import { mail } from "../lib/stores/mail.svelte";
   import type { MessageMeta, RenderedBody, ThreadDetail } from "../lib/types";
   import AttachmentChips from "./AttachmentChips.svelte";
   import HtmlViewer from "./HtmlViewer.svelte";
+
+  // ---- AI panel ----
+  type AiPanelKind = "summary" | "ask";
+  let aiPanel = $state<{
+    kind: AiPanelKind;
+    status: "streaming" | "done" | "error";
+    text: string;
+  } | null>(null);
+  let askOpen = $state(false);
+  let askQuestion = $state("");
+  let cancelAi: (() => void) | null = null;
+
+  function startAi(kind: AiPanelKind, command: "ai_summarize" | "ai_ask", args: Record<string, unknown>) {
+    cancelAi?.();
+    aiPanel = { kind, status: "streaming", text: "" };
+    cancelAi = aiStream(command, args, {
+      delta: (text) => {
+        if (aiPanel) aiPanel = { ...aiPanel, text: aiPanel.text + text };
+      },
+      done: () => {
+        if (aiPanel) aiPanel = { ...aiPanel, status: "done" };
+      },
+      error: (code, message) => {
+        aiPanel = {
+          kind,
+          status: "error",
+          text: code === "ai_key" ? t("ai.needs_key") : message || t("ai.no_context"),
+        };
+      },
+    });
+  }
+
+  function summarize() {
+    if (!detail) return;
+    askOpen = false;
+    startAi("summary", "ai_summarize", { threadId: detail.id });
+  }
+
+  function openAsk() {
+    askOpen = true;
+    askQuestion = "";
+  }
+
+  function submitAsk(ev: SubmitEvent) {
+    ev.preventDefault();
+    if (!detail || !askQuestion.trim()) return;
+    const latest = detail.messages[detail.messages.length - 1];
+    startAi("ask", "ai_ask", { messageId: latest.id, question: askQuestion.trim() });
+  }
+
+  async function aiDraftReply() {
+    if (!detail) return;
+    const latest = detail.messages[detail.messages.length - 1];
+    const draft = await api.getReplyTemplate(latest.id, "reply");
+    await api.openComposeWindow(draft.id);
+  }
 
   let detail = $state<ThreadDetail | null>(null);
   let bodies = $state<Record<number, RenderedBody | "loading" | "error">>({});
@@ -26,6 +83,9 @@
   async function loadThread(threadId: number) {
     detail = null;
     bodies = {};
+    cancelAi?.();
+    aiPanel = null;
+    askOpen = false;
     try {
       const d = await api.getThread(threadId);
       if (mail.selectedThreadId !== threadId) return;
@@ -159,6 +219,30 @@
     <div class="scroll">
       <h1 class="subject">{detail.subject || "—"}</h1>
 
+      {#if askOpen}
+        <form class="ask-form" onsubmit={submitAsk}>
+          <span class="ai-spark">✦</span>
+          <input
+            bind:value={askQuestion}
+            placeholder={t("ai.ask_placeholder")}
+            spellcheck="false"
+          />
+        </form>
+      {/if}
+
+      {#if aiPanel}
+        <div class="ai-card" class:error={aiPanel.status === "error"}>
+          <div class="ai-label microlabel">
+            {aiPanel.kind === "summary" ? t("ai.summary") : t("ai.answer")}
+          </div>
+          {#if aiPanel.text === "" && aiPanel.status === "streaming"}
+            <span class="thinking">{t("ai.thinking")}</span>
+          {:else}
+            <div class="ai-text">{aiPanel.text}</div>
+          {/if}
+        </div>
+      {/if}
+
       {#each detail.messages as message (message.id)}
         {@const isOpen = expanded.has(message.id)}
         <article class="message" class:open={isOpen}>
@@ -213,10 +297,16 @@
     </div>
 
     <footer class="actions">
-      <div class="ai-actions">
-        <button class="ai-btn">✦ {t("ai.draft_reply")}</button>
-        <button class="ai-btn">{t("ai.summarize")}</button>
-        <button class="ai-btn">{t("ai.ask_about")}</button>
+      <div class="ai-actions" title={ai.keyPresent ? "" : t("ai.needs_key")}>
+        <button class="ai-btn" disabled={!ai.keyPresent} onclick={aiDraftReply}>
+          ✦ {t("ai.draft_reply")}
+        </button>
+        <button class="ai-btn" disabled={!ai.keyPresent} onclick={summarize}>
+          {t("ai.summarize")}
+        </button>
+        <button class="ai-btn" disabled={!ai.keyPresent} onclick={openAsk}>
+          {t("ai.ask_about")}
+        </button>
       </div>
       <div class="mail-actions">
         <button class="plain" onclick={() => reply("reply")}>{t("reading.reply")}</button>
@@ -398,8 +488,62 @@
     font-size: 12.5px;
     font-weight: 600;
   }
-  .ai-btn:hover {
+  .ai-btn:hover:not(:disabled) {
     background: var(--accent-soft);
+  }
+  .ai-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  .ask-form {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    padding: 10px 14px;
+    border: 1px solid var(--accent-dim);
+    border-radius: var(--radius-m);
+  }
+  .ai-spark {
+    color: var(--accent);
+  }
+  .ask-form input {
+    flex: 1;
+    font-size: 13.5px;
+    user-select: text;
+  }
+
+  .ai-card {
+    margin-top: 14px;
+    padding: 14px 16px;
+    border-radius: var(--radius-m);
+    background: var(--accent-soft);
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+  .ai-card.error {
+    background: transparent;
+    border: 1px solid var(--hairline-strong);
+    color: var(--text-dim);
+  }
+  .ai-label {
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .ai-text {
+    white-space: pre-wrap;
+    user-select: text;
+    cursor: text;
+  }
+  .thinking {
+    color: var(--accent);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.45;
+    }
   }
   .mail-actions {
     display: flex;

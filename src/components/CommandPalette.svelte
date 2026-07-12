@@ -1,8 +1,9 @@
 <script lang="ts">
   // Ctrl+K palette: commands + instant local search. Becomes AI chat in
   // phase 7 (ask a question ending with "?").
-  import { api } from "../lib/api";
+  import { aiStream, api, type Citation } from "../lib/api";
   import { t } from "../lib/i18n/index.svelte";
+  import { ai } from "../lib/stores/ai.svelte";
   import { mail } from "../lib/stores/mail.svelte";
   import { palette } from "../lib/stores/palette.svelte";
   import { ui } from "../lib/stores/ui.svelte";
@@ -13,6 +14,63 @@
   let active = $state(0);
   let inputEl: HTMLInputElement | undefined = $state();
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // ---- AI chat mode (screen 1g) ----
+  let chat = $state<{
+    question: string;
+    answer: string;
+    status: "streaming" | "done" | "error";
+    citations: Citation[];
+  } | null>(null);
+  let cancelChat: (() => void) | null = null;
+
+  function startChat(question: string) {
+    cancelChat?.();
+    chat = { question, answer: "", status: "streaming", citations: [] };
+    cancelChat = aiStream(
+      "ai_chat",
+      { question, contextMessageId: null },
+      {
+        delta: (text) => {
+          if (chat) chat = { ...chat, answer: chat.answer + text };
+        },
+        done: (citations) => {
+          if (chat) chat = { ...chat, status: "done", citations };
+        },
+        error: (code, message) => {
+          chat = {
+            question,
+            answer:
+              code === "ai_no_context"
+                ? t("ai.no_context")
+                : code === "ai_key"
+                  ? t("ai.needs_key")
+                  : message,
+            status: "error",
+            citations: [],
+          };
+        },
+      },
+    );
+  }
+
+  function exitChat() {
+    cancelChat?.();
+    cancelChat = null;
+    chat = null;
+    queueMicrotask(() => inputEl?.focus());
+  }
+
+  async function openCitation(citation: Citation) {
+    palette.hide();
+    exitChat();
+    if (citation.folderId !== mail.selectedFolderId) {
+      await mail.selectFolder(citation.folderId);
+    }
+    if (citation.threadId !== null) {
+      mail.selectedThreadId = citation.threadId;
+    }
+  }
 
   interface Command {
     id: string;
@@ -60,13 +118,15 @@
       : commands.filter((c) => c.label.toLowerCase().includes(input.trim().toLowerCase())),
   );
 
-  const totalItems = $derived(filteredCommands.length + hits.length);
+  const aiItemVisible = $derived(ai.keyPresent && input.trim().length > 2);
+  const totalItems = $derived(filteredCommands.length + hits.length + (aiItemVisible ? 1 : 0));
 
   $effect(() => {
     if (palette.open) {
       input = "";
       hits = [];
       active = 0;
+      chat = null;
       queueMicrotask(() => inputEl?.focus());
     }
   });
@@ -100,16 +160,25 @@
       const cmd = filteredCommands[index];
       palette.hide();
       await cmd.run();
-    } else {
-      const hit = hits[index - filteredCommands.length];
-      if (hit) await openHit(hit);
+      return;
     }
+    const hitIndex = index - filteredCommands.length;
+    if (hitIndex < hits.length) {
+      const hit = hits[hitIndex];
+      if (hit) await openHit(hit);
+      return;
+    }
+    if (aiItemVisible) startChat(input.trim());
   }
 
   function onKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
       e.preventDefault();
-      palette.hide();
+      if (chat) {
+        exitChat();
+      } else {
+        palette.hide();
+      }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       active = Math.min(active + 1, totalItems - 1);
@@ -135,6 +204,33 @@
   <div class="overlay" onclick={() => palette.hide()}>
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div class="panel" onclick={(e) => e.stopPropagation()}>
+      {#if chat}
+        <div class="chat">
+          <div class="chat-question">{chat.question}</div>
+          <div class="chat-answer">
+            <div class="microlabel chat-label">✦ {t("ai.answer")}</div>
+            {#if chat.answer === "" && chat.status === "streaming"}
+              <span class="thinking">{t("ai.thinking")}</span>
+            {:else}
+              <div class="chat-text">{chat.answer}</div>
+            {/if}
+          </div>
+          {#if chat.citations.length > 0}
+            <div class="sources">
+              <span class="microlabel">{t("ai.sources")} · {chat.citations.length}</span>
+              <div class="source-chips">
+                {#each chat.citations as c (c.index)}
+                  <button class="source-chip" onclick={() => openCitation(c)}>
+                    <span class="source-index">{c.index}</span>
+                    {c.subject || c.from}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {/if}
+          <div class="chat-footer microlabel">ESC ↩</div>
+        </div>
+      {:else}
       <div class="input-row">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
           <circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" />
@@ -192,10 +288,24 @@
           {/each}
         {/if}
 
+        {#if aiItemVisible}
+          {@const i = filteredCommands.length + hits.length}
+          <button
+            class="item ai-item"
+            class:active={active === i}
+            onclick={() => activate(i)}
+            onmouseenter={() => (active = i)}
+          >
+            <span class="cmd-icon spark">✦</span>
+            <span class="label">{t("ai.ask_ai", { q: input.trim() })}</span>
+          </button>
+        {/if}
+
         {#if totalItems === 0 && input.trim().length >= 2}
           <div class="empty">{t("palette.no_results")}</div>
         {/if}
       </div>
+      {/if}
     </div>
   </div>
 {/if}
@@ -315,5 +425,86 @@
     text-align: center;
     color: var(--text-faint);
     font-size: 13px;
+  }
+
+  /* AI — violet accent */
+  .spark {
+    color: var(--accent);
+  }
+  .ai-item .label {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .chat {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+  }
+  .chat-question {
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .chat-answer {
+    background: var(--accent-soft);
+    border-radius: var(--radius-m);
+    padding: 12px 14px;
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+  .chat-label {
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .chat-text {
+    white-space: pre-wrap;
+    user-select: text;
+    cursor: text;
+  }
+  .thinking {
+    color: var(--accent);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.45;
+    }
+  }
+  .sources {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .source-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .source-chip {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 10px;
+    border: 1px solid var(--accent-dim);
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--text);
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .source-chip:hover {
+    background: var(--accent-soft);
+  }
+  .source-index {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--accent);
+  }
+  .chat-footer {
+    text-align: right;
   }
 </style>

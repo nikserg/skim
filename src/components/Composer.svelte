@@ -1,6 +1,6 @@
 <script lang="ts">
   // The compose window's root component (mounted for #/compose/{id}).
-  import { api, errorMessage } from "../lib/api";
+  import { aiApi, aiStream, api, errorMessage } from "../lib/api";
   import { t } from "../lib/i18n/index.svelte";
   import type { Draft } from "../lib/types";
 
@@ -11,6 +11,74 @@
   let sending = $state(false);
   let error = $state("");
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // ---- AI drafting ----
+  let aiAvailable = $state(false);
+  let instruction = $state("");
+  let aiBusy = $state(false);
+  let generatedOnce = $state(false);
+  let cancelAi: (() => void) | null = null;
+  /** Quoted original (reply/forward), preserved below AI-generated text. */
+  let quotedTail = "";
+
+  $effect(() => {
+    void aiApi.keyStatus().then((present) => (aiAvailable = present));
+  });
+
+  function splitQuote(body: string): [string, string] {
+    const idx = body.indexOf("\n\nOn ");
+    if (idx >= 0 && body.slice(idx).includes(" wrote:\n")) {
+      return [body.slice(0, idx), body.slice(idx)];
+    }
+    return [body, ""];
+  }
+
+  function runAi(command: "ai_draft" | "ai_adjust_draft", args: Record<string, unknown>) {
+    if (!draft || aiBusy) return;
+    cancelAi?.();
+    aiBusy = true;
+    error = "";
+    const [, tail] = splitQuote(draft.body);
+    quotedTail = tail;
+    draft.body = "";
+    cancelAi = aiStream(command, args, {
+      delta: (text) => {
+        if (draft) draft.body += text;
+      },
+      done: () => {
+        if (draft && quotedTail) draft.body = `${draft.body}\n${quotedTail}`;
+        aiBusy = false;
+        generatedOnce = true;
+        scheduleSave();
+      },
+      error: (_code, message) => {
+        aiBusy = false;
+        error = message;
+        if (draft && quotedTail && !draft.body) draft.body = quotedTail;
+      },
+    });
+  }
+
+  function generate(tone?: string) {
+    if (!draft || !instruction.trim()) return;
+    runAi("ai_draft", {
+      instruction: instruction.trim(),
+      replyToMessageId: draft.replyToMessageId,
+      tone: tone ?? null,
+    });
+  }
+
+  function adjust(adjustment: "shorter" | "warmer" | "formal") {
+    if (!draft) return;
+    const [current] = splitQuote(draft.body);
+    if (!current.trim()) return;
+    runAi("ai_adjust_draft", { currentText: current, adjustment });
+  }
+
+  function stopAi() {
+    cancelAi?.();
+    aiBusy = false;
+  }
 
   $effect(() => {
     void (async () => {
@@ -105,6 +173,39 @@
         <input bind:value={draft.subject} oninput={scheduleSave} class="subject" />
       </label>
     </div>
+
+    {#if aiAvailable}
+      <div class="ai-bar">
+        <form
+          class="ai-input"
+          onsubmit={(e) => {
+            e.preventDefault();
+            generate();
+          }}
+        >
+          <span class="spark">✦</span>
+          <input
+            bind:value={instruction}
+            placeholder={t("ai.instruction_placeholder")}
+            spellcheck="false"
+          />
+          {#if aiBusy}
+            <button type="button" class="ai-chip" onclick={stopAi}>{t("ai.stop")}</button>
+          {:else}
+            <button type="submit" class="ai-chip solid" disabled={!instruction.trim()}>
+              {generatedOnce ? t("ai.regenerate") : t("ai.generate")}
+            </button>
+          {/if}
+        </form>
+        {#if generatedOnce && !aiBusy}
+          <div class="tone-chips">
+            <button class="ai-chip" onclick={() => adjust("shorter")}>{t("ai.shorter")}</button>
+            <button class="ai-chip" onclick={() => adjust("warmer")}>{t("ai.warmer")}</button>
+            <button class="ai-chip" onclick={() => adjust("formal")}>{t("ai.formal")}</button>
+          </div>
+        {/if}
+      </div>
+    {/if}
 
     <textarea
       bind:value={draft.body}
@@ -211,6 +312,59 @@
     line-height: 1.6;
     user-select: text;
     cursor: text;
+  }
+
+  /* AI drafting bar — violet accent reserved for AI */
+  .ai-bar {
+    padding: 10px 20px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .ai-input {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--accent-dim);
+    border-radius: var(--radius-m);
+    padding: 8px 12px;
+  }
+  .spark {
+    color: var(--accent);
+  }
+  .ai-input input {
+    flex: 1;
+    font-size: 13px;
+    user-select: text;
+  }
+  .ai-chip {
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--accent-dim);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .ai-chip:hover:not(:disabled) {
+    background: var(--accent-soft);
+  }
+  .ai-chip.solid {
+    background: var(--accent);
+    color: var(--on-accent);
+    border-color: var(--accent);
+  }
+  .ai-chip.solid:hover:not(:disabled) {
+    background: var(--accent);
+    opacity: 0.9;
+  }
+  .ai-chip:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .tone-chips {
+    display: flex;
+    gap: 6px;
   }
 
   .error {

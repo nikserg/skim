@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod commands;
 pub mod db;
 pub mod error;
@@ -131,6 +132,15 @@ pub fn run() {
             commands::compose::get_reply_template,
             commands::compose::send_draft,
             commands::compose::open_compose_window,
+            commands::ai::ai_set_key,
+            commands::ai::ai_key_status,
+            commands::ai::ai_clear_key,
+            commands::ai::ai_cancel,
+            commands::ai::ai_summarize,
+            commands::ai::ai_draft,
+            commands::ai::ai_adjust_draft,
+            commands::ai::ai_ask,
+            commands::ai::ai_chat,
             commands::search::search_messages,
             commands::search::thread_message_ids,
             commands::settings::get_settings,

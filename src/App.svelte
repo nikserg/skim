@@ -7,6 +7,7 @@
   import Onboarding from "./components/onboarding/Onboarding.svelte";
   import { api } from "./lib/api";
   import { setLocale } from "./lib/i18n/index.svelte";
+  import { ai } from "./lib/stores/ai.svelte";
   import { mail } from "./lib/stores/mail.svelte";
   import { palette } from "./lib/stores/palette.svelte";
   import { ui } from "./lib/stores/ui.svelte";
@@ -26,6 +27,7 @@
           // settings are best-effort at boot
         }
         await mail.boot();
+        void ai.refresh();
       }
       ready = true;
     })();
@@ -33,6 +35,7 @@
 
   function onboarded(account: Account) {
     void mail.accountAdded(account);
+    void ai.refresh();
   }
 
   function isTyping(): boolean {

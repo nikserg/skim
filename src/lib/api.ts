@@ -1,5 +1,5 @@
 // Typed wrappers around the Tauri IPC surface — one function per command.
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   Account,
   Draft,
@@ -77,4 +77,56 @@ export const api = {
 export function errorMessage(e: unknown): string {
   if (e && typeof e === "object" && "message" in e) return String(e.message);
   return String(e);
+}
+
+// ---- AI (streaming over IPC channels) ----
+
+export interface Citation {
+  index: number;
+  messageId: number;
+  threadId: number | null;
+  folderId: number;
+  subject: string;
+  from: string;
+}
+
+export type AiEvent =
+  | { type: "delta"; text: string }
+  | { type: "done"; citations: Citation[] }
+  | { type: "error"; code: string; message: string };
+
+export interface AiHandlers {
+  delta: (text: string) => void;
+  done: (citations: Citation[]) => void;
+  error: (code: string, message: string) => void;
+}
+
+export const aiApi = {
+  setKey: (key: string) => invoke<void>("ai_set_key", { key }),
+  keyStatus: () => invoke<boolean>("ai_key_status"),
+  clearKey: () => invoke<void>("ai_clear_key"),
+};
+
+/** Start a streaming AI request. Returns a cancel function. */
+export function aiStream(
+  command: "ai_summarize" | "ai_draft" | "ai_adjust_draft" | "ai_ask" | "ai_chat",
+  args: Record<string, unknown>,
+  on: AiHandlers,
+): () => void {
+  const requestId = crypto.randomUUID();
+  let cancelled = false;
+  const channel = new Channel<AiEvent>();
+  channel.onmessage = (event) => {
+    if (cancelled) return;
+    if (event.type === "delta") on.delta(event.text);
+    else if (event.type === "done") on.done(event.citations);
+    else on.error(event.code, event.message);
+  };
+  void invoke(command, { ...args, requestId, channel }).catch((e) => {
+    if (!cancelled) on.error("ai", errorMessage(e));
+  });
+  return () => {
+    cancelled = true;
+    void invoke("ai_cancel", { requestId }).catch(() => {});
+  };
 }

@@ -8,6 +8,8 @@ pub struct AppState {
     pub db: Db,
     pub data_dir: PathBuf,
     pub engines: Mutex<HashMap<String, SyncHandle>>,
+    /// In-flight AI requests, cancellable by request id.
+    pub ai_tasks: std::sync::Mutex<HashMap<String, tokio::task::AbortHandle>>,
 }
 
 impl AppState {
@@ -16,6 +18,7 @@ impl AppState {
             db,
             data_dir,
             engines: Mutex::new(HashMap::new()),
+            ai_tasks: std::sync::Mutex::new(HashMap::new()),
         }
     }
 }
