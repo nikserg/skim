@@ -323,6 +323,28 @@ impl Engine {
             })
             .await?;
 
+        // A folder can gain the 'all' role after its contents were already
+        // synced (e.g. the attribute was missed on an earlier run) — those
+        // rows shadow every other folder, so drop them.
+        let account_id = self.account.id.clone();
+        let stale_all: Vec<i64> = self
+            .db
+            .call(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT f.id FROM folders f
+                     WHERE f.account_id = ?1 AND f.role = 'all'
+                       AND EXISTS (SELECT 1 FROM messages m WHERE m.folder_id = f.id)",
+                )?;
+                let ids = stmt
+                    .query_map(rusqlite::params![account_id], |r| r.get(0))?
+                    .collect::<std::result::Result<Vec<i64>, _>>()?;
+                Ok(ids)
+            })
+            .await?;
+        for folder_id in stale_all {
+            wipe_folder(&self.db, folder_id).await?;
+        }
+
         let _ = self.app.emit("folders:updated", json!({}));
         Ok(())
     }
@@ -1190,7 +1212,11 @@ fn detect_role(imap_name: &str, attrs_lower: &str) -> Option<String> {
     if imap_name.eq_ignore_ascii_case("INBOX") {
         return Some("inbox".into());
     }
-    let by_attr = if attrs_lower.contains("\\\\all") || attrs_lower.contains("\\all") {
+    // Special-use comes through either as imap-proto enum variants
+    // (Debug: `All`, `Sent`, …) or as Extension("\\All") strings.
+    let has_all =
+        attrs_lower.contains("\\all") || attrs_lower.split_whitespace().any(|t| t == "all");
+    let by_attr = if has_all {
         Some("all")
     } else if attrs_lower.contains("sent") {
         Some("sent")
