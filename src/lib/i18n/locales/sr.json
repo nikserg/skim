@@ -61,6 +61,7 @@
   "reading.images_blocked_other": "{n} slika sakriveno",
   "reading.show_once": "Prikaži",
   "reading.always_sender": "Uvek prikazuj od ovog pošiljaoca",
+  "reading.always_all": "Uvek prikazuj sve slike",
   "reading.attachments": "Prilozi",
   "reading.save": "Sačuvaj",
   "reading.open": "Otvori",

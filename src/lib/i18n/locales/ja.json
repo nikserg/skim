@@ -57,6 +57,7 @@
   "reading.images_blocked_other": "{n} 枚の画像を非表示",
   "reading.show_once": "表示",
   "reading.always_sender": "この送信者は常に表示",
+  "reading.always_all": "常にすべての画像を表示",
   "reading.attachments": "添付ファイル",
   "reading.save": "保存",
   "reading.open": "開く",

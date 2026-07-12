@@ -57,6 +57,7 @@
   "reading.images_blocked_other": "已隐藏 {n} 张图片",
   "reading.show_once": "显示",
   "reading.always_sender": "始终显示此发件人的图片",
+  "reading.always_all": "始终显示所有图片",
   "reading.attachments": "附件",
   "reading.save": "保存",
   "reading.open": "打开",

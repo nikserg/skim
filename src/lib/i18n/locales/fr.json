@@ -59,6 +59,7 @@
   "reading.images_blocked_other": "{n} images masquées",
   "reading.show_once": "Afficher",
   "reading.always_sender": "Toujours afficher pour cet expéditeur",
+  "reading.always_all": "Toujours afficher toutes les images",
   "reading.attachments": "Pièces jointes",
   "reading.save": "Enregistrer",
   "reading.open": "Ouvrir",

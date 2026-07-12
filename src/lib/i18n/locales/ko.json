@@ -57,6 +57,7 @@
   "reading.images_blocked_other": "이미지 {n}개 숨김",
   "reading.show_once": "표시",
   "reading.always_sender": "이 발신자는 항상 표시",
+  "reading.always_all": "항상 모든 이미지 표시",
   "reading.attachments": "첨부파일",
   "reading.save": "저장",
   "reading.open": "열기",

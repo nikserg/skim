@@ -59,6 +59,7 @@
   "reading.images_blocked_other": "{n} imágenes ocultas",
   "reading.show_once": "Mostrar",
   "reading.always_sender": "Mostrar siempre de este remitente",
+  "reading.always_all": "Mostrar siempre todas las imágenes",
   "reading.attachments": "Adjuntos",
   "reading.save": "Guardar",
   "reading.open": "Abrir",

@@ -63,6 +63,7 @@
   "reading.images_blocked_other": "{n} изображений скрыто",
   "reading.show_once": "Показать",
   "reading.always_sender": "Всегда показывать от этого отправителя",
+  "reading.always_all": "Всегда показывать все изображения",
   "reading.attachments": "Вложения",
   "reading.save": "Сохранить",
   "reading.open": "Открыть",

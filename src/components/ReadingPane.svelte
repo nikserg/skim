@@ -3,6 +3,7 @@
   import { getLocale, t } from "../lib/i18n/index.svelte";
   import { ai } from "../lib/stores/ai.svelte";
   import { mail } from "../lib/stores/mail.svelte";
+  import { ui } from "../lib/stores/ui.svelte";
   import type { MessageMeta, RenderedBody, ThreadDetail } from "../lib/types";
   import AttachmentChips from "./AttachmentChips.svelte";
   import HtmlViewer from "./HtmlViewer.svelte";
@@ -119,6 +120,11 @@
 
   async function allowSender(messageId: number, addr: string | null) {
     if (addr) await api.allowRemoteImages(addr);
+    void loadBody(messageId, true);
+  }
+
+  async function allowAllImages(messageId: number) {
+    await api.setSetting("images_policy", "always");
     void loadBody(messageId, true);
   }
 
@@ -270,6 +276,10 @@
                     {t("reading.always_sender")}
                   </button>
                 {/if}
+                <span class="sep">·</span>
+                <button class="linkish" onclick={() => allowAllImages(message.id)}>
+                  {t("reading.always_all")}
+                </button>
               </div>
             {/if}
             <div class="body">
@@ -284,25 +294,32 @@
     </div>
 
     <footer class="actions">
-      {#if ai.keyPresent && aiRowOpen}
-        <div class="ai-row">
-          <button class="ai-btn" onclick={aiDraftReply}>✦ {t("ai.draft_reply")}</button>
-          <button class="ai-btn" onclick={summarize}>{t("ai.summarize")}</button>
-          <button class="ai-btn" onclick={openAsk}>{t("ai.ask_about")}</button>
-        </div>
+      {#if aiRowOpen}
+        {#if ai.keyPresent}
+          <div class="ai-row">
+            <button class="ai-btn" onclick={aiDraftReply}>✦ {t("ai.draft_reply")}</button>
+            <button class="ai-btn" onclick={summarize}>{t("ai.summarize")}</button>
+            <button class="ai-btn" onclick={openAsk}>{t("ai.ask_about")}</button>
+          </div>
+        {:else}
+          <div class="ai-row ai-hint">
+            <span class="ai-hint-text">{t("ai.needs_key")}</span>
+            <button class="ai-btn" onclick={() => ui.openSettings()}>
+              {t("nav.settings")} →
+            </button>
+          </div>
+        {/if}
       {/if}
       <div class="mail-row">
-        {#if ai.keyPresent}
-          <button
-            class="ai-toggle"
-            class:open={aiRowOpen}
-            onclick={toggleAiRow}
-            title="Skim AI"
-            aria-expanded={aiRowOpen}
-          >
-            ✦
-          </button>
-        {/if}
+        <button
+          class="ai-toggle"
+          class:open={aiRowOpen}
+          onclick={toggleAiRow}
+          title="Skim AI"
+          aria-expanded={aiRowOpen}
+        >
+          ✦
+        </button>
         <button class="btn" onclick={() => reply("reply")}>{t("reading.reply")}</button>
         <button class="btn" onclick={() => reply("reply_all")}>{t("reading.reply_all")}</button>
         <button class="btn" onclick={() => reply("forward")}>{t("reading.forward")}</button>
@@ -472,6 +489,15 @@
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
+  }
+  .ai-hint {
+    align-items: center;
+    gap: 10px;
+  }
+  .ai-hint-text {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    line-height: 1.4;
   }
   .mail-row {
     display: flex;

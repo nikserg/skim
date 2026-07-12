@@ -5,6 +5,9 @@ const media = window.matchMedia("(prefers-color-scheme: dark)");
 
 const state = $state({
   theme: "system" as Theme,
+  /** Resolved light/dark after applying the system preference. */
+  effective: "light" as "light" | "dark",
+  settingsOpen: false,
 });
 
 function effectiveTheme(): "light" | "dark" {
@@ -13,7 +16,8 @@ function effectiveTheme(): "light" | "dark" {
 }
 
 function applyTheme() {
-  document.documentElement.dataset.theme = effectiveTheme();
+  state.effective = effectiveTheme();
+  document.documentElement.dataset.theme = state.effective;
 }
 
 media.addEventListener("change", applyTheme);
@@ -22,6 +26,9 @@ applyTheme();
 export const ui = {
   get theme() {
     return state.theme;
+  },
+  get effective() {
+    return state.effective;
   },
   setTheme(theme: Theme) {
     state.theme = theme;
@@ -32,5 +39,14 @@ export const ui = {
     const next = order[(order.indexOf(state.theme) + 1) % order.length];
     this.setTheme(next);
     void api.setSetting("theme", next).catch(() => {});
+  },
+  get settingsOpen() {
+    return state.settingsOpen;
+  },
+  openSettings() {
+    state.settingsOpen = true;
+  },
+  closeSettings() {
+    state.settingsOpen = false;
   },
 };
