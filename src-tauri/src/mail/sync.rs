@@ -1232,11 +1232,72 @@ fn detect_role(imap_name: &str, attrs_lower: &str) -> Option<String> {
 }
 
 fn display_name(imap_name: &str, _provider: &str) -> String {
-    imap_name
+    let stripped = imap_name
         .strip_prefix("[Gmail]/")
         .or_else(|| imap_name.strip_prefix("[Google Mail]/"))
-        .unwrap_or(imap_name)
-        .to_string()
+        .unwrap_or(imap_name);
+    decode_imap_utf7(stripped)
+}
+
+/// Decode RFC 3501 modified UTF-7 mailbox names ("&BBIEMAQ2BD0EPgQ1-" → "Важное").
+fn decode_imap_utf7(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.char_indices();
+    while let Some((i, c)) = chars.next() {
+        if c != '&' {
+            out.push(c);
+            continue;
+        }
+        // Find the closing '-'.
+        let rest = &s[i + 1..];
+        let Some(end) = rest.find('-') else {
+            out.push('&'); // malformed; keep as-is
+            out.push_str(rest);
+            break;
+        };
+        let b64 = &rest[..end];
+        // Skip the consumed section in the outer iterator.
+        for _ in 0..=end {
+            chars.next();
+        }
+        if b64.is_empty() {
+            out.push('&'); // "&-" is a literal ampersand
+            continue;
+        }
+        // Modified base64: ',' instead of '/', no padding; decodes to UTF-16BE.
+        let standard: String = b64
+            .chars()
+            .map(|c| if c == ',' { '/' } else { c })
+            .collect();
+        use base64::Engine;
+        let engine = base64::engine::GeneralPurpose::new(
+            &base64::alphabet::STANDARD,
+            base64::engine::GeneralPurposeConfig::new()
+                .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent),
+        );
+        match engine.decode(&standard) {
+            Ok(bytes) if bytes.len() % 2 == 0 => {
+                let units: Vec<u16> = bytes
+                    .chunks_exact(2)
+                    .map(|b| u16::from_be_bytes([b[0], b[1]]))
+                    .collect();
+                match String::from_utf16(&units) {
+                    Ok(decoded) => out.push_str(&decoded),
+                    Err(_) => {
+                        out.push('&');
+                        out.push_str(b64);
+                        out.push('-');
+                    }
+                }
+            }
+            _ => {
+                out.push('&');
+                out.push_str(b64);
+                out.push('-');
+            }
+        }
+    }
+    out
 }
 
 /// OAuth client configuration: baked in at compile time or stored in
@@ -1257,4 +1318,20 @@ pub async fn oauth_config(db: &Db) -> Result<Option<oauth::OauthConfig>> {
             client_id,
             client_secret: secret.unwrap_or_default(),
         }))
+}
+
+#[cfg(test)]
+mod utf7_tests {
+    use super::decode_imap_utf7;
+
+    #[test]
+    fn decodes_modified_utf7_names() {
+        assert_eq!(decode_imap_utf7("INBOX"), "INBOX");
+        assert_eq!(decode_imap_utf7("&BBIEMAQ2BD0EPgQ1-"), "Важное");
+        assert_eq!(decode_imap_utf7("&BCEENQQ8BEwETw-"), "Семья");
+        assert_eq!(decode_imap_utf7("Tom &- Jerry"), "Tom & Jerry");
+        assert_eq!(decode_imap_utf7("&Jjo-!"), "☺!");
+        // malformed input survives untouched
+        assert_eq!(decode_imap_utf7("&broken"), "&broken");
+    }
 }
