@@ -9,6 +9,7 @@ const ALLOWED: &[&str] = &[
     "locale",
     "theme",
     "images_policy",
+    "notifications",
     "ai_model",
     "google_client_id",
     "google_client_secret",

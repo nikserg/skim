@@ -3920,6 +3920,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
  "tauri-plugin-window-state",
+ "tauri-winrt-notification",
  "thiserror 2.0.18",
  "tokio",
  "tokio-rustls",
@@ -3927,6 +3928,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
+ "winreg",
 ]
 
 [[package]]

@@ -3,6 +3,7 @@ pub mod commands;
 pub mod db;
 pub mod error;
 pub mod mail;
+pub mod notify;
 pub mod secrets;
 pub mod state;
 
@@ -78,6 +79,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            notify::register_aumid();
             let data_dir = app.path().app_data_dir()?;
             let db = db::Db::open(&data_dir.join("skim.db"))?;
             app.manage(AppState::new(db.clone(), data_dir.clone()));

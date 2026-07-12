@@ -3,7 +3,6 @@
   import { t } from "../lib/i18n/index.svelte";
   import { mail } from "../lib/stores/mail.svelte";
   import { palette } from "../lib/stores/palette.svelte";
-  import { ui } from "../lib/stores/ui.svelte";
   import Settings from "./settings/Settings.svelte";
 
   let settingsOpen = $state(false);
@@ -106,13 +105,6 @@
         ⚠ {t("sync.error")}
       </button>
     {/if}
-    <button class="item" onclick={() => ui.cycleTheme()} title={t(`theme.${ui.theme}`)}>
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2">
-        <circle cx="8" cy="8" r="5.5" />
-        <path d="M8 2.5v11M8 2.5a5.5 5.5 0 0 1 0 11" fill="currentColor" stroke="none" opacity="0.35" />
-      </svg>
-      <span class="name">{t(`theme.${ui.theme}`)}</span>
-    </button>
     <button class="item" onclick={() => (settingsOpen = true)}>
       <span class="avatar">{(mail.account?.email ?? "?").charAt(0).toUpperCase()}</span>
       <span class="name">{t("nav.settings")}</span>

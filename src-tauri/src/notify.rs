@@ -1,0 +1,147 @@
+//! New-mail desktop notifications (Windows toasts) with a mark-read quick
+//! action. Sent from the sync engine when new inbox mail arrives while the
+//! window is unfocused; the "notifications" setting turns them off.
+
+use crate::db::{queries, Db};
+use crate::state::AppState;
+use tauri::{AppHandle, Manager};
+use tauri_winrt_notification::Toast;
+
+const AUMID: &str = "com.skim.app";
+
+/// Toasts from unpackaged apps only display when the AppUserModelID is
+/// known to Windows; a per-user registry entry is enough.
+pub fn register_aumid() {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    if let Ok((key, _)) = hkcu.create_subkey(format!(r"Software\Classes\AppUserModelId\{AUMID}")) {
+        let _ = key.set_value("DisplayName", &"Skim");
+    }
+}
+
+fn mark_read_label(locale: &str) -> &'static str {
+    match locale {
+        "ru" => "Прочитано",
+        "de" => "Gelesen",
+        "fr" => "Lu",
+        "es" => "Leído",
+        "it" => "Letto",
+        "pl" => "Przeczytane",
+        "sr" => "Pročitano",
+        "zh" => "标为已读",
+        "ja" => "既読にする",
+        "ko" => "읽음",
+        _ => "Mark read",
+    }
+}
+
+/// Show a toast for freshly arrived inbox messages.
+pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
+    if message_pks.is_empty() {
+        return;
+    }
+
+    // Respect the user's setting (default: on).
+    let (enabled, locale) = db
+        .call(|conn| {
+            Ok((
+                queries::get_setting(conn, "notifications")?
+                    .map(|v| v != "off")
+                    .unwrap_or(true),
+                queries::get_setting(conn, "locale")?.unwrap_or_else(|| "en".into()),
+            ))
+        })
+        .await
+        .unwrap_or((true, "en".into()));
+    if !enabled {
+        return;
+    }
+
+    // Only when the app is in the background.
+    if let Some(window) = app.get_webview_window("main") {
+        if window.is_focused().unwrap_or(false) {
+            return;
+        }
+    }
+
+    // Newest of the batch shapes the toast.
+    let pks = message_pks.to_vec();
+    let newest: Option<(Option<String>, Option<String>, Option<String>)> = db
+        .call(move |conn| {
+            use rusqlite::OptionalExtension;
+            let placeholders = pks.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let params: Vec<&dyn rusqlite::ToSql> =
+                pks.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+            conn.query_row(
+                &format!(
+                    "SELECT from_name, from_addr, subject FROM messages
+                     WHERE id IN ({placeholders}) ORDER BY date DESC LIMIT 1"
+                ),
+                params.as_slice(),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()
+        })
+        .await
+        .ok()
+        .flatten();
+    let Some((from_name, from_addr, subject)) = newest else {
+        return;
+    };
+
+    let title = from_name
+        .filter(|s| !s.is_empty())
+        .or(from_addr)
+        .unwrap_or_else(|| "Skim".into());
+    let mut body = subject.unwrap_or_default();
+    if message_pks.len() > 1 {
+        body.push_str(&format!("  (+{})", message_pks.len() - 1));
+    }
+
+    let ids_arg = format!(
+        "read:{}",
+        message_pks
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    let app_for_cb = app.clone();
+
+    // Toast holds raw COM pointers (!Send) — build and show it entirely on
+    // the blocking thread.
+    let _ = tokio::task::spawn_blocking(move || {
+        Toast::new(AUMID)
+            .title(&title)
+            .text1(&body)
+            .add_button(mark_read_label(&locale), &ids_arg)
+            .on_activated(move |action| {
+                match action.as_deref() {
+                    Some(arg) if arg.starts_with("read:") => {
+                        let ids: Vec<i64> = arg["read:".len()..]
+                            .split(',')
+                            .filter_map(|s| s.parse().ok())
+                            .collect();
+                        let app = app_for_cb.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let state = app.state::<AppState>();
+                            let _ =
+                                crate::commands::mail::apply_read(&app, state.inner(), ids, true)
+                                    .await;
+                        });
+                    }
+                    _ => {
+                        // Body click → bring the app forward.
+                        if let Some(window) = app_for_cb.get_webview_window("main") {
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                    }
+                }
+                Ok(())
+            })
+            .show()
+    })
+    .await;
+}

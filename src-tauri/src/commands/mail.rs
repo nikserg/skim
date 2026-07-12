@@ -146,10 +146,28 @@ pub async fn allow_remote_images(state: State<'_, AppState>, sender_addr: String
         .await
 }
 
+/// Mark messages read/unread outside the IPC path (toast quick action).
+pub async fn apply_read(
+    app: &AppHandle,
+    state: &AppState,
+    message_ids: Vec<i64>,
+    read: bool,
+) -> Result<()> {
+    queue_op(
+        app,
+        state,
+        message_ids,
+        "set_flag",
+        json!({ "flag": "seen", "on": read }),
+        move |conn, ids| bodies::set_flag_local(conn, ids, "seen", read),
+    )
+    .await
+}
+
 /// Optimistic mutation + queued server op, shared by all flag/move actions.
 async fn queue_op(
     app: &AppHandle,
-    state: &State<'_, AppState>,
+    state: &AppState,
     message_ids: Vec<i64>,
     kind: &'static str,
     extra: serde_json::Value,
@@ -202,7 +220,7 @@ pub async fn mark_read(
 ) -> Result<()> {
     queue_op(
         &app,
-        &state,
+        state.inner(),
         message_ids,
         "set_flag",
         json!({ "flag": "seen", "on": read }),
@@ -220,7 +238,7 @@ pub async fn set_starred(
 ) -> Result<()> {
     queue_op(
         &app,
-        &state,
+        state.inner(),
         message_ids,
         "set_flag",
         json!({ "flag": "flagged", "on": starred }),
@@ -237,7 +255,7 @@ pub async fn archive_messages(
 ) -> Result<()> {
     queue_op(
         &app,
-        &state,
+        state.inner(),
         message_ids,
         "archive",
         json!({}),
@@ -254,7 +272,7 @@ pub async fn delete_messages(
 ) -> Result<()> {
     queue_op(
         &app,
-        &state,
+        state.inner(),
         message_ids,
         "delete",
         json!({}),

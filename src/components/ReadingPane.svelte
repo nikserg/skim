@@ -51,22 +51,27 @@
 
   function submitAsk(ev: SubmitEvent) {
     ev.preventDefault();
-    if (!detail || !askQuestion.trim()) return;
-    const latest = detail.messages[detail.messages.length - 1];
+    if (!latest || !askQuestion.trim()) return;
     startAi("ask", "ai_ask", { messageId: latest.id, question: askQuestion.trim() });
   }
 
   async function aiDraftReply() {
-    if (!detail) return;
-    const latest = detail.messages[detail.messages.length - 1];
+    if (!latest) return;
     const draft = await api.getReplyTemplate(latest.id, "reply");
     await api.openComposeWindow(draft.id);
   }
 
   let detail = $state<ThreadDetail | null>(null);
   let bodies = $state<Record<number, RenderedBody | "loading" | "error">>({});
-  let expanded = $state<Set<number>>(new Set());
   let loadedFor = $state<number | null>(null);
+  // Minimalism: the pane shows only the newest message of the thread.
+  const latest = $derived(detail?.messages[detail.messages.length - 1] ?? null);
+
+  let aiRowOpen = $state(localStorage.getItem("skim.aiRowOpen") !== "0");
+  function toggleAiRow() {
+    aiRowOpen = !aiRowOpen;
+    localStorage.setItem("skim.aiRowOpen", aiRowOpen ? "1" : "0");
+  }
 
   $effect(() => {
     const threadId = mail.selectedThreadId;
@@ -90,9 +95,7 @@
       const d = await api.getThread(threadId);
       if (mail.selectedThreadId !== threadId) return;
       detail = d;
-      const latest = d.messages[d.messages.length - 1];
-      expanded = new Set([latest.id]);
-      void loadBody(latest.id);
+      void loadBody(d.messages[d.messages.length - 1].id);
 
       const unread = d.messages.filter((m) => !m.isRead).map((m) => m.id);
       if (unread.length > 0) {
@@ -112,17 +115,6 @@
     } catch {
       bodies = { ...bodies, [messageId]: "error" };
     }
-  }
-
-  function toggle(message: MessageMeta) {
-    const next = new Set(expanded);
-    if (next.has(message.id)) {
-      next.delete(message.id);
-    } else {
-      next.add(message.id);
-      if (!bodies[message.id]) void loadBody(message.id);
-    }
-    expanded = next;
   }
 
   async function allowSender(messageId: number, addr: string | null) {
@@ -186,8 +178,7 @@
   }
 
   async function reply(mode: "reply" | "reply_all" | "forward") {
-    if (!detail) return;
-    const latest = detail.messages[detail.messages.length - 1];
+    if (!latest) return;
     const draft = await api.getReplyTemplate(latest.id, mode);
     await api.openComposeWindow(draft.id);
   }
@@ -243,77 +234,78 @@
         </div>
       {/if}
 
-      {#each detail.messages as message (message.id)}
-        {@const isOpen = expanded.has(message.id)}
-        <article class="message" class:open={isOpen}>
-          <button class="meta" onclick={() => toggle(message)}>
+      {#if latest}
+        {@const message = latest}
+        {@const body = bodies[latest.id]}
+        <article class="message">
+          <div class="meta">
             <span class="avatar">{initial(message.from.name ?? message.from.addr)}</span>
             <div class="who">
               <div class="from">
                 {message.from.name ?? message.from.addr}
-                {#if isOpen}<span class="addr">&lt;{message.from.addr}&gt;</span>{/if}
+                <span class="addr">&lt;{message.from.addr}&gt;</span>
               </div>
-              <div class="microlabel">
-                {isOpen ? recipients(message) : message.snippet.slice(0, 90)}
-              </div>
+              <div class="microlabel">{recipients(message)}</div>
             </div>
             <span class="date microlabel">{formatFull(message.date)}</span>
-          </button>
+          </div>
 
-          {#if isOpen}
-            {@const body = bodies[message.id]}
-            {#if body === "loading" || body === undefined}
-              <div class="body-note">{t("reading.loading")}</div>
-            {:else if body === "error"}
-              <div class="body-note">
-                {t("reading.load_failed")}
-                <button class="linkish" onclick={() => loadBody(message.id)}>{t("reading.retry")}</button>
-              </div>
-            {:else}
-              {#if body.blockedImages > 0}
-                <div class="images-bar">
-                  {t("reading.images_blocked", { n: body.blockedImages })}
-                  <button class="linkish" onclick={() => loadBody(message.id, true)}>
-                    {t("reading.show_once")}
+          {#if body === "loading" || body === undefined}
+            <div class="body-note">{t("reading.loading")}</div>
+          {:else if body === "error"}
+            <div class="body-note">
+              {t("reading.load_failed")}
+              <button class="linkish" onclick={() => loadBody(message.id)}>{t("reading.retry")}</button>
+            </div>
+          {:else}
+            {#if body.blockedImages > 0}
+              <div class="images-bar">
+                {t("reading.images_blocked", { n: body.blockedImages })}
+                <button class="linkish" onclick={() => loadBody(message.id, true)}>
+                  {t("reading.show_once")}
+                </button>
+                {#if body.fromAddr}
+                  <span class="sep">·</span>
+                  <button class="linkish" onclick={() => allowSender(message.id, body.fromAddr)}>
+                    {t("reading.always_sender")}
                   </button>
-                  {#if body.fromAddr}
-                    <span class="sep">·</span>
-                    <button class="linkish" onclick={() => allowSender(message.id, body.fromAddr)}>
-                      {t("reading.always_sender")}
-                    </button>
-                  {/if}
-                </div>
-              {/if}
-              <div class="body">
-                <HtmlViewer html={body.html} />
+                {/if}
               </div>
-              {#if body.attachments.length > 0}
-                <AttachmentChips attachments={body.attachments} />
-              {/if}
+            {/if}
+            <div class="body">
+              <HtmlViewer html={body.html} />
+            </div>
+            {#if body.attachments.length > 0}
+              <AttachmentChips attachments={body.attachments} />
             {/if}
           {/if}
         </article>
-      {/each}
+      {/if}
     </div>
 
     <footer class="actions">
-      <div class="ai-actions" title={ai.keyPresent ? "" : t("ai.needs_key")}>
-        <button class="ai-btn" disabled={!ai.keyPresent} onclick={aiDraftReply}>
-          ✦ {t("ai.draft_reply")}
-        </button>
-        <button class="ai-btn" disabled={!ai.keyPresent} onclick={summarize}>
-          {t("ai.summarize")}
-        </button>
-        <button class="ai-btn" disabled={!ai.keyPresent} onclick={openAsk}>
-          {t("ai.ask_about")}
-        </button>
-      </div>
-      <div class="mail-actions">
-        <button class="plain" onclick={() => reply("reply")}>{t("reading.reply")}</button>
-        <span class="sep">·</span>
-        <button class="plain" onclick={() => reply("reply_all")}>{t("reading.reply_all")}</button>
-        <span class="sep">·</span>
-        <button class="plain" onclick={() => reply("forward")}>{t("reading.forward")}</button>
+      {#if ai.keyPresent && aiRowOpen}
+        <div class="ai-row">
+          <button class="ai-btn" onclick={aiDraftReply}>✦ {t("ai.draft_reply")}</button>
+          <button class="ai-btn" onclick={summarize}>{t("ai.summarize")}</button>
+          <button class="ai-btn" onclick={openAsk}>{t("ai.ask_about")}</button>
+        </div>
+      {/if}
+      <div class="mail-row">
+        {#if ai.keyPresent}
+          <button
+            class="ai-toggle"
+            class:open={aiRowOpen}
+            onclick={toggleAiRow}
+            title="Skim AI"
+            aria-expanded={aiRowOpen}
+          >
+            ✦
+          </button>
+        {/if}
+        <button class="btn" onclick={() => reply("reply")}>{t("reading.reply")}</button>
+        <button class="btn" onclick={() => reply("reply_all")}>{t("reading.reply_all")}</button>
+        <button class="btn" onclick={() => reply("forward")}>{t("reading.forward")}</button>
       </div>
     </footer>
   {/if}
@@ -471,14 +463,21 @@
 
   .actions {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 36px;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 36px 12px;
     border-top: 1px solid var(--hairline);
   }
-  .ai-actions {
+  .ai-row {
     display: flex;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .mail-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
   }
   .ai-btn {
     padding: 6px 12px;
@@ -487,13 +486,45 @@
     color: var(--accent);
     font-size: 12.5px;
     font-weight: 600;
+    white-space: nowrap;
   }
-  .ai-btn:hover:not(:disabled) {
+  .ai-btn:hover {
     background: var(--accent-soft);
   }
-  .ai-btn:disabled {
-    opacity: 0.45;
-    cursor: default;
+  .ai-toggle {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    border: 1px solid var(--hairline-strong);
+    color: var(--text-faint);
+    font-size: 13px;
+    flex-shrink: 0;
+    transition:
+      color 0.12s,
+      border-color 0.12s;
+  }
+  .ai-toggle:hover {
+    background: var(--hover);
+  }
+  .ai-toggle.open {
+    color: var(--accent);
+    border-color: var(--accent-dim);
+    background: var(--accent-soft);
+  }
+  .btn {
+    padding: 7px 16px;
+    border-radius: var(--radius-m);
+    border: 1px solid var(--hairline-strong);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .btn:hover {
+    background: var(--hover);
+    border-color: var(--text-faint);
   }
 
   .ask-form {
@@ -544,16 +575,6 @@
     50% {
       opacity: 0.45;
     }
-  }
-  .mail-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--text-dim);
-    font-size: 13px;
-  }
-  .plain:hover {
-    color: var(--text);
   }
   .sep {
     color: var(--text-faint);

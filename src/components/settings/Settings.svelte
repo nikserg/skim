@@ -14,12 +14,14 @@
   let aiError = $state("");
   let model = $state("claude-sonnet-5");
   let imagesPolicy = $state("block");
+  let notifications = $state("on");
   let confirmingRemove = $state(false);
 
   $effect(() => {
     void api.getSettings().then((s) => {
       if (s.ai_model) model = s.ai_model;
       if (s.images_policy) imagesPolicy = s.images_policy;
+      if (s.notifications) notifications = s.notifications;
     });
   });
 
@@ -47,6 +49,11 @@
   async function setImages(policy: string) {
     imagesPolicy = policy;
     await api.setSetting("images_policy", policy);
+  }
+
+  async function setNotifications(value: string) {
+    notifications = value;
+    await api.setSetting("notifications", value);
   }
 
   async function saveAiKey() {
@@ -138,6 +145,18 @@
               {t(`theme.${themeOption}`)}
             </button>
           {/each}
+        </div>
+      </section>
+
+      <section>
+        <div class="microlabel">{t("settings.notifications")}</div>
+        <div class="chips">
+          <button class="chip" class:active={notifications === "on"} onclick={() => setNotifications("on")}>
+            {t("settings.notifications_on")}
+          </button>
+          <button class="chip" class:active={notifications === "off"} onclick={() => setNotifications("off")}>
+            {t("settings.notifications_off")}
+          </button>
         </div>
       </section>
 

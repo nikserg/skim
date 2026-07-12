@@ -407,10 +407,10 @@ impl Engine {
                 let mut high = exists;
                 while high >= start {
                     let low = high.saturating_sub(CHUNK - 1).max(start);
-                    let n = self
+                    let inserted = self
                         .fetch_headers(folder_id, &format!("{low}:{high}"), false, 0)
                         .await?;
-                    changed |= n > 0;
+                    changed |= !inserted.is_empty();
                     let _ = self.app.emit(
                         "sync:progress",
                         json!({ "folderId": folder_id, "done": exists - low + 1, "total": exists - start + 1 }),
@@ -422,7 +422,7 @@ impl Engine {
                 }
             }
         } else {
-            let n = self
+            let inserted = self
                 .fetch_headers(
                     folder_id,
                     &format!("{}:*", last_seen_uid + 1),
@@ -430,9 +430,12 @@ impl Engine {
                     last_seen_uid,
                 )
                 .await?;
-            changed |= n > 0;
-            if n > 0 && is_inbox {
-                let _ = self.app.emit("mail:new", json!({ "count": n }));
+            changed |= !inserted.is_empty();
+            if !inserted.is_empty() && is_inbox {
+                let _ = self
+                    .app
+                    .emit("mail:new", json!({ "count": inserted.len() }));
+                crate::notify::notify_new_mail(&self.app, &self.db, &inserted).await;
             }
             changed |= self.reconcile_flags(folder_id).await?;
         }
@@ -471,7 +474,7 @@ impl Engine {
         set: &str,
         by_uid: bool,
         above_uid: i64,
-    ) -> Result<usize> {
+    ) -> Result<Vec<i64>> {
         const QUERY: &str = "(UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER])";
         let session = self.session().await?;
         let mut fetched = Vec::new();
@@ -516,19 +519,20 @@ impl Engine {
             ));
         }
 
-        let count = rows.len();
-        if count == 0 {
-            return Ok(0);
+        if rows.is_empty() {
+            return Ok(Vec::new());
         }
         self.db
             .call(move |conn| {
+                let mut inserted = Vec::new();
                 for msg in &rows {
-                    queries::insert_message(conn, msg)?;
+                    if let Some((pk, _thread)) = queries::insert_message(conn, msg)? {
+                        inserted.push(pk);
+                    }
                 }
-                Ok(())
+                Ok(inserted)
             })
-            .await?;
-        Ok(count)
+            .await
     }
 
     /// Diff server flags against the newest cached window; detect expunges.
