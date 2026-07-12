@@ -1,7 +1,13 @@
 <script lang="ts">
+  import { api } from "../lib/api";
   import { t } from "../lib/i18n/index.svelte";
   import { mail } from "../lib/stores/mail.svelte";
   import { ui } from "../lib/stores/ui.svelte";
+
+  async function compose() {
+    const draft = await api.createDraft();
+    await api.openComposeWindow(draft.id);
+  }
 
   const roleKey: Record<string, string> = {
     inbox: "nav.inbox",
@@ -32,7 +38,7 @@
 </script>
 
 <nav class="sidebar">
-  <button class="compose">
+  <button class="compose" onclick={compose}>
     <span class="plus">+</span>
     {t("nav.compose")}
   </button>

@@ -42,6 +42,7 @@ url = "2"
 sha2 = "0.10"
 getrandom = "0.3"
 ammonia = "4"
+lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "smtp-transport", "builder", "hostname", "pool"] }
 
 [profile.release]
 lto = true

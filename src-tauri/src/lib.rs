@@ -124,6 +124,13 @@ pub fn run() {
             commands::mail::save_attachment,
             commands::mail::open_attachment,
             commands::mail::sync_now,
+            commands::compose::create_draft,
+            commands::compose::get_draft,
+            commands::compose::update_draft,
+            commands::compose::delete_draft,
+            commands::compose::get_reply_template,
+            commands::compose::send_draft,
+            commands::compose::open_compose_window,
             commands::settings::get_settings,
             commands::settings::set_setting,
         ])

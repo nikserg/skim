@@ -2,6 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   Account,
+  Draft,
   Folder,
   RenderedBody,
   ServerPreset,
@@ -50,6 +51,16 @@ export const api = {
     invoke<string | null>("save_attachment", { attachmentId }),
   openAttachment: (attachmentId: number) => invoke<void>("open_attachment", { attachmentId }),
   syncNow: (accountId?: string) => invoke<void>("sync_now", { accountId: accountId ?? null }),
+
+  // compose
+  createDraft: () => invoke<Draft>("create_draft"),
+  getDraft: (draftId: number) => invoke<Draft>("get_draft", { draftId }),
+  updateDraft: (draft: Draft) => invoke<void>("update_draft", { draft }),
+  deleteDraft: (draftId: number) => invoke<void>("delete_draft", { draftId }),
+  getReplyTemplate: (messageId: number, mode: "reply" | "reply_all" | "forward") =>
+    invoke<Draft>("get_reply_template", { messageId, mode }),
+  sendDraft: (draftId: number) => invoke<void>("send_draft", { draftId }),
+  openComposeWindow: (draftId: number) => invoke<void>("open_compose_window", { draftId }),
 
   // settings
   getSettings: () => invoke<Record<string, string>>("get_settings"),

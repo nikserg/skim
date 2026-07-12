@@ -1,5 +1,6 @@
 pub mod accounts;
 pub mod bodies;
+pub mod drafts;
 pub mod models;
 pub mod queries;
 

@@ -124,6 +124,13 @@
     if (all.length === 0) return t("reading.to_me");
     return all.map((a) => a.name || a.addr).join(", ");
   }
+
+  async function reply(mode: "reply" | "reply_all" | "forward") {
+    if (!detail) return;
+    const latest = detail.messages[detail.messages.length - 1];
+    const draft = await api.getReplyTemplate(latest.id, mode);
+    await api.openComposeWindow(draft.id);
+  }
 </script>
 
 <section class="pane">
@@ -212,9 +219,11 @@
         <button class="ai-btn">{t("ai.ask_about")}</button>
       </div>
       <div class="mail-actions">
-        <button class="plain">{t("reading.reply")}</button>
+        <button class="plain" onclick={() => reply("reply")}>{t("reading.reply")}</button>
         <span class="sep">·</span>
-        <button class="plain">{t("reading.forward")}</button>
+        <button class="plain" onclick={() => reply("reply_all")}>{t("reading.reply_all")}</button>
+        <span class="sep">·</span>
+        <button class="plain" onclick={() => reply("forward")}>{t("reading.forward")}</button>
       </div>
     </footer>
   {/if}

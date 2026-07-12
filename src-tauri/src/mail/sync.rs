@@ -8,7 +8,7 @@
 use crate::db::models::{Account, NewMessage};
 use crate::db::{bodies, queries, Db};
 use crate::error::{Result, SkimError};
-use crate::mail::{imap_client, oauth, parse};
+use crate::mail::{imap_client, oauth, parse, smtp};
 use crate::secrets;
 use futures::StreamExt;
 use serde_json::json;
@@ -823,6 +823,9 @@ impl Engine {
 
     /// Execute one queued op. Returns the folder id to resync afterwards.
     async fn execute_op(&mut self, kind: &str, payload: &serde_json::Value) -> Result<Option<i64>> {
+        if kind == "send" {
+            return self.execute_send(payload).await;
+        }
         let imap_name = payload["imapName"].as_str().unwrap_or_default().to_string();
         let folder_id = payload["folderId"].as_i64();
         let uids: Vec<u32> = payload["uids"]
@@ -891,6 +894,101 @@ impl Engine {
             }
         }
         Ok(folder_id)
+    }
+
+    /// Send a queued draft over SMTP, mirror it to Sent (non-Gmail), and
+    /// delete the draft.
+    async fn execute_send(&mut self, payload: &serde_json::Value) -> Result<Option<i64>> {
+        let Some(draft_id) = payload["draftId"].as_i64() else {
+            return Ok(None);
+        };
+        let draft = self
+            .db
+            .call(move |conn| crate::db::drafts::get(conn, draft_id))
+            .await?;
+        let Some(draft) = draft else {
+            return Ok(None); // already sent or discarded
+        };
+
+        // Threading headers from the message being replied to.
+        let refs = if let Some(parent_id) = draft.reply_to_message_id {
+            self.db
+                .call(move |conn| {
+                    use rusqlite::OptionalExtension;
+                    let row: Option<(Option<String>, Option<String>)> = conn
+                        .query_row(
+                            "SELECT message_id, references_ids FROM messages WHERE id = ?1",
+                            rusqlite::params![parent_id],
+                            |r| Ok((r.get(0)?, r.get(1)?)),
+                        )
+                        .optional()?;
+                    let (msgid, refs_json) = row.unwrap_or((None, None));
+                    let mut references: Vec<String> = refs_json
+                        .and_then(|j| serde_json::from_str::<Vec<String>>(&j).ok())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|r| format!("<{r}>"))
+                        .collect();
+                    let in_reply_to = msgid.map(|m| format!("<{m}>"));
+                    if let Some(irt) = &in_reply_to {
+                        references.push(irt.clone());
+                    }
+                    Ok(smtp::OutgoingRefs {
+                        in_reply_to,
+                        references,
+                    })
+                })
+                .await?
+        } else {
+            smtp::OutgoingRefs {
+                in_reply_to: None,
+                references: Vec::new(),
+            }
+        };
+
+        let raw = smtp::build_message(&self.account, &draft, &refs)?;
+
+        let mut cache = self.oauth_token.take();
+        let creds = resolve_credentials(&self.db, &self.account, &mut cache).await?;
+        self.oauth_token = cache;
+        smtp::send(&self.account, &creds, &raw).await?;
+
+        // Gmail files sent mail automatically; appending would duplicate it.
+        let mut sent_folder_id = None;
+        if self.account.provider != "gmail" {
+            match self.role_folder("sent", "Sent").await {
+                Ok(dest) => {
+                    let session = self.session().await?;
+                    if let Err(e) = session.append(&dest, Some("(\\Seen)"), None, &raw).await {
+                        tracing::warn!(error = %e, "cannot append to Sent");
+                    }
+                    let dest_owned = dest.clone();
+                    let account_id = self.account.id.clone();
+                    sent_folder_id = self
+                        .db
+                        .call(move |conn| {
+                            use rusqlite::OptionalExtension;
+                            conn.query_row(
+                                "SELECT id FROM folders WHERE account_id = ?1 AND imap_name = ?2",
+                                rusqlite::params![account_id, dest_owned],
+                                |r| r.get(0),
+                            )
+                            .optional()
+                        })
+                        .await
+                        .ok()
+                        .flatten();
+                }
+                Err(e) => tracing::warn!(error = %e, "no Sent folder"),
+            }
+        }
+
+        self.db
+            .call(move |conn| crate::db::drafts::delete(conn, draft_id))
+            .await?;
+        let _ = self.app.emit("drafts:updated", json!({}));
+        let _ = self.app.emit("mail:sent", json!({ "draftId": draft_id }));
+        Ok(sent_folder_id)
     }
 
     async fn delete_and_expunge(&mut self, uid_set: &str) -> Result<()> {

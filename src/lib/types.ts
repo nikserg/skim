@@ -91,6 +91,18 @@ export interface RenderedBody {
   attachments: AttachmentMeta[];
 }
 
+export interface Draft {
+  id: number;
+  accountId: string;
+  replyToMessageId: number | null;
+  mode: string;
+  to: string;
+  cc: string;
+  bcc: string;
+  subject: string;
+  body: string;
+}
+
 export interface SkimError {
   code: string;
   message: string;
