@@ -5,6 +5,7 @@ import type {
   Draft,
   Folder,
   RenderedBody,
+  SearchHit,
   ServerPreset,
   ThreadDetail,
   ThreadRow,
@@ -51,6 +52,12 @@ export const api = {
     invoke<string | null>("save_attachment", { attachmentId }),
   openAttachment: (attachmentId: number) => invoke<void>("open_attachment", { attachmentId }),
   syncNow: (accountId?: string) => invoke<void>("sync_now", { accountId: accountId ?? null }),
+
+  // search
+  searchMessages: (query: string, limit = 20) =>
+    invoke<SearchHit[]>("search_messages", { query, limit }),
+  threadMessageIds: (threadId: number) =>
+    invoke<number[]>("thread_message_ids", { threadId }),
 
   // compose
   createDraft: () => invoke<Draft>("create_draft"),

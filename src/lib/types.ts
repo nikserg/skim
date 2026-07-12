@@ -91,6 +91,17 @@ export interface RenderedBody {
   attachments: AttachmentMeta[];
 }
 
+export interface SearchHit {
+  messageId: number;
+  threadId: number | null;
+  folderId: number;
+  subject: string;
+  fromName: string;
+  fromAddr: string;
+  date: number;
+  snippet: string;
+}
+
 export interface Draft {
   id: number;
   accountId: string;

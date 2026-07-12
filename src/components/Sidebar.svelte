@@ -2,6 +2,7 @@
   import { api } from "../lib/api";
   import { t } from "../lib/i18n/index.svelte";
   import { mail } from "../lib/stores/mail.svelte";
+  import { palette } from "../lib/stores/palette.svelte";
   import { ui } from "../lib/stores/ui.svelte";
 
   async function compose() {
@@ -43,7 +44,7 @@
     {t("nav.compose")}
   </button>
 
-  <button class="search">
+  <button class="search" onclick={() => palette.show()}>
     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
       <circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" />
     </svg>

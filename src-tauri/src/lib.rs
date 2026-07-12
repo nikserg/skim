@@ -131,6 +131,8 @@ pub fn run() {
             commands::compose::get_reply_template,
             commands::compose::send_draft,
             commands::compose::open_compose_window,
+            commands::search::search_messages,
+            commands::search::thread_message_ids,
             commands::settings::get_settings,
             commands::settings::set_setting,
         ])
