@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from "../lib/i18n/index.svelte";
-  import { mockFolders, mockLabels } from "../lib/mock";
+  import { mail } from "../lib/stores/mail.svelte";
   import { ui } from "../lib/stores/ui.svelte";
 
   const roleKey: Record<string, string> = {
@@ -10,6 +10,8 @@
     drafts: "nav.drafts",
     archive: "nav.archive",
     trash: "nav.trash",
+    junk: "nav.junk",
+    all: "nav.all_mail",
   };
 
   const roleIcon: Record<string, string> = {
@@ -19,7 +21,14 @@
     sent: "M14 2L2 7l4.5 2L8 14l6-12zM6.5 9L14 2",
     drafts: "M3 2h7l3 3v9H3V2zm7 0v3h3M5.5 8h5M5.5 11h5",
     archive: "M2 3h12v3H2V3zm1 3v7h10V6M6.5 9h3",
+    trash: "M3 4h10M6.5 4V2.5h3V4M4.5 4l.5 9.5h6l.5-9.5M6.7 6.5v5M9.3 6.5v5",
+    junk: "M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM3.5 3.5l9 9",
   };
+
+  const mainFolders = $derived(
+    mail.folders.filter((f) => f.role !== null && f.role !== "all" && f.role !== "starred"),
+  );
+  const labels = $derived(mail.folders.filter((f) => f.role === null));
 </script>
 
 <nav class="sidebar">
@@ -37,16 +46,16 @@
   </button>
 
   <div class="section">
-    {#each mockFolders as folder (folder.id)}
+    {#each mainFolders as folder (folder.id)}
       <button
         class="item"
-        class:selected={ui.selectedFolderId === folder.id}
-        onclick={() => (ui.selectedFolderId = folder.id)}
+        class:selected={mail.selectedFolderId === folder.id}
+        onclick={() => mail.selectFolder(folder.id)}
       >
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round">
-          <path d={roleIcon[folder.role ?? "inbox"]} />
+          <path d={roleIcon[folder.role ?? "inbox"] ?? roleIcon.inbox} />
         </svg>
-        <span class="name">{folder.role ? t(roleKey[folder.role]) : folder.displayName}</span>
+        <span class="name">{folder.role && roleKey[folder.role] ? t(roleKey[folder.role]) : folder.displayName}</span>
         {#if folder.unreadCount > 0}
           <span class="count">{folder.unreadCount}</span>
         {/if}
@@ -54,17 +63,39 @@
     {/each}
   </div>
 
-  <div class="section">
-    <div class="microlabel heading">{t("nav.labels")}</div>
-    {#each mockLabels as label (label)}
-      <button class="item">
-        <span class="dot"></span>
-        <span class="name">{label}</span>
-      </button>
-    {/each}
-  </div>
+  {#if labels.length > 0}
+    <div class="section">
+      <div class="microlabel heading">{t("nav.labels")}</div>
+      {#each labels as folder (folder.id)}
+        <button
+          class="item"
+          class:selected={mail.selectedFolderId === folder.id}
+          onclick={() => mail.selectFolder(folder.id)}
+        >
+          <span class="dot"></span>
+          <span class="name">{folder.displayName}</span>
+          {#if folder.unreadCount > 0}
+            <span class="count">{folder.unreadCount}</span>
+          {/if}
+        </button>
+      {/each}
+    </div>
+  {/if}
 
   <div class="footer">
+    {#if mail.syncState === "syncing"}
+      <div class="sync microlabel">
+        <span class="spinner"></span>
+        {t("sync.syncing")}
+        {#if mail.syncProgress}
+          {Math.round((mail.syncProgress.done / Math.max(1, mail.syncProgress.total)) * 100)}%
+        {/if}
+      </div>
+    {:else if mail.syncState === "error"}
+      <button class="sync error microlabel" onclick={() => mail.syncNow()} title={mail.syncMessage}>
+        ⚠ {t("sync.error")}
+      </button>
+    {/if}
     <button class="item" onclick={() => ui.cycleTheme()} title={t(`theme.${ui.theme}`)}>
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2">
         <circle cx="8" cy="8" r="5.5" />
@@ -73,7 +104,7 @@
       <span class="name">{t(`theme.${ui.theme}`)}</span>
     </button>
     <button class="item">
-      <span class="avatar">A</span>
+      <span class="avatar">{(mail.account?.email ?? "?").charAt(0).toUpperCase()}</span>
       <span class="name">{t("nav.settings")}</span>
     </button>
   </div>
@@ -199,5 +230,27 @@
     place-items: center;
     font-size: 10px;
     font-weight: 700;
+  }
+  .sync {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+  }
+  .sync.error {
+    color: var(--danger);
+  }
+  .spinner {
+    width: 10px;
+    height: 10px;
+    border: 1.5px solid var(--text-faint);
+    border-top-color: var(--text);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>

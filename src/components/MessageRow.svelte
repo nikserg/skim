@@ -43,13 +43,6 @@
     {thread.subject}
   </div>
   <div class="snippet">{thread.snippet}</div>
-  {#if thread.labels.length > 0}
-    <div class="chips">
-      {#each thread.labels as label (label)}
-        <span class="chip microlabel">{label}</span>
-      {/each}
-    </div>
-  {/if}
 </button>
 
 <style>
@@ -132,15 +125,4 @@
     white-space: nowrap;
   }
 
-  .chips {
-    display: flex;
-    gap: 6px;
-    margin-top: 6px;
-  }
-  .chip {
-    padding: 2px 7px;
-    border: 1px solid var(--hairline-strong);
-    border-radius: 999px;
-    color: var(--text-dim);
-  }
 </style>

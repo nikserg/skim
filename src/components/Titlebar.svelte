@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from "../lib/i18n/index.svelte";
+  import { mail } from "../lib/stores/mail.svelte";
 
   const inTauri = "__TAURI_INTERNALS__" in window;
 
@@ -27,7 +28,9 @@
 <header class="titlebar" data-tauri-drag-region>
   <div class="brand" data-tauri-drag-region>
     <span class="logo" data-tauri-drag-region>{t("app.name")}</span>
-    <span class="account microlabel" data-tauri-drag-region>anna@gmail.com</span>
+    {#if mail.account}
+      <span class="account microlabel" data-tauri-drag-region>{mail.account.email}</span>
+    {/if}
   </div>
   <div class="controls">
     <button class="ctl" onclick={minimize} aria-label="Minimize">

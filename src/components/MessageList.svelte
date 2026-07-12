@@ -1,26 +1,53 @@
 <script lang="ts">
   import { t } from "../lib/i18n/index.svelte";
-  import { mockThreads } from "../lib/mock";
-  import { ui } from "../lib/stores/ui.svelte";
+  import { mail } from "../lib/stores/mail.svelte";
   import MessageRow from "./MessageRow.svelte";
 
-  const unread = $derived(mockThreads.filter((th) => !th.isRead).length);
+  const title = $derived.by(() => {
+    const f = mail.selectedFolder;
+    if (!f) return t("nav.inbox");
+    const roleKey: Record<string, string> = {
+      inbox: "nav.inbox",
+      starred: "nav.starred",
+      sent: "nav.sent",
+      drafts: "nav.drafts",
+      archive: "nav.archive",
+      trash: "nav.trash",
+      junk: "nav.junk",
+    };
+    return f.role && roleKey[f.role] ? t(roleKey[f.role]) : f.displayName;
+  });
+
+  const unread = $derived(mail.selectedFolder?.unreadCount ?? 0);
+
+  let rowsEl: HTMLDivElement | undefined = $state();
+
+  function onScroll() {
+    if (!rowsEl) return;
+    if (rowsEl.scrollTop + rowsEl.clientHeight > rowsEl.scrollHeight - 400) {
+      if (mail.threads.length >= 100) void mail.loadMoreThreads();
+    }
+  }
 </script>
 
 <section class="list">
   <header class="head">
-    <h1>{t("nav.inbox")}</h1>
-    <span class="microlabel">{t("list.unread", { n: unread })}</span>
+    <h1>{title}</h1>
+    {#if unread > 0}
+      <span class="microlabel">{t("list.unread", { n: unread })}</span>
+    {/if}
   </header>
-  <div class="rows">
-    {#if mockThreads.length === 0}
-      <div class="empty">{t("list.empty")}</div>
+  <div class="rows" bind:this={rowsEl} onscroll={onScroll}>
+    {#if mail.threads.length === 0 && !mail.threadsLoading}
+      <div class="empty">
+        {mail.syncState === "syncing" ? t("sync.syncing") : t("list.empty")}
+      </div>
     {:else}
-      {#each mockThreads as thread (thread.id)}
+      {#each mail.threads as thread (thread.id)}
         <MessageRow
           {thread}
-          selected={ui.selectedThreadId === thread.id}
-          onselect={(id) => (ui.selectedThreadId = id)}
+          selected={mail.selectedThreadId === thread.id}
+          onselect={(id) => (mail.selectedThreadId = id)}
         />
       {/each}
     {/if}
