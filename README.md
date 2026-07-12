@@ -11,6 +11,17 @@ A fast, native, minimalist email client for Windows — with your own Claude as 
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4.svg)](#install)
 [![Rust](https://img.shields.io/badge/core-Rust%20%2B%20Tauri%202-orange.svg)](#architecture)
 
+<br>
+
+<a href="https://github.com/nikserg/skim/releases/latest">
+  <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F%20%20Download%20Skim%20for%20Windows-6b46f2?style=for-the-badge&labelColor=6b46f2" alt="Download Skim for Windows" height="44">
+</a>
+
+<sub><b>Free & open source · ~5 MB installer · no admin rights needed</b><br>
+Grab <code>Skim_x.y.z_x64-setup.exe</code> from the latest release</sub>
+
+<br><br>
+
 <img src="docs/skim-light.png" alt="Skim — light theme" width="800">
 
 <sub>One violet accent, reserved exclusively for AI. Everything else stays out of your way.</sub>
@@ -39,7 +50,8 @@ Most mail clients are either web apps in a trench coat or twenty-year-old battle
 - Google sign-in via OAuth (loopback + PKCE) or app password
 - Conversation threading (References/In-Reply-To with subject fallback)
 - Archive, delete, star, read/unread — all optimistic with a durable offline queue: act instantly, Skim syncs when the network returns
-- IMAP IDLE push + periodic polling; new-mail notifications
+- IMAP IDLE push + periodic polling; new-mail notifications with a mark-read quick action
+- Lives in the tray: closing the window keeps mail syncing in the background; starts with Windows minimized (both optional)
 - Compose, reply, reply-all, forward with proper threading headers
 - Attachments: open, save; inline images served from the local cache
 
@@ -53,6 +65,7 @@ Most mail clients are either web apps in a trench coat or twenty-year-old battle
 - **Summarize** — long threads in a few bullets, action items called out
 - **Ask about this** — question a specific email
 - **Mailbox chat** — ask “which invoices are still unpaid this month?” in the palette; answers cite the source emails as clickable chips
+- **Your writer, your voice** — set your name, pick a writing style (formal / friendly / concise / witty / enthusiastic), and give the AI standing instructions ("sign as Nick", "my company is called…")
 - Answers follow your UI language; pick Claude Sonnet 5 (default), Opus 4.8, or Haiku 4.5 in settings
 
 **Privacy & security**

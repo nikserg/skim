@@ -16,6 +16,7 @@
     "@fontsource-variable/hanken-grotesk": "^5.2.0",
     "@fontsource/ibm-plex-mono": "^5.2.0",
     "@tauri-apps/api": "^2.9.0",
+    "@tauri-apps/plugin-autostart": "^2.5.1",
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "@tauri-apps/plugin-notification": "^2.3.1",
     "@tauri-apps/plugin-opener": "^2.5.0"

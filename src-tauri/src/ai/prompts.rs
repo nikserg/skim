@@ -53,24 +53,66 @@ pub fn summarize(emails: &[EmailBlock], locale: &str) -> (String, String) {
     (system, user)
 }
 
+/// The user's standing writer preferences from Settings.
+#[derive(Default, Clone)]
+pub struct WriterProfile {
+    /// How the AI refers to / signs as the user.
+    pub name: String,
+    /// One of the style ids from Settings ('formal', 'friendly', …).
+    pub style: Option<String>,
+    /// Free-form standing instructions (facts, signature rules, …).
+    pub instructions: Option<String>,
+}
+
+fn style_line(style: Option<&str>) -> &'static str {
+    match style {
+        Some("formal") => "Default register: professional and formal.",
+        Some("friendly") => "Default register: friendly and personable.",
+        Some("concise") => "Default register: brief and to the point — no filler.",
+        Some("sarcastic") => {
+            "Default register: witty, with light irony where appropriate (never rude)."
+        }
+        Some("enthusiastic") => "Default register: upbeat and energetic.",
+        _ => "",
+    }
+}
+
+fn profile_block(profile: &WriterProfile) -> String {
+    let mut out = String::new();
+    if let Some(instructions) = profile
+        .instructions
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+    {
+        out.push_str(&format!(
+            "\nStanding instructions from the user (always follow them):\n{}",
+            truncate(instructions, 2_000)
+        ));
+    }
+    out
+}
+
 pub fn draft(
     instruction: &str,
     reply_context: Option<&EmailBlock>,
     tone: Option<&str>,
-    user_name: &str,
+    profile: &WriterProfile,
     locale: &str,
 ) -> (String, String) {
     let tone_line = match tone {
         Some("shorter") => "Keep it under 80 words.",
         Some("warmer") => "Use a friendly, warm register.",
         Some("formal") => "Use a professional, formal register.",
-        _ => "",
+        // The per-request tone chip overrides the standing style.
+        _ => style_line(profile.style.as_deref()),
     };
     let system = format!(
-        "You draft emails for {user_name}. Write only the email body — no subject line, \
-         no commentary, no placeholder signature blocks. Match the language the \
-         conversation is in; otherwise {} {tone_line}",
-        locale_line(locale)
+        "You draft emails for {}, writing in their voice (first person). Write only the \
+         email body — no subject line, no commentary, no placeholder signature blocks. \
+         Match the language the conversation is in; otherwise {} {tone_line}{}",
+        profile.name,
+        locale_line(locale),
+        profile_block(profile)
     );
     let user = match reply_context {
         Some(email) => format!(
@@ -82,7 +124,12 @@ pub fn draft(
     (system, user)
 }
 
-pub fn adjust(current_text: &str, adjustment: &str, locale: &str) -> (String, String) {
+pub fn adjust(
+    current_text: &str,
+    adjustment: &str,
+    profile: &WriterProfile,
+    locale: &str,
+) -> (String, String) {
     let directive = match adjustment {
         "shorter" => "Rewrite it to be significantly shorter (aim for half the length) while keeping every essential point.",
         "warmer" => "Rewrite it in a friendlier, warmer register without losing substance.",
@@ -90,9 +137,11 @@ pub fn adjust(current_text: &str, adjustment: &str, locale: &str) -> (String, St
         other => other,
     };
     let system = format!(
-        "You edit email drafts. Output only the rewritten email body, nothing else. \
-         Keep the original language of the draft; otherwise {}",
-        locale_line(locale)
+        "You edit email drafts written in the voice of {}. Output only the rewritten \
+         email body, nothing else. Keep the original language of the draft; otherwise {}{}",
+        profile.name,
+        locale_line(locale),
+        profile_block(profile)
     );
     let user = format!(
         "Current draft:\n\n{}\n\n{directive}",

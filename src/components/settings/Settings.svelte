@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { aiApi, api, errorMessage } from "../../lib/api";
   import { LOCALES, getLocale, setLocale, t, type Locale } from "../../lib/i18n/index.svelte";
@@ -15,15 +16,52 @@
   let model = $state("claude-sonnet-5");
   let imagesPolicy = $state("block");
   let notifications = $state("on");
+  let autostart = $state(true);
   let confirmingRemove = $state(false);
+
+  // AI writer profile
+  let aiName = $state("");
+  let aiStyle = $state("auto");
+  let aiInstructions = $state("");
 
   $effect(() => {
     void api.getSettings().then((s) => {
       if (s.ai_model) model = s.ai_model;
       if (s.images_policy) imagesPolicy = s.images_policy;
       if (s.notifications) notifications = s.notifications;
+      if (s.ai_user_name) aiName = s.ai_user_name;
+      if (s.ai_style) aiStyle = s.ai_style;
+      if (s.ai_instructions) aiInstructions = s.ai_instructions;
     });
+    void isEnabled()
+      .then((on) => (autostart = on))
+      .catch(() => {});
   });
+
+  const STYLES = ["auto", "formal", "friendly", "concise", "sarcastic", "enthusiastic"];
+
+  async function setAutostart(on: boolean) {
+    autostart = on;
+    try {
+      if (on) await enable();
+      else await disable();
+    } catch {
+      autostart = !on;
+    }
+  }
+
+  async function setAiStyle(style: string) {
+    aiStyle = style;
+    await api.setSetting("ai_style", style);
+  }
+
+  function saveAiName() {
+    void api.setSetting("ai_user_name", aiName.trim());
+  }
+
+  function saveAiInstructions() {
+    void api.setSetting("ai_instructions", aiInstructions.trim());
+  }
 
   const MODELS = [
     { id: "claude-sonnet-5", labelKey: "settings.model_default" },
@@ -149,6 +187,18 @@
       </section>
 
       <section>
+        <div class="microlabel">{t("settings.autostart")}</div>
+        <div class="chips">
+          <button class="chip" class:active={autostart} onclick={() => setAutostart(true)}>
+            {t("settings.notifications_on")}
+          </button>
+          <button class="chip" class:active={!autostart} onclick={() => setAutostart(false)}>
+            {t("settings.notifications_off")}
+          </button>
+        </div>
+      </section>
+
+      <section>
         <div class="microlabel">{t("settings.notifications")}</div>
         <div class="chips">
           <button class="chip" class:active={notifications === "on"} onclick={() => setNotifications("on")}>
@@ -188,6 +238,45 @@
               </button>
             {/each}
           </div>
+
+          <div class="microlabel model-label">{t("settings.ai_writer")}</div>
+          <div class="writer">
+            <label class="writer-field">
+              <span class="microlabel">{t("settings.ai_name")}</span>
+              <input
+                bind:value={aiName}
+                onblur={saveAiName}
+                placeholder={mail.account?.email.split("@")[0] ?? ""}
+                spellcheck="false"
+              />
+              <span class="dim hint">{t("settings.ai_name_hint")}</span>
+            </label>
+            <div class="writer-field">
+              <span class="microlabel">{t("settings.ai_style")}</span>
+              <div class="chips">
+                {#each STYLES as style (style)}
+                  <button
+                    class="chip"
+                    class:active={aiStyle === style}
+                    onclick={() => setAiStyle(style)}
+                  >
+                    {t(`settings.style_${style}`)}
+                  </button>
+                {/each}
+              </div>
+            </div>
+            <label class="writer-field">
+              <span class="microlabel">{t("settings.ai_instructions")}</span>
+              <textarea
+                bind:value={aiInstructions}
+                onblur={saveAiInstructions}
+                placeholder={t("settings.ai_instructions_ph")}
+                rows="3"
+                spellcheck="false"
+              ></textarea>
+            </label>
+          </div>
+
           <div class="dim note">{t("settings.ai_note")}</div>
         {:else}
           <div class="row">
@@ -407,6 +496,33 @@
     color: var(--text);
   }
   .note {
+    font-size: 11.5px;
+  }
+  .writer {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .writer-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .writer-field input,
+  .writer-field textarea {
+    padding: 8px 10px;
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--radius-s);
+    font-size: 13px;
+    user-select: text;
+    resize: vertical;
+    font-family: inherit;
+  }
+  .writer-field input:focus,
+  .writer-field textarea:focus {
+    border-color: var(--accent-dim);
+  }
+  .hint {
     font-size: 11.5px;
   }
   .key-hint {

@@ -193,7 +193,7 @@
             <button type="button" class="ai-chip" onclick={stopAi}>{t("ai.stop")}</button>
           {:else}
             <button type="submit" class="ai-chip solid" disabled={!instruction.trim()}>
-              {generatedOnce ? t("ai.regenerate") : t("ai.generate")}
+              ✦ {generatedOnce ? t("ai.regenerate") : t("ai.generate")}
             </button>
           {/if}
         </form>

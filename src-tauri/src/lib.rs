@@ -27,13 +27,24 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            // Focus the existing window instead of launching a second instance.
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
+            // A second launch surfaces the running instance (it may be
+            // hidden in the tray).
+            show_main_window(app);
         }))
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--minimized"]),
+        ))
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                // Visibility is controlled by us (tray / --minimized), not
+                // by the previous session.
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::all()
+                        & !tauri_plugin_window_state::StateFlags::VISIBLE,
+                )
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
@@ -78,12 +89,52 @@ pub fn run() {
                 Err(_) => not_found(),
             }
         })
+        .on_window_event(|window, event| {
+            // Closing the main window hides it to the tray; quitting is a
+            // tray-menu action. Compose windows close normally.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir).ok();
             notify::register_aumid(&data_dir);
             let db = db::Db::open(&data_dir.join("skim.db"))?;
             app.manage(AppState::new(db.clone(), data_dir.clone()));
+
+            let locale = db
+                .with(|conn| db::queries::get_setting(conn, "locale"))
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "en".into());
+            setup_tray(app.handle(), &locale)?;
+
+            // Autostart is on by default — enable it once, right after the
+            // first launch; the user can turn it off in Settings.
+            let first_run = db
+                .with(|conn| db::queries::get_setting(conn, "autostart_initialized"))
+                .ok()
+                .flatten()
+                .is_none();
+            if first_run {
+                use tauri_plugin_autostart::ManagerExt;
+                let _ = app.autolaunch().enable();
+                let _ =
+                    db.with(|conn| db::queries::set_setting(conn, "autostart_initialized", "1"));
+            }
+
+            // `--minimized` (autostart) keeps the window hidden in the tray.
+            let minimized = std::env::args().any(|a| a == "--minimized");
+            if !minimized {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
 
             // Resume syncing for known accounts.
             let handle = app.handle().clone();
@@ -151,6 +202,63 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+fn tray_labels(locale: &str) -> (&'static str, &'static str) {
+    match locale {
+        "ru" => ("Открыть Skim", "Выход"),
+        "de" => ("Skim öffnen", "Beenden"),
+        "fr" => ("Ouvrir Skim", "Quitter"),
+        "es" => ("Abrir Skim", "Salir"),
+        "it" => ("Apri Skim", "Esci"),
+        "pl" => ("Otwórz Skim", "Zakończ"),
+        "sr" => ("Otvori Skim", "Izlaz"),
+        "zh" => ("打开 Skim", "退出"),
+        "ja" => ("Skim を開く", "終了"),
+        "ko" => ("Skim 열기", "종료"),
+        _ => ("Open Skim", "Quit"),
+    }
+}
+
+fn setup_tray(app: &tauri::AppHandle, locale: &str) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+    let (open_label, quit_label) = tray_labels(locale);
+    let open = MenuItem::with_id(app, "open", open_label, true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", quit_label, true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open, &quit])?;
+
+    TrayIconBuilder::with_id("main")
+        .icon(app.default_window_icon().expect("bundled icon").clone())
+        .tooltip("Skim")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "open" => show_main_window(app),
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_main_window(tray.app_handle());
+            }
+        })
+        .build(app)?;
+    Ok(())
 }
 
 fn urlencoding_decode(s: &str) -> String {

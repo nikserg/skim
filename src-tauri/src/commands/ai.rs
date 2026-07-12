@@ -220,6 +220,35 @@ pub async fn ai_summarize(
     Ok(())
 }
 
+/// The writer profile from Settings, with the account name as fallback.
+async fn writer_profile(state: &State<'_, AppState>) -> Result<prompts::WriterProfile> {
+    state
+        .db
+        .call(|conn| {
+            use rusqlite::OptionalExtension;
+            let custom_name =
+                queries::get_setting(conn, "ai_user_name")?.filter(|s| !s.trim().is_empty());
+            let name = match custom_name {
+                Some(name) => name,
+                None => conn
+                    .query_row(
+                        "SELECT COALESCE(NULLIF(display_name, ''), email) FROM accounts LIMIT 1",
+                        [],
+                        |r| r.get::<_, String>(0),
+                    )
+                    .optional()?
+                    .unwrap_or_else(|| "the user".into()),
+            };
+            Ok(prompts::WriterProfile {
+                name,
+                style: queries::get_setting(conn, "ai_style")?
+                    .filter(|s| !s.is_empty() && s != "auto"),
+                instructions: queries::get_setting(conn, "ai_instructions")?,
+            })
+        })
+        .await
+}
+
 #[tauri::command]
 pub async fn ai_draft(
     state: State<'_, AppState>,
@@ -234,26 +263,12 @@ pub async fn ai_draft(
         Some(id) => Some(email_block(&state, id).await?),
         None => None,
     };
-    let user_name: String = state
-        .db
-        .call(|conn| {
-            let row: std::result::Result<(Option<String>, String), _> = conn.query_row(
-                "SELECT display_name, email FROM accounts LIMIT 1",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            );
-            Ok(match row {
-                Ok((Some(name), _)) if !name.is_empty() => name,
-                Ok((_, email)) => email,
-                Err(_) => "the user".into(),
-            })
-        })
-        .await?;
+    let profile = writer_profile(&state).await?;
     let (system, user) = prompts::draft(
         &instruction,
         reply_context.as_ref(),
         tone.as_deref(),
-        &user_name,
+        &profile,
         &ctx.locale,
     );
     spawn_stream(
@@ -278,7 +293,8 @@ pub async fn ai_adjust_draft(
     channel: Channel<AiEvent>,
 ) -> Result<()> {
     let ctx = ai_context(&state.db).await?;
-    let (system, user) = prompts::adjust(&current_text, &adjustment, &ctx.locale);
+    let profile = writer_profile(&state).await?;
+    let (system, user) = prompts::adjust(&current_text, &adjustment, &profile, &ctx.locale);
     spawn_stream(
         &state,
         request_id,

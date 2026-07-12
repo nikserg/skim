@@ -11,6 +11,9 @@ const ALLOWED: &[&str] = &[
     "images_policy",
     "notifications",
     "ai_model",
+    "ai_user_name",
+    "ai_style",
+    "ai_instructions",
     "google_client_id",
     "google_client_secret",
 ];

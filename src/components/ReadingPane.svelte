@@ -314,8 +314,8 @@
         {#if ai.keyPresent}
           <div class="ai-row">
             <button class="ai-btn" onclick={aiDraftReply}>✦ {t("ai.draft_reply")}</button>
-            <button class="ai-btn" onclick={summarize}>{t("ai.summarize")}</button>
-            <button class="ai-btn" onclick={openAsk}>{t("ai.ask_about")}</button>
+            <button class="ai-btn" onclick={summarize}>✦ {t("ai.summarize")}</button>
+            <button class="ai-btn" onclick={openAsk}>✦ {t("ai.ask_about")}</button>
           </div>
         {:else}
           <div class="ai-row ai-hint">

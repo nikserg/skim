@@ -22,7 +22,8 @@ fn main() {
     let (key, _) = hkcu
         .create_subkey(r"Software\Classes\AppUserModelId\com.skim.app")
         .unwrap();
-    key.set_raw_value("DisplayName", &expand_sz("Skim")).unwrap();
+    key.set_raw_value("DisplayName", &expand_sz("Skim"))
+        .unwrap();
     key.set_raw_value(
         "IconUri",
         &expand_sz(r"C:\skim\src-tauri\icons\128x128.png"),

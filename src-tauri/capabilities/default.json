@@ -15,6 +15,7 @@
     "core:window:allow-set-title",
     "dialog:default",
     "opener:default",
-    "notification:default"
+    "notification:default",
+    "autostart:default"
   ]
 }
