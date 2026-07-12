@@ -42,9 +42,7 @@ const LOGIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 pub async fn connect(host: &str, port: u16) -> Result<async_imap::Client<ImapStream>> {
     let tcp = tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect((host, port)))
         .await
-        .map_err(|_| {
-            SkimError::other("network", format!("connection to {host}:{port} timed out"))
-        })?
+        .map_err(|_| SkimError::other("network", format!("connection to {host}:{port} timed out")))?
         .map_err(|e| SkimError::other("network", format!("cannot reach {host}:{port}: {e}")))?;
     tcp.set_nodelay(true).ok();
 

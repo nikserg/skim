@@ -136,4 +136,15 @@ export const mail = {
   loadMoreThreads,
   refreshThreads,
   syncNow: () => api.syncNow(state.account?.id),
+
+  /** Optimistically drop a thread from the visible list (archive/delete). */
+  removeThreadFromList(threadId: number) {
+    state.threads = state.threads.filter((t) => t.id !== threadId);
+    if (state.selectedThreadId === threadId) state.selectedThreadId = null;
+  },
+
+  /** Optimistically patch a thread row in the visible list. */
+  patchThreadRow(threadId: number, patch: Partial<ThreadRow>) {
+    state.threads = state.threads.map((t) => (t.id === threadId ? { ...t, ...patch } : t));
+  },
 };

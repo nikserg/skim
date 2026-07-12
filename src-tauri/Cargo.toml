@@ -41,6 +41,7 @@ base64 = "0.22"
 url = "2"
 sha2 = "0.10"
 getrandom = "0.3"
+ammonia = "4"
 
 [profile.release]
 lto = true

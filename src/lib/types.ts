@@ -52,6 +52,45 @@ export interface Address {
   addr: string;
 }
 
+export interface MessageMeta {
+  id: number;
+  folderId: number;
+  threadId: number | null;
+  subject: string;
+  from: Address;
+  to: Address[];
+  cc: Address[];
+  date: number;
+  snippet: string;
+  isRead: boolean;
+  isStarred: boolean;
+  hasAttachments: boolean;
+  bodyState: number;
+}
+
+export interface ThreadDetail {
+  id: number;
+  subject: string;
+  messages: MessageMeta[];
+}
+
+export interface AttachmentMeta {
+  id: number;
+  messageId: number;
+  filename: string | null;
+  mimeType: string | null;
+  size: number;
+  isInline: boolean;
+}
+
+export interface RenderedBody {
+  messageId: number;
+  html: string;
+  blockedImages: number;
+  fromAddr: string | null;
+  attachments: AttachmentMeta[];
+}
+
 export interface SkimError {
   code: string;
   message: string;

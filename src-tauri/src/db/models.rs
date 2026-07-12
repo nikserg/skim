@@ -69,6 +69,36 @@ pub struct MessageMeta {
     pub body_state: i64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentMeta {
+    pub id: i64,
+    pub message_id: i64,
+    pub filename: Option<String>,
+    pub mime_type: Option<String>,
+    pub size: i64,
+    pub is_inline: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadDetail {
+    pub id: i64,
+    pub subject: String,
+    pub messages: Vec<MessageMeta>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderedBody {
+    pub message_id: i64,
+    /// Sanitized HTML (or plain text converted to safe HTML).
+    pub html: String,
+    pub blocked_images: usize,
+    pub from_addr: Option<String>,
+    pub attachments: Vec<AttachmentMeta>,
+}
+
 /// Headers of a message as parsed from the wire, ready for insertion.
 #[derive(Debug, Clone, Default)]
 pub struct NewMessage {

@@ -1,6 +1,13 @@
 // Typed wrappers around the Tauri IPC surface — one function per command.
 import { invoke } from "@tauri-apps/api/core";
-import type { Account, Folder, ServerPreset, ThreadRow } from "./types";
+import type {
+  Account,
+  Folder,
+  RenderedBody,
+  ServerPreset,
+  ThreadDetail,
+  ThreadRow,
+} from "./types";
 
 export interface AddAccountInput {
   email: string;
@@ -28,6 +35,20 @@ export const api = {
   listFolders: (accountId: string) => invoke<Folder[]>("list_folders", { accountId }),
   listThreads: (folderId: number, offset = 0, limit = 100) =>
     invoke<ThreadRow[]>("list_threads", { folderId, offset, limit }),
+  getThread: (threadId: number) => invoke<ThreadDetail>("get_thread", { threadId }),
+  getMessageBody: (messageId: number, showImages?: boolean) =>
+    invoke<RenderedBody>("get_message_body", { messageId, showImages: showImages ?? null }),
+  allowRemoteImages: (senderAddr: string) =>
+    invoke<void>("allow_remote_images", { senderAddr }),
+  markRead: (messageIds: number[], read: boolean) =>
+    invoke<void>("mark_read", { messageIds, read }),
+  setStarred: (messageIds: number[], starred: boolean) =>
+    invoke<void>("set_starred", { messageIds, starred }),
+  archiveMessages: (messageIds: number[]) => invoke<void>("archive_messages", { messageIds }),
+  deleteMessages: (messageIds: number[]) => invoke<void>("delete_messages", { messageIds }),
+  saveAttachment: (attachmentId: number) =>
+    invoke<string | null>("save_attachment", { attachmentId }),
+  openAttachment: (attachmentId: number) => invoke<void>("open_attachment", { attachmentId }),
   syncNow: (accountId?: string) => invoke<void>("sync_now", { accountId: accountId ?? null }),
 
   // settings

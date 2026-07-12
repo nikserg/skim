@@ -49,7 +49,12 @@ async fn finish_add_account(
         .call(move |conn| db_accounts::insert(conn, &acc))
         .await?;
 
-    let handle = sync::spawn(app.clone(), state.db.clone(), account.clone());
+    let handle = sync::spawn(
+        app.clone(),
+        state.db.clone(),
+        account.clone(),
+        state.data_dir.clone(),
+    );
     state
         .engines
         .lock()
