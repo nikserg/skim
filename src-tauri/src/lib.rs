@@ -113,18 +113,26 @@ pub fn run() {
                 .unwrap_or_else(|| "en".into());
             setup_tray(app.handle(), &locale)?;
 
-            // Autostart is on by default — enable it once, right after the
-            // first launch; the user can turn it off in Settings.
-            let first_run = db
-                .with(|conn| db::queries::get_setting(conn, "autostart_initialized"))
-                .ok()
-                .flatten()
-                .is_none();
-            if first_run {
+            // Autostart is on by default. The registry entry is reconciled
+            // with the stored preference on every launch — the uninstaller
+            // removes the Run key, so a reinstall must recreate it.
+            {
                 use tauri_plugin_autostart::ManagerExt;
-                let _ = app.autolaunch().enable();
-                let _ =
-                    db.with(|conn| db::queries::set_setting(conn, "autostart_initialized", "1"));
+                let wanted = db
+                    .with(|conn| db::queries::get_setting(conn, "autostart"))
+                    .ok()
+                    .flatten()
+                    .map_or(true, |v| v == "1");
+                let autolaunch = app.autolaunch();
+                match (wanted, autolaunch.is_enabled().unwrap_or(false)) {
+                    (true, false) => {
+                        let _ = autolaunch.enable();
+                    }
+                    (false, true) => {
+                        let _ = autolaunch.disable();
+                    }
+                    _ => {}
+                }
             }
 
             // `--minimized` (autostart) keeps the window hidden in the tray.

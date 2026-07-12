@@ -45,6 +45,8 @@
     try {
       if (on) await enable();
       else await disable();
+      // Remembered so startup can restore the Run key after a reinstall.
+      await api.setSetting("autostart", on ? "1" : "0");
     } catch {
       autostart = !on;
     }
