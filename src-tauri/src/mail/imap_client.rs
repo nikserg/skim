@@ -62,7 +62,18 @@ pub async fn connect(host: &str, port: u16) -> Result<async_imap::Client<ImapStr
         .map_err(|_| SkimError::other("tls", format!("TLS handshake with {host} timed out")))?
         .map_err(|e| SkimError::other("tls", format!("TLS handshake with {host} failed: {e}")))?;
 
-    Ok(async_imap::Client::new(tls))
+    let mut client = async_imap::Client::new(tls);
+    // Consume the server greeting ("* OK ... ready"). Leaving it unread
+    // desyncs AUTHENTICATE's state machine: the '+' continuation gets
+    // treated as unsolicited and both sides wait on each other forever.
+    tokio::time::timeout(CONNECT_TIMEOUT, client.read_response())
+        .await
+        .map_err(|_| SkimError::other("network", format!("{host} sent no greeting")))?
+        .transpose()
+        .map_err(|e| SkimError::other("imap", format!("bad greeting from {host}: {e}")))?
+        .ok_or_else(|| SkimError::other("network", format!("{host} closed the connection")))?;
+
+    Ok(client)
 }
 
 pub async fn login(
