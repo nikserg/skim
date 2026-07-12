@@ -1,24 +1,180 @@
+<div align="center">
+
 # Skim
 
-> Email at the speed of thought.
+**Email at the speed of thought.**
 
-A fast, native, minimalist email client for Windows with bring-your-own-key Claude AI. Under active development — full README coming with the first release.
+A fast, native, minimalist email client for Windows — with your own Claude as the copilot.
 
-- **Native & fast** — Rust core + WebView2 UI (Tauri 2), tiny installer, instant cold start.
-- **Your mail, your machine** — IMAP/SMTP sync into a local SQLite cache; works offline; no proxy servers.
-- **Bring your own AI** — paste an Anthropic API key to draft replies, summarize threads, and ask questions across your mailbox. Requests go straight from your machine to Claude.
-- **11 languages**, light & dark themes, keyboard-first.
+[![CI](https://github.com/nikserg/skim/actions/workflows/ci.yml/badge.svg)](https://github.com/nikserg/skim/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-6b46f2.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4.svg)](#install)
+[![Rust](https://img.shields.io/badge/core-Rust%20%2B%20Tauri%202-orange.svg)](#architecture)
+
+<img src="docs/skim-light.png" alt="Skim — light theme" width="800">
+
+<sub>One violet accent, reserved exclusively for AI. Everything else stays out of your way.</sub>
+
+</div>
+
+---
+
+## Why Skim
+
+Most mail clients are either web apps in a trench coat or twenty-year-old battleships. Skim is neither:
+
+- ⚡ **Native & fast.** Rust core + WebView2 UI (Tauri 2). The installer is a few megabytes, cold start is instant, idle memory is tiny. No Electron.
+- 🔒 **Local-first & private.** Your mail syncs over IMAP straight into a local SQLite cache. It works offline, search is instant, and nothing ever passes through anyone else's servers. Zero telemetry.
+- ✦ **AI on your terms.** Paste your own Anthropic API key and Claude drafts replies, summarizes threads, answers questions about a message, and chats across your whole mailbox — with cited sources. No key? Skim is a great mail client without it. Requests go directly from your machine to `api.anthropic.com`; the key lives in Windows Credential Manager.
+- 🌍 **11 languages**, light & dark themes, keyboard-first.
+
+<div align="center">
+<img src="docs/skim-dark.png" alt="Skim — dark theme" width="800">
+</div>
+
+## Features
+
+**Mail**
+- Gmail, Outlook, Yahoo, iCloud, or any IMAP/SMTP server (autoconfig for the big ones)
+- Google sign-in via OAuth (loopback + PKCE) or app password
+- Conversation threading (References/In-Reply-To with subject fallback)
+- Archive, delete, star, read/unread — all optimistic with a durable offline queue: act instantly, Skim syncs when the network returns
+- IMAP IDLE push + periodic polling; new-mail notifications
+- Compose, reply, reply-all, forward with proper threading headers
+- Attachments: open, save; inline images served from the local cache
+
+**Speed**
+- Instant full-text search (SQLite FTS5) over subject, sender, recipients, and bodies
+- `Ctrl+K` command palette: search-as-you-type, jump to folders, every command
+- Keyboard shortcuts: `j`/`k` move · `e` archive · `#` delete · `s` star · `u` unread · `r` reply · `Ctrl+N` compose · `/` search
+
+**AI (bring your own key)**
+- **Draft reply** — tell Claude what to say (“confirm the timeline, keep it warm”), get a draft in your voice; make it shorter, warmer, or more formal with one click
+- **Summarize** — long threads in a few bullets, action items called out
+- **Ask about this** — question a specific email
+- **Mailbox chat** — ask “which invoices are still unpaid this month?” in the palette; answers cite the source emails as clickable chips
+- Answers follow your UI language; pick Claude Sonnet 5 (default), Opus 4.8, or Haiku 4.5 in settings
+
+**Privacy & security**
+- HTML email is sanitized in Rust (ammonia) and rendered in a sandboxed iframe with a strict CSP — scripts never run
+- Remote images blocked by default, with one-click per-sender allow
+- Passwords, OAuth tokens, and your API key live in Windows Credential Manager — never in the database, never in a config file
+
+## Install
+
+Download the latest installer from **[Releases](https://github.com/nikserg/skim/releases)** — the `.exe` (NSIS) installs per-user without admin rights; an `.msi` is also published for managed environments.
+
+Requirements: Windows 10/11 with [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) (preinstalled on Windows 11).
+
+## Connecting your mail
+
+### Gmail — one click
+
+Press **Continue with Google** during onboarding. Skim opens your browser, you approve access, done. Skim never sees your password; the OAuth token is stored in Credential Manager.
+
+> **Note for source builds:** Google requires each app distribution to register its own OAuth client. Official installers ship with the project's client ID. If you build from source, either paste your own client ID in the connect screen (see below) or use an app password.
+
+### Gmail / Yahoo / iCloud / Outlook — app password
+
+These providers require an *app password* for IMAP:
+
+1. Enable 2-step verification on your account.
+2. Create an app password ([Gmail](https://myaccount.google.com/apppasswords) · [Yahoo](https://login.yahoo.com/account/security) · [iCloud](https://account.apple.com/account/manage) · [Outlook](https://account.live.com/proofs/AppPassword)).
+3. Enter your address and the app password in Skim. Server settings fill themselves in.
+
+### Any other server
+
+Enter your address and password; adjust the IMAP/SMTP hosts under “Server settings” if the guess is wrong. Implicit TLS (:993) for IMAP, STARTTLS (:587) or TLS (:465) for SMTP.
+
+### Registering your own Google client ID <a name="own-client-id"></a>
+
+For forks and source builds (~15 minutes, free):
+
+1. [console.cloud.google.com](https://console.cloud.google.com) → create a project.
+2. *APIs & Services → Enable APIs* → enable **Gmail API**.
+3. *Google Auth Platform* → configure the consent screen (External).
+4. *Data access* → add the scope `https://mail.google.com/`.
+5. *Clients* → create an **OAuth client ID** of type **Desktop app**.
+6. Paste the client ID (and secret) into Skim's connect screen, or bake them into your build via the `SKIM_GOOGLE_CLIENT_ID` / `SKIM_GOOGLE_CLIENT_SECRET` env vars.
+
+While your Google app is unverified it runs in *testing* mode: only listed test users can sign in and refresh tokens expire weekly. App passwords have no such limits.
+
+## Enabling AI
+
+1. Get an API key at [console.anthropic.com](https://console.anthropic.com/settings/keys).
+2. Paste it in onboarding (step 2) or later in **Settings → Skim AI**.
+3. That's it — the ✦ violet buttons light up.
+
+Your key, your bill: Skim talks to the Anthropic API directly and adds no markup, no proxy, no accounts. The key is stored in Windows Credential Manager and can be removed in one click.
+
+## Keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| `Ctrl K` / `/` | Command palette / search |
+| `Ctrl N` | New message |
+| `j` / `k` | Next / previous conversation |
+| `e` | Archive |
+| `#` / `Delete` | Delete |
+| `s` | Star / unstar |
+| `u` | Mark unread |
+| `r` | Reply |
+| `Esc` | Close / deselect |
 
 ## Building from source
 
-Prerequisites: [Node.js 20+](https://nodejs.org), [Rust (stable, MSVC)](https://rustup.rs), Visual Studio Build Tools with the C++ workload.
+Prerequisites:
+
+- [Node.js 20+](https://nodejs.org)
+- [Rust (stable, MSVC)](https://rustup.rs)
+- Visual Studio Build Tools with the **Desktop development with C++** workload:
+
+```powershell
+winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+winget install Rustlang.Rustup
+```
+
+Then:
 
 ```powershell
 npm install
-npm run tauri dev    # run in development
-npm run tauri build  # produce installers
+npm run tauri dev      # develop with hot reload
+npm run tauri build    # produce NSIS + MSI installers in src-tauri/target/release/bundle/
 ```
+
+## Architecture
+
+```
+┌───────────────────────────────┐      IMAP/SMTP (rustls)      ┌──────────────┐
+│  Svelte 5 UI  (WebView2)      │◄──── sync engine ───────────►│  your mail   │
+│  3 panes · palette · composer │                              │  server      │
+├───────────────────────────────┤      HTTPS (your key)        └──────────────┘
+│  Rust core  (Tauri 2)         │◄──── AI features ───────────► api.anthropic.com
+│  sync · sanitize · ops queue  │
+├───────────────────────────────┤
+│  SQLite + FTS5  (local cache) │   passwords & keys → Windows Credential Manager
+└───────────────────────────────┘
+```
+
+- **Sync**: per-account engine over one worker IMAP session — newest-first header windows, incremental fetches above the UID high-water mark, flag/expunge reconciliation, UIDVALIDITY recovery. A second connection IDLEs on INBOX for push.
+- **Every action is offline-first**: archive/delete/star/send are applied locally at once and queued in SQLite (`pending_ops`); the queue drains with retries whenever the server is reachable.
+- **HTML mail** is sanitized in Rust before it ever reaches the UI, then rendered in a no-script sandboxed iframe.
+- **AI** requests are assembled in Rust (mailbox chat retrieves context via FTS5/bm25) and streamed to the UI token by token.
+
+## Localization
+
+English, Русский, Srpski, Français, Deutsch, Español, Italiano, Polski, 中文, 日本語, 한국어 — switchable at runtime, no restart. Translations live in [`src/lib/i18n/locales/`](src/lib/i18n/locales); fixes from native speakers are very welcome ([how to contribute](CONTRIBUTING.md#translations)).
+
+## Deliberately not included
+
+Skim stays small on purpose: no calendar, no contacts manager, no rules/filters, no snooze, no read receipts, no tracking pixels of its own. One account per install for now (multi-account is on the roadmap). If you need everything, there are battleships; if you need speed, there's Skim.
+
+Known limitations: Windows Snap Layouts don't pop over the custom maximize button (Tauri frameless-window limitation); self-signed IMAP certificates are rejected rather than click-through-able — by design.
+
+## Contributing
+
+Bug reports, patches, and translation fixes are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). The short version: keep it small, keep it fast, run `cargo clippy` and `npm run check` before pushing.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) © Skim contributors

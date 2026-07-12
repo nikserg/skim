@@ -1,6 +1,6 @@
 <script lang="ts">
   import { aiStream, api } from "../lib/api";
-  import { t } from "../lib/i18n/index.svelte";
+  import { getLocale, t } from "../lib/i18n/index.svelte";
   import { ai } from "../lib/stores/ai.svelte";
   import { mail } from "../lib/stores/mail.svelte";
   import type { MessageMeta, RenderedBody, ThreadDetail } from "../lib/types";
@@ -171,7 +171,7 @@
   }
 
   function formatFull(unix: number): string {
-    return new Date(unix * 1000).toLocaleString(undefined, {
+    return new Date(unix * 1000).toLocaleString(getLocale(), {
       month: "short",
       day: "numeric",
       hour: "numeric",

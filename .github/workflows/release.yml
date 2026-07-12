@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and publish installers
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Official builds bake in the maintainer's Google OAuth client;
+          # forks without these secrets still build — users can paste their
+          # own client id in the app.
+          SKIM_GOOGLE_CLIENT_ID: ${{ secrets.SKIM_GOOGLE_CLIENT_ID }}
+          SKIM_GOOGLE_CLIENT_SECRET: ${{ secrets.SKIM_GOOGLE_CLIENT_SECRET }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Skim ${{ github.ref_name }}"
+          releaseDraft: true
+          prerelease: false

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getLocale } from "../lib/i18n/index.svelte";
   import type { ThreadRow } from "../lib/types";
 
   let {
@@ -12,15 +13,16 @@
   } = $props();
 
   function formatDate(unix: number): string {
+    const locale = getLocale();
     const d = new Date(unix * 1000);
     const now = new Date();
     const sameDay = d.toDateString() === now.toDateString();
     if (sameDay)
-      return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+      return d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
     const days = (now.getTime() - d.getTime()) / 86400000;
     if (days < 7)
-      return d.toLocaleDateString(undefined, { weekday: "short" });
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      return d.toLocaleDateString(locale, { weekday: "short" });
+    return d.toLocaleDateString(locale, { month: "short", day: "numeric" });
   }
 </script>
 

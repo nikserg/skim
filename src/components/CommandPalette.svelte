@@ -2,7 +2,7 @@
   // Ctrl+K palette: commands + instant local search. Becomes AI chat in
   // phase 7 (ask a question ending with "?").
   import { aiStream, api, type Citation } from "../lib/api";
-  import { t } from "../lib/i18n/index.svelte";
+  import { getLocale, t } from "../lib/i18n/index.svelte";
   import { ai } from "../lib/stores/ai.svelte";
   import { mail } from "../lib/stores/mail.svelte";
   import { palette } from "../lib/stores/palette.svelte";
@@ -192,7 +192,7 @@
   }
 
   function formatDate(unix: number): string {
-    return new Date(unix * 1000).toLocaleDateString(undefined, {
+    return new Date(unix * 1000).toLocaleDateString(getLocale(), {
       month: "short",
       day: "numeric",
     });
