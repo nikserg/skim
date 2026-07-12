@@ -85,6 +85,8 @@
   "onb.ai_subtitle": "粘贴 Anthropic API 密钥即可解锁 AI 功能。请求直接从你的电脑发往 Claude——Skim 将密钥保存在 Windows 凭据管理器中，不会发送到其他任何地方。",
   "onb.ai_optional": "可选",
   "onb.ai_key_label": "Anthropic API 密钥",
+  "onb.ai_no_key": "还没有密钥？一分钟即可创建：",
+  "onb.ai_key_where": "登录 → API Keys → Create Key，然后粘贴到这里。费用由 Anthropic 直接向你的账户收取。",
   "onb.ai_feature_draft": "起草与回复——用你的语气",
   "onb.ai_feature_summarize": "总结——长会话浓缩成 3 行",
   "onb.ai_feature_ask": "上下文问答——与整个邮箱对话",

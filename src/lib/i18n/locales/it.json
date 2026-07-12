@@ -87,6 +87,8 @@
   "onb.ai_subtitle": "Incolla una chiave API Anthropic per sbloccare le funzioni IA. Le richieste vanno direttamente dal tuo computer a Claude — Skim conserva la chiave nel Gestore credenziali di Windows e non la invia altrove.",
   "onb.ai_optional": "Facoltativo",
   "onb.ai_key_label": "Chiave API Anthropic",
+  "onb.ai_no_key": "Non hai una chiave? Creane una in un minuto su",
+  "onb.ai_key_where": "Accedi → API Keys → Create Key, poi incollala qui. L'utilizzo è fatturato da Anthropic sul tuo account.",
   "onb.ai_feature_draft": "Bozze e risposte — con la tua voce",
   "onb.ai_feature_summarize": "Riassunti — thread lunghi in 3 righe",
   "onb.ai_feature_ask": "Domande in contesto — chatta con tutta la tua posta",

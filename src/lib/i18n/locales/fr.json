@@ -87,6 +87,8 @@
   "onb.ai_subtitle": "Collez une clé API Anthropic pour débloquer les fonctions IA. Les requêtes vont directement de votre machine à Claude — Skim stocke la clé dans le Gestionnaire d'identifiants Windows et ne l'envoie nulle part ailleurs.",
   "onb.ai_optional": "Facultatif",
   "onb.ai_key_label": "Clé API Anthropic",
+  "onb.ai_no_key": "Pas encore de clé ? Créez-en une en une minute sur",
+  "onb.ai_key_where": "Connectez-vous → API Keys → Create Key, puis collez-la ici. L'utilisation est facturée par Anthropic sur votre compte.",
   "onb.ai_feature_draft": "Rédiger et répondre — avec votre voix",
   "onb.ai_feature_summarize": "Résumer — les longs fils en 3 lignes",
   "onb.ai_feature_ask": "Interroger en contexte — discutez avec toute votre boîte",

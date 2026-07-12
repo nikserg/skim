@@ -85,6 +85,8 @@
   "onb.ai_subtitle": "Anthropic API 키를 붙여넣으면 AI 기능이 열립니다. 요청은 내 컴퓨터에서 Claude로 직접 전송됩니다. Skim은 키를 Windows 자격 증명 관리자에 저장하며 다른 어디에도 보내지 않습니다.",
   "onb.ai_optional": "선택 사항",
   "onb.ai_key_label": "Anthropic API 키",
+  "onb.ai_no_key": "키가 아직 없나요? 1분이면 만들 수 있습니다:",
+  "onb.ai_key_where": "로그인 → API Keys → Create Key 후 여기에 붙여넣으세요. 사용량은 Anthropic이 내 계정으로 직접 청구합니다.",
   "onb.ai_feature_draft": "초안과 답장 — 나의 말투로",
   "onb.ai_feature_summarize": "요약 — 긴 스레드를 3줄로",
   "onb.ai_feature_ask": "맥락 질문 — 메일함 전체와 대화",

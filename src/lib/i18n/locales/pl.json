@@ -91,6 +91,8 @@
   "onb.ai_subtitle": "Wklej klucz API Anthropic, aby odblokować funkcje AI. Zapytania idą prosto z twojego komputera do Claude — Skim trzyma klucz w Menedżerze poświadczeń Windows i nigdzie indziej go nie wysyła.",
   "onb.ai_optional": "Opcjonalnie",
   "onb.ai_key_label": "Klucz API Anthropic",
+  "onb.ai_no_key": "Nie masz klucza? Utwórz go w minutę na",
+  "onb.ai_key_where": "Zaloguj się → API Keys → Create Key i wklej klucz tutaj. Zużycie rozlicza Anthropic na twoim koncie.",
   "onb.ai_feature_draft": "Szkice i odpowiedzi — twoim głosem",
   "onb.ai_feature_summarize": "Streszczenia — długie wątki w 3 liniach",
   "onb.ai_feature_ask": "Pytania w kontekście — czat z całą twoją pocztą",

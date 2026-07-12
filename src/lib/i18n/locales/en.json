@@ -87,6 +87,8 @@
   "onb.ai_subtitle": "Paste an Anthropic API key to unlock AI features. Requests go straight from your machine to Claude — Skim stores the key in Windows Credential Manager and sends it nowhere else.",
   "onb.ai_optional": "Optional",
   "onb.ai_key_label": "Anthropic API key",
+  "onb.ai_no_key": "No key yet? Create one in a minute at",
+  "onb.ai_key_where": "Sign in → API Keys → Create Key, then paste it here. Usage is billed by Anthropic to your account.",
   "onb.ai_feature_draft": "Draft & reply — write in your voice",
   "onb.ai_feature_summarize": "Summarize — long threads in 3 lines",
   "onb.ai_feature_ask": "Ask in context — chat across your mail",

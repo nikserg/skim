@@ -89,6 +89,8 @@
   "onb.ai_subtitle": "Nalepi Anthropic API ključ da otključaš AI funkcije. Zahtevi idu direktno sa tvog računara ka Claude-u — Skim čuva ključ u Windows Credential Manager-u i nigde ga drugde ne šalje.",
   "onb.ai_optional": "Opciono",
   "onb.ai_key_label": "Anthropic API ključ",
+  "onb.ai_no_key": "Nemaš ključ? Napravi ga za minut na",
+  "onb.ai_key_where": "Prijavi se → API Keys → Create Key, pa ga nalepi ovde. Potrošnju naplaćuje Anthropic direktno tebi.",
   "onb.ai_feature_draft": "Nacrti i odgovori — tvojim glasom",
   "onb.ai_feature_summarize": "Sažeci — dugi tredovi u 3 reda",
   "onb.ai_feature_ask": "Pitanja u kontekstu — razgovor sa celom poštom",

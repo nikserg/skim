@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { aiApi, api, errorMessage } from "../../lib/api";
   import { LOCALES, getLocale, setLocale, t, type Locale } from "../../lib/i18n/index.svelte";
   import { ai } from "../../lib/stores/ai.svelte";
@@ -180,6 +181,15 @@
             />
             <button class="ghost" disabled={aiBusy || !aiKeyInput.trim()} onclick={saveAiKey}>
               {aiBusy ? t("onb.ai_verifying") : t("onb.save")}
+            </button>
+          </div>
+          <div class="dim key-hint">
+            {t("onb.ai_no_key")}
+            <button
+              class="key-link"
+              onclick={() => openUrl("https://console.anthropic.com/settings/keys")}
+            >
+              console.anthropic.com
             </button>
           </div>
           {#if aiError}
@@ -379,6 +389,16 @@
   }
   .note {
     font-size: 11.5px;
+  }
+  .key-hint {
+    font-size: 12px;
+  }
+  .key-link {
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
 
   .about {

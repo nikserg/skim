@@ -87,6 +87,8 @@
   "onb.ai_subtitle": "Füge einen Anthropic API-Schlüssel ein, um KI-Funktionen freizuschalten. Anfragen gehen direkt von deinem Rechner an Claude — Skim speichert den Schlüssel im Windows-Anmeldeinformationsspeicher und sendet ihn nirgendwo sonst hin.",
   "onb.ai_optional": "Optional",
   "onb.ai_key_label": "Anthropic API-Schlüssel",
+  "onb.ai_no_key": "Noch kein Schlüssel? Erstelle einen in einer Minute auf",
+  "onb.ai_key_where": "Anmelden → API Keys → Create Key, dann hier einfügen. Die Nutzung rechnet Anthropic direkt mit dir ab.",
   "onb.ai_feature_draft": "Entwerfen & antworten — in deiner Stimme",
   "onb.ai_feature_summarize": "Zusammenfassen — lange Threads in 3 Zeilen",
   "onb.ai_feature_ask": "Im Kontext fragen — Chat über deine gesamte Mail",

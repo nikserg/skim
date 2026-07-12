@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { aiApi, api, errorMessage, type AddAccountInput } from "../../lib/api";
   import { LOCALES, setLocale, t, type Locale } from "../../lib/i18n/index.svelte";
   import { mail } from "../../lib/stores/mail.svelte";
@@ -186,6 +187,16 @@
           autocomplete="off"
         />
       </label>
+      <div class="key-hint">
+        {t("onb.ai_no_key")}
+        <button
+          class="linkish"
+          onclick={() => openUrl("https://console.anthropic.com/settings/keys")}
+        >
+          console.anthropic.com
+        </button>
+        <div class="key-hint-detail">{t("onb.ai_key_where")}</div>
+      </div>
 
       <ul class="features">
         <li>{t("onb.ai_feature_draft")}</li>
@@ -534,6 +545,23 @@
   .ai-key input:focus {
     border-color: var(--accent);
   }
+  .key-hint {
+    margin-top: 10px;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .key-hint .linkish {
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .key-hint-detail {
+    margin-top: 4px;
+    color: var(--text-faint);
+    font-size: 12px;
+  }
+
   .features {
     margin: 20px 0 0 18px;
     color: var(--text-dim);

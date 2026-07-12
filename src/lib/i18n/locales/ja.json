@@ -85,6 +85,8 @@
   "onb.ai_subtitle": "Anthropic API キーを貼り付けると AI 機能が使えます。リクエストはあなたのマシンから Claude へ直接送られます。Skim はキーを Windows 資格情報マネージャーに保存し、他のどこにも送信しません。",
   "onb.ai_optional": "任意",
   "onb.ai_key_label": "Anthropic API キー",
+  "onb.ai_no_key": "キーがまだない場合は、1 分で作成できます：",
+  "onb.ai_key_where": "サインイン → API Keys → Create Key で作成し、ここに貼り付けてください。利用料は Anthropic からあなたのアカウントに請求されます。",
   "onb.ai_feature_draft": "下書きと返信 — あなたの言葉で",
   "onb.ai_feature_summarize": "要約 — 長いスレッドを 3 行に",
   "onb.ai_feature_ask": "文脈で質問 — メール全体とチャット",

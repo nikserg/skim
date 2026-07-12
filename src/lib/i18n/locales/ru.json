@@ -91,6 +91,8 @@
   "onb.ai_subtitle": "Вставьте Anthropic API ключ, чтобы включить AI-функции. Запросы идут напрямую с вашей машины в Claude — Skim хранит ключ в Windows Credential Manager и больше никуда не отправляет.",
   "onb.ai_optional": "Необязательно",
   "onb.ai_key_label": "Anthropic API ключ",
+  "onb.ai_no_key": "Нет ключа? Создайте его за минуту на",
+  "onb.ai_key_where": "Войдите → API Keys → Create Key и вставьте ключ сюда. Расход оплачивается напрямую Anthropic.",
   "onb.ai_feature_draft": "Черновики и ответы — вашим голосом",
   "onb.ai_feature_summarize": "Саммари — длинные треды в 3 строки",
   "onb.ai_feature_ask": "Вопросы в контексте — чат по всей почте",
