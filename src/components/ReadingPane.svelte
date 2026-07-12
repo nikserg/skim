@@ -17,7 +17,14 @@
   } | null>(null);
   let askOpen = $state(false);
   let askQuestion = $state("");
+  let askInput: HTMLInputElement | undefined = $state();
   let cancelAi: (() => void) | null = null;
+
+  function closeAiPanel() {
+    cancelAi?.();
+    aiPanel = null;
+    askOpen = false;
+  }
 
   function startAi(kind: AiPanelKind, command: "ai_summarize" | "ai_ask", args: Record<string, unknown>) {
     cancelAi?.();
@@ -48,6 +55,7 @@
   function openAsk() {
     askOpen = true;
     askQuestion = "";
+    queueMicrotask(() => askInput?.focus());
   }
 
   function submitAsk(ev: SubmitEvent) {
@@ -216,30 +224,6 @@
     <div class="scroll">
       <h1 class="subject">{detail.subject || "—"}</h1>
 
-      {#if askOpen}
-        <form class="ask-form" onsubmit={submitAsk}>
-          <span class="ai-spark">✦</span>
-          <input
-            bind:value={askQuestion}
-            placeholder={t("ai.ask_placeholder")}
-            spellcheck="false"
-          />
-        </form>
-      {/if}
-
-      {#if aiPanel}
-        <div class="ai-card" class:error={aiPanel.status === "error"}>
-          <div class="ai-label microlabel">
-            {aiPanel.kind === "summary" ? t("ai.summary") : t("ai.answer")}
-          </div>
-          {#if aiPanel.text === "" && aiPanel.status === "streaming"}
-            <span class="thinking">{t("ai.thinking")}</span>
-          {:else}
-            <div class="ai-text">{aiPanel.text}</div>
-          {/if}
-        </div>
-      {/if}
-
       {#if latest}
         {@const message = latest}
         {@const body = bodies[latest.id]}
@@ -292,6 +276,38 @@
         </article>
       {/if}
     </div>
+
+    {#if askOpen || aiPanel}
+      <!-- AI dock sits above the actions so it's visible at any scroll position. -->
+      <div class="ai-dock">
+        <button class="dock-close" onclick={closeAiPanel} aria-label="Close">
+          <svg width="9" height="9" viewBox="0 0 10 10"><path d="M0 0L10 10M10 0L0 10" stroke="currentColor" stroke-width="1.2" /></svg>
+        </button>
+        {#if askOpen}
+          <form class="ask-form" onsubmit={submitAsk}>
+            <span class="ai-spark">✦</span>
+            <input
+              bind:this={askInput}
+              bind:value={askQuestion}
+              placeholder={t("ai.ask_placeholder")}
+              spellcheck="false"
+            />
+          </form>
+        {/if}
+        {#if aiPanel}
+          <div class="ai-card" class:error={aiPanel.status === "error"}>
+            <div class="ai-label microlabel">
+              {aiPanel.kind === "summary" ? t("ai.summary") : t("ai.answer")}
+            </div>
+            {#if aiPanel.text === "" && aiPanel.status === "streaming"}
+              <span class="thinking">{t("ai.thinking")}</span>
+            {:else}
+              <div class="ai-text">{aiPanel.text}</div>
+            {/if}
+          </div>
+        {/if}
+      </div>
+    {/if}
 
     <footer class="actions">
       {#if aiRowOpen}
@@ -553,12 +569,37 @@
     border-color: var(--text-faint);
   }
 
+  .ai-dock {
+    position: relative;
+    border-top: 1px solid var(--hairline);
+    padding: 12px 36px;
+    max-height: 38vh;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  .dock-close {
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-s);
+    color: var(--text-faint);
+    z-index: 1;
+  }
+  .dock-close:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+
   .ask-form {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-top: 14px;
     padding: 10px 14px;
+    margin-right: 30px;
     border: 1px solid var(--accent-dim);
     border-radius: var(--radius-m);
   }
@@ -572,7 +613,8 @@
   }
 
   .ai-card {
-    margin-top: 14px;
+    margin-top: 10px;
+    margin-right: 30px;
     padding: 14px 16px;
     border-radius: var(--radius-m);
     background: var(--accent-soft);
