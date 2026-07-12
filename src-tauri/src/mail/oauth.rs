@@ -159,6 +159,30 @@ pub async fn authorize(
         )
     })?;
 
+    // The consent screen lets users untick individual permissions — verify
+    // the mail scope actually made it into the token before trying IMAP.
+    let tokeninfo: serde_json::Value = client
+        .get(format!(
+            "https://www.googleapis.com/oauth2/v3/tokeninfo?access_token={}",
+            tokens.access_token
+        ))
+        .send()
+        .await
+        .map_err(|e| SkimError::other("network", e.to_string()))?
+        .json()
+        .await
+        .unwrap_or_default();
+    let scope = tokeninfo["scope"].as_str().unwrap_or_default();
+    if !scope.contains("https://mail.google.com/") {
+        return Err(SkimError::other(
+            "oauth",
+            "Google did not grant mail access. Make sure the scope \
+             https://mail.google.com/ is added under Data access in your \
+             Google Cloud project, and that you approve it on the consent \
+             screen (it may be an unticked checkbox).",
+        ));
+    }
+
     // Resolve the email address.
     let userinfo: UserInfo = client
         .get(USERINFO_ENDPOINT)

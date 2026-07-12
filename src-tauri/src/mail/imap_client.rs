@@ -19,12 +19,21 @@ pub enum Credentials {
 struct Xoauth2<'a> {
     user: &'a str,
     token: &'a str,
+    sent: bool,
 }
 
 impl async_imap::Authenticator for Xoauth2<'_> {
     type Response = String;
     fn process(&mut self, _challenge: &[u8]) -> Self::Response {
-        format!("user={}\x01auth=Bearer {}\x01\x01", self.user, self.token)
+        if self.sent {
+            // On failure the server sends a JSON error as a second challenge
+            // and waits for an empty response before returning the tagged NO;
+            // answering with the auth string again would deadlock the session.
+            String::new()
+        } else {
+            self.sent = true;
+            format!("user={}\x01auth=Bearer {}\x01\x01", self.user, self.token)
+        }
     }
 }
 
@@ -70,7 +79,11 @@ pub async fn login(
                 .await
                 .map_err(|(e, _)| SkimError::other("auth", format!("sign-in failed: {e}"))),
             Credentials::OauthToken(token) => {
-                let auth = Xoauth2 { user, token };
+                let auth = Xoauth2 {
+                    user,
+                    token,
+                    sent: false,
+                };
                 client
                     .authenticate("XOAUTH2", auth)
                     .await
