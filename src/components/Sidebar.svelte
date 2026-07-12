@@ -4,6 +4,9 @@
   import { mail } from "../lib/stores/mail.svelte";
   import { palette } from "../lib/stores/palette.svelte";
   import { ui } from "../lib/stores/ui.svelte";
+  import Settings from "./settings/Settings.svelte";
+
+  let settingsOpen = $state(false);
 
   async function compose() {
     const draft = await api.createDraft();
@@ -110,12 +113,16 @@
       </svg>
       <span class="name">{t(`theme.${ui.theme}`)}</span>
     </button>
-    <button class="item">
+    <button class="item" onclick={() => (settingsOpen = true)}>
       <span class="avatar">{(mail.account?.email ?? "?").charAt(0).toUpperCase()}</span>
       <span class="name">{t("nav.settings")}</span>
     </button>
   </div>
 </nav>
+
+{#if settingsOpen}
+  <Settings onclose={() => (settingsOpen = false)} />
+{/if}
 
 <style>
   .sidebar {

@@ -409,6 +409,9 @@ impl Engine {
                 )
                 .await?;
             changed |= n > 0;
+            if n > 0 && is_inbox {
+                let _ = self.app.emit("mail:new", json!({ "count": n }));
+            }
             changed |= self.reconcile_flags(folder_id).await?;
         }
 

@@ -28,6 +28,7 @@
         }
         await mail.boot();
         void ai.refresh();
+        void import("./lib/notifications").then((m) => m.initNotifications());
       }
       ready = true;
     })();
