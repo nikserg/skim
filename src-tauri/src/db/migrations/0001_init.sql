@@ -65,6 +65,16 @@ CREATE INDEX idx_messages_thread ON messages(thread_id);
 CREATE INDEX idx_messages_msgid ON messages(account_id, message_id);
 CREATE INDEX idx_messages_folder_date ON messages(folder_id, date DESC);
 
+-- Reference identifiers (References + In-Reply-To) per message, for
+-- reverse threading lookups: a parent that syncs after its replies must
+-- find the children that already reference it.
+CREATE TABLE message_refs (
+  message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  ref        TEXT NOT NULL
+);
+CREATE INDEX idx_message_refs_ref ON message_refs(ref);
+CREATE INDEX idx_message_refs_message ON message_refs(message_id);
+
 CREATE TABLE message_bodies (
   message_id  INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
   body_html   TEXT,

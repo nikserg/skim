@@ -42,7 +42,10 @@ struct ErrorPayload<'a> {
 }
 
 impl Serialize for SkimError {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
         ErrorPayload {
             code: self.code(),
             message: self.to_string(),
