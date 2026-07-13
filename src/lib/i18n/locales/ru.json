@@ -76,6 +76,7 @@
   "ai.summarize": "Суммаризировать",
   "ai.ask_about": "Спросить об этом",
   "ai.ask_placeholder": "Спросите об этом письме…",
+  "ai.ask_followup": "Задайте следующий вопрос…",
   "ai.thinking": "Думаю…",
   "ai.sources": "Источники",
   "ai.recap": "AI-сводка",

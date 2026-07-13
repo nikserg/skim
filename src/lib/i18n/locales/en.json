@@ -72,6 +72,7 @@
   "ai.summarize": "Summarize",
   "ai.ask_about": "Ask about this",
   "ai.ask_placeholder": "Ask about this email…",
+  "ai.ask_followup": "Ask a follow-up…",
   "ai.thinking": "Thinking…",
   "ai.sources": "Sources",
   "ai.recap": "AI Recap",

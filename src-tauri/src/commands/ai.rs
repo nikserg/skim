@@ -349,8 +349,8 @@ async fn writer_profile(state: &State<'_, AppState>) -> Result<prompts::WriterPr
         .await
 }
 
-/// The reply-to message plus up to `limit - 1` earlier messages of its
-/// thread, in chronological order (the replied-to message is last).
+/// The anchor message plus up to `limit - 1` earlier messages of its
+/// thread, in chronological order (the anchor message is last).
 async fn reply_chain(
     state: &State<'_, AppState>,
     message_id: i64,
@@ -367,7 +367,7 @@ async fn reply_chain(
             let Some(thread_id) = thread_id else {
                 return Ok(vec![message_id]);
             };
-            // Earlier part of the thread, ending at the replied-to message.
+            // Earlier part of the thread, ending at the anchor message.
             let mut stmt = conn.prepare_cached(
                 "SELECT id FROM messages
                  WHERE thread_id = ?1 AND (date < ?2 OR id = ?3)
@@ -456,40 +456,21 @@ pub async fn ai_adjust_draft(
     Ok(())
 }
 
-/// One turn of the composer's drafting conversation, as sent by the frontend.
-/// `role` is "user" (an instruction) or "assistant" (a draft the AI produced).
+/// One turn of an AI conversation (composer drafting or ask sessions), as sent
+/// by the frontend. `role` is "user" or "assistant".
 #[derive(Debug, Deserialize)]
-pub struct ComposeTurn {
+pub struct AiTurn {
     pub role: String,
     pub content: String,
 }
 
-/// Interactive email drafting. Unlike `ai_draft`/`ai_adjust_draft` (one-shot),
-/// this carries the whole conversation so the user can refine the draft turn by
-/// turn against a single shared context. The assistant's reply IS the current
-/// email body; the newest turn must be a user instruction.
-#[tauri::command]
-pub async fn ai_compose(
-    state: State<'_, AppState>,
-    request_id: String,
-    turns: Vec<ComposeTurn>,
-    reply_to_message_id: Option<i64>,
-    channel: Channel<AiEvent>,
-) -> Result<()> {
-    let ctx = ai_context(&state.db).await?;
-    // A reply sees the whole conversation, not just the last message.
-    let chain = match reply_to_message_id {
-        Some(id) => reply_chain(&state, id, 8).await?,
-        None => Vec::new(),
-    };
-    let profile = writer_profile(&state).await?;
-    let (system, preamble) = prompts::compose_session(&chain, &profile, &ctx.now, &ctx.locale);
-
-    // The reply/quote context is folded into the first user turn so the whole
-    // session shares it without re-sending it every round.
+/// Turns as sent by the frontend → provider messages, with `preamble` folded
+/// into the first user turn so the whole session shares the context without
+/// re-sending it every round.
+fn session_messages(turns: &[AiTurn], preamble: &str) -> Vec<ChatMessage> {
     let mut messages: Vec<ChatMessage> = Vec::with_capacity(turns.len());
     let mut injected = false;
-    for turn in &turns {
+    for turn in turns {
         let role: &'static str = if turn.role == "assistant" {
             "assistant"
         } else {
@@ -503,6 +484,31 @@ pub async fn ai_compose(
         };
         messages.push(ChatMessage { role, content });
     }
+    messages
+}
+
+/// Interactive email drafting. Unlike `ai_draft`/`ai_adjust_draft` (one-shot),
+/// this carries the whole conversation so the user can refine the draft turn by
+/// turn against a single shared context. The assistant's reply IS the current
+/// email body; the newest turn must be a user instruction.
+#[tauri::command]
+pub async fn ai_compose(
+    state: State<'_, AppState>,
+    request_id: String,
+    turns: Vec<AiTurn>,
+    reply_to_message_id: Option<i64>,
+    channel: Channel<AiEvent>,
+) -> Result<()> {
+    let ctx = ai_context(&state.db).await?;
+    // A reply sees the whole conversation, not just the last message.
+    let chain = match reply_to_message_id {
+        Some(id) => reply_chain(&state, id, 8).await?,
+        None => Vec::new(),
+    };
+    let profile = writer_profile(&state).await?;
+    let (system, preamble) = prompts::compose_session(&chain, &profile, &ctx.now, &ctx.locale);
+
+    let messages = session_messages(&turns, &preamble);
     if messages.is_empty() {
         return Err(SkimError::other("ai", "no instruction provided"));
     }
@@ -519,23 +525,30 @@ pub async fn ai_compose(
     Ok(())
 }
 
+/// Q&A about the open message's conversation. Carries the whole dialog so the
+/// user can ask follow-ups against a single shared context; `message_id` is
+/// the message open in the reading pane, the newest turn is a user question.
 #[tauri::command]
 pub async fn ai_ask(
     state: State<'_, AppState>,
     request_id: String,
     message_id: i64,
-    question: String,
+    turns: Vec<AiTurn>,
     channel: Channel<AiEvent>,
 ) -> Result<()> {
     let ctx = ai_context(&state.db).await?;
-    let email = email_block(&state, message_id).await?;
-    let (system, user) = prompts::ask(&email, &question, &ctx.now, &ctx.locale);
+    let chain = reply_chain(&state, message_id, 25).await?;
+    let (system, preamble) = prompts::ask_session(&chain, &ctx.now, &ctx.locale);
+    let messages = session_messages(&turns, &preamble);
+    if messages.is_empty() {
+        return Err(SkimError::other("ai", "no question provided"));
+    }
     spawn_stream(
         &state,
         request_id,
         ctx,
         system,
-        user_turn(user),
+        messages,
         2048,
         Vec::new(),
         channel,
