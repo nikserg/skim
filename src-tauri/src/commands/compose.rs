@@ -30,7 +30,9 @@ pub async fn suggest_addresses(
         .call(move |conn| {
             let like = format!(
                 "%{}%",
-                q.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+                q.replace('\\', "\\\\")
+                    .replace('%', "\\%")
+                    .replace('_', "\\_")
             );
             let mut stmt = conn.prepare_cached(
                 "WITH cand(addr, name, weight, d) AS (
