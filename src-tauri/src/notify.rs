@@ -5,20 +5,20 @@
 use crate::db::{queries, Db};
 use crate::state::AppState;
 use tauri::{AppHandle, Manager};
-use tauri_winrt_notification::{IconCrop, Toast};
+use tauri_winrt_notification::Toast;
 
 const AUMID: &str = "com.skim.app";
 
 /// Where the toast icon lives. The notification platform silently drops
 /// images under hidden directories — the whole AppData tree included — so
 /// the icon goes to a visible per-user path (verified empirically on Win11).
-/// Built with forward slashes: the toast XML embeds it into a file:/// URI.
 pub fn toast_icon_path() -> Option<std::path::PathBuf> {
     let home = std::env::var("USERPROFILE").ok()?;
-    Some(std::path::PathBuf::from(format!(
-        "{}/.skim/notify-icon.png",
-        home.replace('\\', "/")
-    )))
+    Some(
+        std::path::Path::new(&home)
+            .join(".skim")
+            .join("notify-icon.png"),
+    )
 }
 
 /// Register the AppUserModelID so toasts carry Skim's name and icon.
@@ -148,15 +148,10 @@ pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
     let app_for_cb = app.clone();
 
     // Toast holds raw COM pointers (!Send) — build and show it entirely on
-    // the blocking thread.
+    // the blocking thread. The app logo appears in the toast header via the
+    // AUMID (shortcut + IconUri) — no image inside the toast body.
     let _ = tokio::task::spawn_blocking(move || {
-        let mut toast = Toast::new(AUMID);
-        // The brand logo on the toast itself, independent of the header
-        // icon's cache.
-        if let Some(icon) = toast_icon_path() {
-            toast = toast.icon(&icon, IconCrop::Square, "Skim");
-        }
-        toast
+        Toast::new(AUMID)
             .title(&title)
             .text1(&body)
             .add_button(mark_read_label(&locale), &ids_arg)

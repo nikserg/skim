@@ -1,6 +1,6 @@
-{
+﻿{
   "name": "skim",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A fast, minimalist, AI-native email client for Windows",
   "license": "MIT",
   "private": true,
