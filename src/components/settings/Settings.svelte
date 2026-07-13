@@ -1,7 +1,8 @@
 <script lang="ts">
   import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { aiApi, api, errorMessage } from "../../lib/api";
+  import { aiApi, aiStream, api, errorMessage } from "../../lib/api";
+  import type { AiProvider } from "../../lib/api";
   import { LOCALES, getLocale, setLocale, t, type Locale } from "../../lib/i18n/index.svelte";
   import { ai } from "../../lib/stores/ai.svelte";
   import { mail } from "../../lib/stores/mail.svelte";
@@ -14,6 +15,9 @@
   let aiBusy = $state(false);
   let aiError = $state("");
   let model = $state("claude-sonnet-5");
+  let providerTab = $state<AiProvider>("anthropic");
+  let orModel = $state("anthropic/claude-sonnet-5");
+  let orCustom = $state("");
   let imagesPolicy = $state("block");
   let notifications = $state("on");
   let autostart = $state(true);
@@ -24,14 +28,26 @@
   let aiStyle = $state("auto");
   let aiInstructions = $state("");
 
+  // "My style" — AI-distilled personal writing style
+  let styleProfile = $state("");
+  let styleScanning = $state(false);
+  let styleProgress = $state<{ current: number; total: number } | null>(null);
+  let styleError = $state("");
+  let cancelScan: (() => void) | null = null;
+
   $effect(() => {
     void api.getSettings().then((s) => {
       if (s.ai_model) model = s.ai_model;
+      if (s.ai_provider === "openrouter" || s.ai_provider === "anthropic") {
+        providerTab = s.ai_provider;
+      }
+      if (s.openrouter_model) orModel = s.openrouter_model;
       if (s.images_policy) imagesPolicy = s.images_policy;
       if (s.notifications) notifications = s.notifications;
       if (s.ai_user_name) aiName = s.ai_user_name;
       if (s.ai_style) aiStyle = s.ai_style;
       if (s.ai_instructions) aiInstructions = s.ai_instructions;
+      if (s.ai_style_profile) styleProfile = s.ai_style_profile;
     });
     void isEnabled()
       .then((on) => (autostart = on))
@@ -57,6 +73,46 @@
     await api.setSetting("ai_style", style);
   }
 
+  async function chooseMyStyle() {
+    aiStyle = "mine";
+    await api.setSetting("ai_style", "mine");
+    // First activation: distill the style from sent mail.
+    if (!styleProfile.trim() && !styleScanning) scanStyle();
+  }
+
+  function scanStyle() {
+    cancelScan?.();
+    styleScanning = true;
+    styleError = "";
+    styleProfile = "";
+    styleProgress = null;
+    cancelScan = aiStream(
+      "ai_analyze_style",
+      {},
+      {
+        progress: (current, total) => (styleProgress = { current, total }),
+        delta: (text) => {
+          styleProgress = null;
+          styleProfile += text;
+        },
+        done: () => {
+          styleScanning = false;
+          styleProgress = null;
+        },
+        error: (code, message) => {
+          styleScanning = false;
+          styleProgress = null;
+          styleError = code === "ai_no_sent" ? t("settings.style_mine_no_sent") : message;
+        },
+      },
+    );
+  }
+
+  function saveStyleProfile() {
+    if (styleScanning) return;
+    void api.setSetting("ai_style_profile", styleProfile.trim());
+  }
+
   function saveAiName() {
     void api.setSetting("ai_user_name", aiName.trim());
   }
@@ -70,6 +126,41 @@
     { id: "claude-opus-4-8", labelKey: "settings.model_opus" },
     { id: "claude-haiku-4-5-20251001", labelKey: "settings.model_haiku" },
   ];
+
+  // Cross-vendor picks for OpenRouter; any other slug goes in the custom field.
+  const OR_MODELS = [
+    { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5" },
+    { id: "openai/gpt-5.1", label: "ChatGPT · GPT-5.1" },
+    { id: "google/gemini-3-pro", label: "Gemini 3 Pro" },
+    { id: "x-ai/grok-4.1", label: "Grok 4.1" },
+  ];
+  const orIsPreset = $derived(OR_MODELS.some((m) => m.id === orModel));
+
+  const tabHasKey = $derived(providerTab === "openrouter" ? ai.openrouter : ai.anthropic);
+
+  async function chooseProviderTab(p: AiProvider) {
+    providerTab = p;
+    aiError = "";
+    // Switching to an already-configured provider activates it.
+    const hasKey = p === "openrouter" ? ai.openrouter : ai.anthropic;
+    if (hasKey && ai.provider !== p) {
+      await api.setSetting("ai_provider", p);
+      await ai.refresh();
+    }
+  }
+
+  async function setOrModel(id: string) {
+    orModel = id;
+    orCustom = "";
+    await api.setSetting("openrouter_model", id);
+  }
+
+  function saveOrCustom() {
+    const v = orCustom.trim();
+    if (!v) return;
+    orModel = v;
+    void api.setSetting("openrouter_model", v);
+  }
 
   async function chooseLocale(code: Locale) {
     await setLocale(code);
@@ -100,7 +191,7 @@
     aiBusy = true;
     aiError = "";
     try {
-      await aiApi.setKey(aiKeyInput);
+      await aiApi.setKey(providerTab, aiKeyInput);
       aiKeyInput = "";
       await ai.refresh();
     } catch (e) {
@@ -111,7 +202,7 @@
   }
 
   async function removeAiKey() {
-    await aiApi.clearKey();
+    await aiApi.clearKey(providerTab);
     await ai.refresh();
   }
 
@@ -226,20 +317,69 @@
 
       <section class="ai-section">
         <div class="microlabel ai-label">✦ {t("settings.ai")}</div>
-        {#if ai.keyPresent}
+
+        <div class="microlabel model-label">{t("settings.ai_provider")}</div>
+        <div class="tabs">
+          <button
+            class="tab"
+            class:active={providerTab === "anthropic"}
+            onclick={() => chooseProviderTab("anthropic")}
+          >
+            Claude · Anthropic
+          </button>
+          <button
+            class="tab"
+            class:active={providerTab === "openrouter"}
+            onclick={() => chooseProviderTab("openrouter")}
+          >
+            OpenRouter
+          </button>
+        </div>
+
+        {#if tabHasKey}
           <div class="row">
             <span class="ok">●</span>
-            <span class="grow">{t("settings.ai_key_present")}</span>
+            <span class="grow">
+              {providerTab === "openrouter"
+                ? t("settings.ai_key_present_or")
+                : t("settings.ai_key_present")}
+            </span>
             <button class="ghost" onclick={removeAiKey}>{t("settings.ai_key_remove")}</button>
           </div>
           <div class="microlabel model-label">{t("settings.ai_model")}</div>
-          <div class="models">
-            {#each MODELS as m (m.id)}
-              <button class="model" class:active={model === m.id} onclick={() => setModel(m.id)}>
-                {t(m.labelKey)}
-              </button>
-            {/each}
-          </div>
+          {#if providerTab === "anthropic"}
+            <div class="models">
+              {#each MODELS as m (m.id)}
+                <button class="model" class:active={model === m.id} onclick={() => setModel(m.id)}>
+                  {t(m.labelKey)}
+                </button>
+              {/each}
+            </div>
+          {:else}
+            <div class="models">
+              {#each OR_MODELS as m (m.id)}
+                <button
+                  class="model"
+                  class:active={orModel === m.id}
+                  onclick={() => setOrModel(m.id)}
+                >
+                  {m.label}
+                  <span class="model-slug">{m.id}</span>
+                </button>
+              {/each}
+              <label class="writer-field or-custom" class:custom-active={!orIsPreset}>
+                <span class="microlabel">{t("settings.or_custom")}</span>
+                <input
+                  bind:value={orCustom}
+                  onblur={saveOrCustom}
+                  onkeydown={(e) => e.key === "Enter" && saveOrCustom()}
+                  placeholder={orIsPreset ? t("settings.or_custom_ph") : orModel}
+                  spellcheck="false"
+                  autocomplete="off"
+                />
+              </label>
+            </div>
+          {/if}
 
           <div class="microlabel model-label">{t("settings.ai_writer")}</div>
           <div class="writer">
@@ -265,7 +405,48 @@
                     {t(`settings.style_${style}`)}
                   </button>
                 {/each}
+                <button
+                  class="chip mine"
+                  class:active-mine={aiStyle === "mine"}
+                  onclick={chooseMyStyle}
+                >
+                  ✦ {t("settings.style_mine")}
+                </button>
               </div>
+
+              {#if aiStyle === "mine"}
+                <div class="mine-panel">
+                  {#if styleScanning}
+                    <div class="mine-progress">
+                      <span class="spinner"></span>
+                      {#if styleProgress}
+                        {t("settings.style_mine_scan")} {styleProgress.current}/{styleProgress.total}
+                      {:else}
+                        {t("settings.style_mine_writing")}
+                      {/if}
+                    </div>
+                  {/if}
+                  <textarea
+                    bind:value={styleProfile}
+                    onblur={saveStyleProfile}
+                    readonly={styleScanning}
+                    rows="7"
+                    spellcheck="false"
+                    placeholder={styleScanning ? "" : t("settings.style_mine_ph")}
+                  ></textarea>
+                  {#if !styleScanning}
+                    <div class="mine-row">
+                      <span class="dim hint">{t("settings.style_mine_hint")}</span>
+                      <button class="ghost" onclick={scanStyle}>
+                        ✦ {t("settings.style_mine_rescan")}
+                      </button>
+                    </div>
+                  {/if}
+                  {#if styleError}
+                    <div class="warn">{styleError}</div>
+                  {/if}
+                </div>
+              {/if}
             </div>
             <label class="writer-field">
               <span class="microlabel">{t("settings.ai_instructions")}</span>
@@ -279,12 +460,14 @@
             </label>
           </div>
 
-          <div class="dim note">{t("settings.ai_note")}</div>
+          <div class="dim note">
+            {providerTab === "openrouter" ? t("settings.ai_note_or") : t("settings.ai_note")}
+          </div>
         {:else}
           <div class="row">
             <input
               bind:value={aiKeyInput}
-              placeholder="sk-ant-…"
+              placeholder={providerTab === "openrouter" ? "sk-or-…" : "sk-ant-…"}
               spellcheck="false"
               autocomplete="off"
               class="key-input"
@@ -295,12 +478,18 @@
           </div>
           <div class="dim key-hint">
             {t("onb.ai_no_key")}
-            <button
-              class="key-link"
-              onclick={() => openUrl("https://console.anthropic.com/settings/keys")}
-            >
-              console.anthropic.com
-            </button>
+            {#if providerTab === "openrouter"}
+              <button class="key-link" onclick={() => openUrl("https://openrouter.ai/settings/keys")}>
+                openrouter.ai
+              </button>
+            {:else}
+              <button
+                class="key-link"
+                onclick={() => openUrl("https://console.anthropic.com/settings/keys")}
+              >
+                console.anthropic.com
+              </button>
+            {/if}
           </div>
           {#if aiError}
             <div class="warn">{aiError}</div>
@@ -476,6 +665,106 @@
   }
   .model-label {
     margin-top: 4px;
+  }
+  .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--hairline);
+    padding-bottom: 0;
+  }
+  .tab {
+    padding: 7px 12px 9px;
+    font-size: 13px;
+    color: var(--text-dim);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tab:hover {
+    color: var(--text);
+  }
+  .tab.active {
+    color: var(--text);
+    font-weight: 600;
+    border-bottom-color: var(--accent);
+  }
+  .model-slug {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-faint);
+    margin-top: 2px;
+  }
+  .or-custom input {
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .or-custom.custom-active input {
+    border-color: var(--accent);
+  }
+
+  /* "My style" — violet, like every AI moment */
+  .chip.mine {
+    color: var(--accent);
+    border-color: var(--accent-dim);
+  }
+  .chip.mine:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .chip.active-mine {
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 600;
+    border-color: var(--accent);
+  }
+  .mine-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+    border: 1px solid var(--accent-dim);
+    border-radius: var(--radius-m);
+    padding: 10px;
+  }
+  .mine-panel textarea {
+    border: none;
+    padding: 2px;
+    font-size: 12.5px;
+    line-height: 1.55;
+    resize: vertical;
+    user-select: text;
+    font-family: inherit;
+    background: transparent;
+  }
+  .mine-panel textarea[readonly] {
+    color: var(--text-dim);
+  }
+  .mine-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--accent);
+    font-size: 12.5px;
+  }
+  .mine-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--accent-dim);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   .models {
     display: flex;

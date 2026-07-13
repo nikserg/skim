@@ -38,7 +38,7 @@ Most mail clients are either web apps in a trench coat or twenty-year-old battle
 
 - ⚡ **Native & fast.** Rust core + WebView2 UI (Tauri 2). The installer is a few megabytes, cold start is instant, idle memory is tiny. No Electron.
 - 🔒 **Local-first & private.** Your mail syncs over IMAP straight into a local SQLite cache. It works offline, search is instant, and nothing ever passes through anyone else's servers. Zero telemetry.
-- ✦ **AI on your terms.** Paste your own Anthropic API key and Claude drafts replies, summarizes threads, answers questions about a message, and chats across your whole mailbox — with cited sources. No key? Skim is a great mail client without it. Requests go directly from your machine to `api.anthropic.com`; the key lives in Windows Credential Manager.
+- ✦ **AI on your terms.** Paste your own API key — Anthropic, or OpenRouter for models from any vendor (Claude, GPT, Gemini, Grok, …) — and the AI drafts replies, summarizes threads, answers questions about a message, and chats across your whole mailbox with cited sources. No key? Skim is a great mail client without it. Requests go directly from your machine to the provider; the key lives in Windows Credential Manager.
 - 🌍 **11 languages**, light & dark themes, keyboard-first.
 
 <div align="center">
@@ -68,7 +68,8 @@ Most mail clients are either web apps in a trench coat or twenty-year-old battle
 - **Ask about this** — question a specific email
 - **Mailbox chat** — ask “which invoices are still unpaid this month?” in the palette; answers cite the source emails as clickable chips
 - **Your writer, your voice** — set your name, pick a writing style (formal / friendly / concise / witty / enthusiastic), and give the AI standing instructions ("sign as Nick", "my company is called…")
-- Answers follow your UI language; pick Claude Sonnet 5 (default), Opus 4.8, or Haiku 4.5 in settings
+- **Two providers** — Anthropic directly (Claude Sonnet 5 default, Opus 4.8, Haiku 4.5) or OpenRouter with one key for every vendor: Claude, GPT, Gemini, Grok, or any model slug you type in
+- Answers follow your UI language
 
 **Privacy & security**
 - HTML email is sanitized in Rust (ammonia) and rendered in a sandboxed iframe with a strict CSP — scripts never run
@@ -116,11 +117,13 @@ While your Google app is unverified it runs in *testing* mode: only listed test 
 
 ## Enabling AI
 
-1. Get an API key at [console.anthropic.com](https://console.anthropic.com/settings/keys).
-2. Paste it in onboarding (step 2) or later in **Settings → Skim AI**.
+1. Get an API key from either provider:
+   - **Anthropic** — [console.anthropic.com](https://console.anthropic.com/settings/keys) (Claude, straight from the source)
+   - **OpenRouter** — [openrouter.ai](https://openrouter.ai/settings/keys) (one key for Claude, GPT, Gemini, Grok, and hundreds more — pick a suggested model or type any `vendor/model` slug)
+2. Paste it in onboarding (step 2) or later in **Settings → Skim AI**, on the provider's tab.
 3. That's it — the ✦ violet buttons light up.
 
-Your key, your bill: Skim talks to the Anthropic API directly and adds no markup, no proxy, no accounts. The key is stored in Windows Credential Manager and can be removed in one click.
+Your key, your bill: Skim talks to the provider's API directly and adds no markup, no proxy, no accounts. The key is stored in Windows Credential Manager and can be removed in one click.
 
 ## Keyboard shortcuts
 

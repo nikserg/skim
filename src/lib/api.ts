@@ -92,6 +92,7 @@ export interface Citation {
 
 export type AiEvent =
   | { type: "delta"; text: string }
+  | { type: "progress"; current: number; total: number }
   | { type: "done"; citations: Citation[] }
   | { type: "error"; code: string; message: string };
 
@@ -99,17 +100,26 @@ export interface AiHandlers {
   delta: (text: string) => void;
   done: (citations: Citation[]) => void;
   error: (code: string, message: string) => void;
+  progress?: (current: number, total: number) => void;
+}
+
+export type AiProvider = "anthropic" | "openrouter";
+
+export interface AiKeyStatus {
+  provider: AiProvider;
+  anthropic: boolean;
+  openrouter: boolean;
 }
 
 export const aiApi = {
-  setKey: (key: string) => invoke<void>("ai_set_key", { key }),
-  keyStatus: () => invoke<boolean>("ai_key_status"),
-  clearKey: () => invoke<void>("ai_clear_key"),
+  setKey: (provider: AiProvider, key: string) => invoke<void>("ai_set_key", { provider, key }),
+  keyStatus: () => invoke<AiKeyStatus>("ai_key_status"),
+  clearKey: (provider: AiProvider) => invoke<void>("ai_clear_key", { provider }),
 };
 
 /** Start a streaming AI request. Returns a cancel function. */
 export function aiStream(
-  command: "ai_summarize" | "ai_draft" | "ai_adjust_draft" | "ai_ask" | "ai_chat",
+  command: "ai_summarize" | "ai_draft" | "ai_adjust_draft" | "ai_ask" | "ai_chat" | "ai_analyze_style",
   args: Record<string, unknown>,
   on: AiHandlers,
 ): () => void {
@@ -119,6 +129,7 @@ export function aiStream(
   channel.onmessage = (event) => {
     if (cancelled) return;
     if (event.type === "delta") on.delta(event.text);
+    else if (event.type === "progress") on.progress?.(event.current, event.total);
     else if (event.type === "done") on.done(event.citations);
     else on.error(event.code, event.message);
   };

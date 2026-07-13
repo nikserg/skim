@@ -5,9 +5,21 @@
 use crate::db::{queries, Db};
 use crate::state::AppState;
 use tauri::{AppHandle, Manager};
-use tauri_winrt_notification::Toast;
+use tauri_winrt_notification::{IconCrop, Toast};
 
 const AUMID: &str = "com.skim.app";
+
+/// Where the toast icon lives. The notification platform silently drops
+/// images under hidden directories — the whole AppData tree included — so
+/// the icon goes to a visible per-user path (verified empirically on Win11).
+/// Built with forward slashes: the toast XML embeds it into a file:/// URI.
+pub fn toast_icon_path() -> Option<std::path::PathBuf> {
+    let home = std::env::var("USERPROFILE").ok()?;
+    Some(std::path::PathBuf::from(format!(
+        "{}/.skim/notify-icon.png",
+        home.replace('\\', "/")
+    )))
+}
 
 /// Register the AppUserModelID so toasts carry Skim's name and icon.
 ///
@@ -15,7 +27,7 @@ const AUMID: &str = "com.skim.app";
 /// builds — toasts actually display because the installer's Start Menu
 /// shortcut carries `System.AppUserModel.ID`. This entry supplements it
 /// with the display name and icon.
-pub fn register_aumid(data_dir: &std::path::Path) {
+pub fn register_aumid() {
     use winreg::enums::{HKEY_CURRENT_USER, REG_EXPAND_SZ};
     use winreg::{RegKey, RegValue};
 
@@ -31,8 +43,12 @@ pub fn register_aumid(data_dir: &std::path::Path) {
         }
     }
 
-    // Drop the toast icon into app data so IconUri has a stable path.
-    let icon_path = data_dir.join("notify-icon.png");
+    let Some(icon_path) = toast_icon_path() else {
+        return;
+    };
+    if let Some(dir) = icon_path.parent() {
+        std::fs::create_dir_all(dir).ok();
+    }
     let _ = std::fs::write(&icon_path, include_bytes!("../icons/128x128.png"));
 
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
@@ -134,7 +150,13 @@ pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
     // Toast holds raw COM pointers (!Send) — build and show it entirely on
     // the blocking thread.
     let _ = tokio::task::spawn_blocking(move || {
-        Toast::new(AUMID)
+        let mut toast = Toast::new(AUMID);
+        // The brand logo on the toast itself, independent of the header
+        // icon's cache.
+        if let Some(icon) = toast_icon_path() {
+            toast = toast.icon(&icon, IconCrop::Square, "Skim");
+        }
+        toast
             .title(&title)
             .text1(&body)
             .add_button(mark_read_label(&locale), &ids_arg)

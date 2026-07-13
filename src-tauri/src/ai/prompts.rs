@@ -3,6 +3,7 @@
 
 const MAX_BODY_CHARS: usize = 24_000;
 const MAX_CONTEXT_CHARS: usize = 1_500;
+const MAX_CHAIN_CHARS: usize = 4_000;
 
 pub fn truncate(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
@@ -14,6 +15,11 @@ pub fn truncate(text: &str, max: usize) -> String {
 
 fn locale_line(locale: &str) -> String {
     format!("Respond in the user's language (locale: {locale}).")
+}
+
+/// "Right now for the user it is …" — date, weekday, time, UTC offset.
+fn now_block(now: &str) -> String {
+    format!("Current date and time for the user: {now}.")
 }
 
 pub struct EmailBlock {
@@ -39,9 +45,10 @@ fn render_emails(emails: &[EmailBlock], limit: usize) -> String {
         .join("\n\n")
 }
 
-pub fn summarize(emails: &[EmailBlock], locale: &str) -> (String, String) {
+pub fn summarize(emails: &[EmailBlock], now: &str, locale: &str) -> (String, String) {
     let system = format!(
-        "You are Skim's email assistant. Be terse and concrete. {}",
+        "You are Skim's email assistant. Be terse and concrete. {} {}",
+        now_block(now),
         locale_line(locale)
     );
     let user = format!(
@@ -58,10 +65,12 @@ pub fn summarize(emails: &[EmailBlock], locale: &str) -> (String, String) {
 pub struct WriterProfile {
     /// How the AI refers to / signs as the user.
     pub name: String,
-    /// One of the style ids from Settings ('formal', 'friendly', …).
+    /// One of the style ids from Settings ('formal', 'friendly', 'mine', …).
     pub style: Option<String>,
     /// Free-form standing instructions (facts, signature rules, …).
     pub instructions: Option<String>,
+    /// AI-distilled description of the user's own writing style ('mine').
+    pub style_profile: Option<String>,
 }
 
 fn style_line(style: Option<&str>) -> &'static str {
@@ -75,6 +84,26 @@ fn style_line(style: Option<&str>) -> &'static str {
         Some("enthusiastic") => "Default register: upbeat and energetic.",
         _ => "",
     }
+}
+
+/// The standing style directive: a named register, or the analyzed personal
+/// style when 'mine' is selected.
+fn style_directive(profile: &WriterProfile) -> String {
+    if profile.style.as_deref() == Some("mine") {
+        if let Some(desc) = profile
+            .style_profile
+            .as_deref()
+            .filter(|s| !s.trim().is_empty())
+        {
+            return format!(
+                "Write exactly the way the user writes. Their personal style, \
+                 distilled from their sent mail:\n{}",
+                truncate(desc, 2_500)
+            );
+        }
+        return String::new();
+    }
+    style_line(profile.style.as_deref()).to_string()
 }
 
 fn profile_block(profile: &WriterProfile) -> String {
@@ -92,34 +121,51 @@ fn profile_block(profile: &WriterProfile) -> String {
     out
 }
 
+/// `reply_chain` is the conversation in chronological order; the LAST entry
+/// is the message being replied to. Empty for a fresh email.
 pub fn draft(
     instruction: &str,
-    reply_context: Option<&EmailBlock>,
+    reply_chain: &[EmailBlock],
     tone: Option<&str>,
     profile: &WriterProfile,
+    now: &str,
     locale: &str,
 ) -> (String, String) {
     let tone_line = match tone {
-        Some("shorter") => "Keep it under 80 words.",
-        Some("warmer") => "Use a friendly, warm register.",
-        Some("formal") => "Use a professional, formal register.",
+        Some("shorter") => "Keep it under 80 words.".to_string(),
+        Some("warmer") => "Use a friendly, warm register.".to_string(),
+        Some("formal") => "Use a professional, formal register.".to_string(),
         // The per-request tone chip overrides the standing style.
-        _ => style_line(profile.style.as_deref()),
+        _ => style_directive(profile),
+    };
+    // Replies follow the conversation's language, not the UI locale.
+    let language_rule = if reply_chain.is_empty() {
+        format!(
+            "Write in the language the instruction implies; otherwise {}",
+            locale_line(locale)
+        )
+    } else {
+        "Write the reply in the language of the message being replied to — \
+         NOT the user's interface language, unless they are the same."
+            .to_string()
     };
     let system = format!(
         "You draft emails for {}, writing in their voice (first person). Write only the \
          email body — no subject line, no commentary, no placeholder signature blocks. \
-         Match the language the conversation is in; otherwise {} {tone_line}{}",
+         {} {language_rule} {tone_line}{}",
         profile.name,
-        locale_line(locale),
+        now_block(now),
         profile_block(profile)
     );
-    let user = match reply_context {
-        Some(email) => format!(
-            "The email being replied to:\n\n{}\n\nWrite a reply that does the following: {instruction}",
-            truncate(&email.body, MAX_BODY_CHARS)
-        ),
-        None => format!("Write an email that does the following: {instruction}"),
+    let user = if reply_chain.is_empty() {
+        format!("Write an email that does the following: {instruction}")
+    } else {
+        let per_email = (MAX_BODY_CHARS / reply_chain.len().max(1)).min(MAX_CHAIN_CHARS);
+        format!(
+            "The conversation so far, oldest first:\n\n{}\n\nWrite a reply to the LAST \
+             message that does the following: {instruction}",
+            render_emails(reply_chain, per_email)
+        )
     };
     (system, user)
 }
@@ -128,6 +174,7 @@ pub fn adjust(
     current_text: &str,
     adjustment: &str,
     profile: &WriterProfile,
+    now: &str,
     locale: &str,
 ) -> (String, String) {
     let directive = match adjustment {
@@ -138,8 +185,9 @@ pub fn adjust(
     };
     let system = format!(
         "You edit email drafts written in the voice of {}. Output only the rewritten \
-         email body, nothing else. Keep the original language of the draft; otherwise {}{}",
+         email body, nothing else. {} Keep the original language of the draft; otherwise {}{}",
         profile.name,
+        now_block(now),
         locale_line(locale),
         profile_block(profile)
     );
@@ -150,10 +198,11 @@ pub fn adjust(
     (system, user)
 }
 
-pub fn ask(email: &EmailBlock, question: &str, locale: &str) -> (String, String) {
+pub fn ask(email: &EmailBlock, question: &str, now: &str, locale: &str) -> (String, String) {
     let system = format!(
         "You answer questions about a specific email. Answer only from the email's \
-         content; if it doesn't contain the answer, say so plainly. Be brief. {}",
+         content; if it doesn't contain the answer, say so plainly. Be brief. {} {}",
+        now_block(now),
         locale_line(locale)
     );
     let user = format!(
@@ -166,14 +215,15 @@ pub fn ask(email: &EmailBlock, question: &str, locale: &str) -> (String, String)
 pub fn chat(
     question: &str,
     context: &[(usize, EmailBlock)],
-    today: &str,
+    now: &str,
     locale: &str,
 ) -> (String, String) {
     let system = format!(
         "You are Skim's mailbox assistant. Answer the user's question using ONLY the \
          numbered emails provided. Cite sources with bracketed indices like [2] after \
          each claim they support. If the emails don't contain the answer, say so. \
-         Today is {today}. Be concise. {}",
+         {} Be concise. {}",
+        now_block(now),
         locale_line(locale)
     );
     let blocks = context
@@ -190,5 +240,32 @@ pub fn chat(
         .collect::<Vec<_>>()
         .join("\n\n");
     let user = format!("{blocks}\n\nQuestion: {question}");
+    (system, user)
+}
+
+/// Prompt for distilling the user's writing style from their sent mail.
+/// `samples` are the user's own words (quoted tails stripped), newest first.
+pub fn style_analysis(samples: &[String], locale: &str) -> (String, String) {
+    let system = format!(
+        "You are an expert writing-style analyst. {} The description you produce \
+         will be pasted into another AI's system prompt so it can write emails \
+         indistinguishable from this person's.",
+        locale_line(locale)
+    );
+    let body = samples
+        .iter()
+        .enumerate()
+        .map(|(i, s)| format!("<email n=\"{}\">\n{s}\n</email>", i + 1))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let user = format!(
+        "Below are emails written by one person (their own words; quoted replies \
+         removed). Distill HOW this person writes into a compact style guide of \
+         8–14 short imperative directives, one per line. Cover: tone and formality; \
+         typical greetings and sign-offs (quote them verbatim); sentence length and \
+         rhythm; favorite words and pet phrases; punctuation and emoji habits; \
+         formatting (paragraphs, lists); which languages they use and when. \
+         No preamble, no commentary — just the directives.\n\n{body}"
+    );
     (system, user)
 }

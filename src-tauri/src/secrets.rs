@@ -44,3 +44,4 @@ pub fn mail_key(account_id: &str) -> String {
 }
 
 pub const ANTHROPIC_KEY: &str = "anthropic_api_key";
+pub const OPENROUTER_KEY: &str = "openrouter_api_key";

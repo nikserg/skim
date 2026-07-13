@@ -22,7 +22,9 @@
   let quotedTail = "";
 
   $effect(() => {
-    void aiApi.keyStatus().then((present) => (aiAvailable = present));
+    void aiApi
+      .keyStatus()
+      .then((s) => (aiAvailable = s.provider === "openrouter" ? s.openrouter : s.anthropic));
   });
 
   function splitQuote(body: string): [string, string] {
@@ -184,11 +186,19 @@
           }}
         >
           <span class="spark">✦</span>
-          <input
+          <textarea
+            class="instruction"
             bind:value={instruction}
             placeholder={t("ai.instruction_placeholder")}
+            rows="2"
             spellcheck="false"
-          />
+            onkeydown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                generate();
+              }
+            }}
+          ></textarea>
           {#if aiBusy}
             <button type="button" class="ai-chip" onclick={stopAi}>{t("ai.stop")}</button>
           {:else}
@@ -323,7 +333,7 @@
   }
   .ai-input {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
     border: 1px solid var(--accent-dim);
     border-radius: var(--radius-m);
@@ -331,11 +341,20 @@
   }
   .spark {
     color: var(--accent);
+    padding-top: 2px;
   }
-  .ai-input input {
+  .ai-input .instruction {
     flex: 1;
     font-size: 13px;
+    line-height: 1.5;
     user-select: text;
+    resize: vertical;
+    min-height: 38px;
+    padding: 0;
+    font-family: inherit;
+  }
+  .ai-input .ai-chip {
+    align-self: center;
   }
   .ai-chip {
     padding: 5px 12px;

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { aiApi, api, errorMessage, type AddAccountInput } from "../../lib/api";
+  import { aiApi, api, errorMessage, type AddAccountInput, type AiProvider } from "../../lib/api";
   import { LOCALES, setLocale, t, type Locale } from "../../lib/i18n/index.svelte";
   import { mail } from "../../lib/stores/mail.svelte";
   import type { Account, ServerPreset } from "../../lib/types";
@@ -13,9 +13,15 @@
 
   // AI step
   let aiKey = $state("");
+  let aiProvider = $state<AiProvider>("anthropic");
   let aiBusy = $state(false);
   let aiVerified = $state(false);
   let aiError = $state("");
+
+  function chooseAiProvider(p: AiProvider) {
+    aiProvider = p;
+    aiError = "";
+  }
 
   function accountConnected(account: Account) {
     connectedAccount = account;
@@ -26,7 +32,7 @@
     aiBusy = true;
     aiError = "";
     try {
-      await aiApi.setKey(aiKey);
+      await aiApi.setKey(aiProvider, aiKey);
       aiVerified = true;
       setTimeout(() => finish(), 400);
     } catch (e) {
@@ -183,26 +189,54 @@
         {t("onb.step", { n: 2, total: 2 })} · {t("onb.ai_optional")}
       </div>
       <h2 class="ai-title">✦ {t("onb.ai_title")}</h2>
-      <p class="subtitle">{t("onb.ai_subtitle")}</p>
+      <p class="subtitle">
+        {aiProvider === "openrouter" ? t("onb.ai_subtitle_or") : t("onb.ai_subtitle")}
+      </p>
+
+      <div class="provider-tabs">
+        <button
+          class="provider-tab"
+          class:active={aiProvider === "anthropic"}
+          onclick={() => chooseAiProvider("anthropic")}
+        >
+          Claude · Anthropic
+        </button>
+        <button
+          class="provider-tab"
+          class:active={aiProvider === "openrouter"}
+          onclick={() => chooseAiProvider("openrouter")}
+        >
+          OpenRouter
+        </button>
+      </div>
 
       <label class="ai-key">
-        <span class="microlabel">{t("onb.ai_key_label")}</span>
+        <span class="microlabel">
+          {aiProvider === "openrouter" ? t("onb.ai_key_label_or") : t("onb.ai_key_label")}
+        </span>
         <input
           bind:value={aiKey}
-          placeholder="sk-ant-…"
+          placeholder={aiProvider === "openrouter" ? "sk-or-…" : "sk-ant-…"}
           spellcheck="false"
           autocomplete="off"
         />
       </label>
       <div class="key-hint">
         {t("onb.ai_no_key")}
-        <button
-          class="linkish"
-          onclick={() => openUrl("https://console.anthropic.com/settings/keys")}
-        >
-          console.anthropic.com
-        </button>
-        <div class="key-hint-detail">{t("onb.ai_key_where")}</div>
+        {#if aiProvider === "openrouter"}
+          <button class="linkish" onclick={() => openUrl("https://openrouter.ai/settings/keys")}>
+            openrouter.ai
+          </button>
+          <div class="key-hint-detail">{t("onb.ai_key_where_or")}</div>
+        {:else}
+          <button
+            class="linkish"
+            onclick={() => openUrl("https://console.anthropic.com/settings/keys")}
+          >
+            console.anthropic.com
+          </button>
+          <div class="key-hint-detail">{t("onb.ai_key_where")}</div>
+        {/if}
       </div>
 
       <ul class="features">
@@ -540,11 +574,32 @@
   .ai-title {
     color: var(--accent);
   }
+  .provider-tabs {
+    display: flex;
+    gap: 4px;
+    margin-top: 20px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .provider-tab {
+    padding: 7px 12px 9px;
+    font-size: 13px;
+    color: var(--text-dim);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .provider-tab:hover {
+    color: var(--text);
+  }
+  .provider-tab.active {
+    color: var(--text);
+    font-weight: 600;
+    border-bottom-color: var(--accent);
+  }
   .ai-key {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    margin-top: 24px;
+    margin-top: 16px;
   }
   .ai-key input {
     padding: 10px 12px;

@@ -102,7 +102,7 @@ pub fn run() {
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir).ok();
-            notify::register_aumid(&data_dir);
+            notify::register_aumid();
             let db = db::Db::open(&data_dir.join("skim.db"))?;
             app.manage(AppState::new(db.clone(), data_dir.clone()));
 
@@ -203,6 +203,7 @@ pub fn run() {
             commands::ai::ai_adjust_draft,
             commands::ai::ai_ask,
             commands::ai::ai_chat,
+            commands::ai::ai_analyze_style,
             commands::search::search_messages,
             commands::search::thread_message_ids,
             commands::settings::get_settings,
