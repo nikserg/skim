@@ -70,6 +70,7 @@
   "ai.summarize": "要約",
   "ai.ask_about": "これについて質問",
   "ai.ask_placeholder": "このメールについて質問…",
+  "ai.ask_followup": "続けて質問…",
   "ai.thinking": "考え中…",
   "ai.sources": "出典",
   "ai.recap": "AI まとめ",

@@ -19,13 +19,19 @@
   } | null>(null);
   let askOpen = $state(false);
   let askQuestion = $state("");
+  // The ask dialog so far; completed turns only, the streaming answer lives
+  // in aiPanel.text until "done".
+  let askTurns = $state<{ role: "user" | "assistant"; content: string }[]>([]);
   let askInput: HTMLInputElement | undefined = $state();
+  let askThreadEl: HTMLDivElement | undefined = $state();
   let cancelAi: (() => void) | null = null;
 
   function closeAiPanel() {
     cancelAi?.();
     aiPanel = null;
     askOpen = false;
+    askTurns = [];
+    askQuestion = "";
   }
 
   function startAi(kind: AiPanelKind, command: "ai_summarize" | "ai_ask", args: Record<string, unknown>) {
@@ -36,9 +42,20 @@
         if (aiPanel) aiPanel = { ...aiPanel, text: aiPanel.text + text };
       },
       done: () => {
-        if (aiPanel) aiPanel = { ...aiPanel, status: "done" };
+        if (!aiPanel) return;
+        if (aiPanel.kind === "ask") {
+          askTurns.push({ role: "assistant", content: aiPanel.text });
+          aiPanel = null;
+          queueMicrotask(() => askInput?.focus());
+        } else {
+          aiPanel = { ...aiPanel, status: "done" };
+        }
       },
       error: (code, message) => {
+        // Put the failed question back into the input so it can be retried.
+        if (kind === "ask" && askTurns[askTurns.length - 1]?.role === "user") {
+          askQuestion = askTurns.pop()!.content;
+        }
         aiPanel = {
           kind,
           status: "error",
@@ -47,6 +64,13 @@
       },
     });
   }
+
+  // Keep the dialog scrolled to the newest turn / streaming delta.
+  $effect(() => {
+    void aiPanel?.text;
+    void askTurns.length;
+    if (askThreadEl) askThreadEl.scrollTop = askThreadEl.scrollHeight;
+  });
 
   function summarize() {
     if (!detail) return;
@@ -62,8 +86,12 @@
 
   function submitAsk(ev: SubmitEvent) {
     ev.preventDefault();
-    if (!latest || !askQuestion.trim()) return;
-    startAi("ask", "ai_ask", { messageId: latest.id, question: askQuestion.trim() });
+    const question = askQuestion.trim();
+    if (!latest || !question) return;
+    if (aiPanel?.kind === "ask" && aiPanel.status === "streaming") return;
+    askTurns.push({ role: "user", content: question });
+    askQuestion = "";
+    startAi("ask", "ai_ask", { messageId: latest.id, turns: $state.snapshot(askTurns) });
   }
 
   async function aiDraftReply() {
@@ -116,6 +144,8 @@
     cancelAi?.();
     aiPanel = null;
     askOpen = false;
+    askTurns = [];
+    askQuestion = "";
     try {
       const d = await api.getThread(threadId);
       if (mail.selectedThreadId !== threadId) return;
@@ -319,17 +349,40 @@
           <svg width="9" height="9" viewBox="0 0 10 10"><path d="M0 0L10 10M10 0L0 10" stroke="currentColor" stroke-width="1.2" /></svg>
         </button>
         {#if askOpen}
+          {#if askTurns.length > 0 || aiPanel}
+            <div class="ask-thread" bind:this={askThreadEl}>
+              {#each askTurns as turn (turn)}
+                {#if turn.role === "user"}
+                  <div class="ask-q">{turn.content}</div>
+                {:else}
+                  <div class="ai-card">
+                    <div class="ai-label microlabel">{t("ai.answer")}</div>
+                    <div class="ai-text md-body">{@html mdLite(turn.content)}</div>
+                  </div>
+                {/if}
+              {/each}
+              {#if aiPanel}
+                <div class="ai-card" class:error={aiPanel.status === "error"}>
+                  <div class="ai-label microlabel">{t("ai.answer")}</div>
+                  {#if aiPanel.text === "" && aiPanel.status === "streaming"}
+                    <span class="thinking">{t("ai.thinking")}</span>
+                  {:else}
+                    <div class="ai-text md-body">{@html mdLite(aiPanel.text)}</div>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {/if}
           <form class="ask-form" onsubmit={submitAsk}>
             <span class="ai-spark">✦</span>
             <input
               bind:this={askInput}
               bind:value={askQuestion}
-              placeholder={t("ai.ask_placeholder")}
+              placeholder={askTurns.length > 0 ? t("ai.ask_followup") : t("ai.ask_placeholder")}
               spellcheck="false"
             />
           </form>
-        {/if}
-        {#if aiPanel}
+        {:else if aiPanel}
           <div class="ai-card" class:error={aiPanel.status === "error"}>
             <div class="ai-label microlabel">
               {aiPanel.kind === "summary" ? t("ai.summary") : t("ai.answer")}
@@ -638,6 +691,30 @@
   .dock-close:hover {
     background: var(--hover);
     color: var(--text);
+  }
+
+  .ask-thread {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 26vh;
+    overflow-y: auto;
+    margin-bottom: 10px;
+  }
+  .ask-thread .ai-card {
+    margin-top: 0;
+  }
+  .ask-q {
+    align-self: flex-end;
+    max-width: 80%;
+    margin-right: 30px;
+    padding: 8px 12px;
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--radius-m);
+    font-size: 13.5px;
+    color: var(--text-dim);
+    white-space: pre-wrap;
+    user-select: text;
   }
 
   .ask-form {

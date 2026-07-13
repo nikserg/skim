@@ -70,6 +70,7 @@
   "ai.summarize": "总结",
   "ai.ask_about": "就此提问",
   "ai.ask_placeholder": "针对这封邮件提问…",
+  "ai.ask_followup": "继续提问…",
   "ai.thinking": "思考中…",
   "ai.sources": "来源",
   "ai.recap": "AI 摘要",

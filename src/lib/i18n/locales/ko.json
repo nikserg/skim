@@ -70,6 +70,7 @@
   "ai.summarize": "요약",
   "ai.ask_about": "질문하기",
   "ai.ask_placeholder": "이 메일에 대해 질문…",
+  "ai.ask_followup": "추가 질문하기…",
   "ai.thinking": "생각 중…",
   "ai.sources": "출처",
   "ai.recap": "AI 요약",

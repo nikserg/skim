@@ -244,18 +244,37 @@ pub fn adjust(
     (system, user)
 }
 
-pub fn ask(email: &EmailBlock, question: &str, now: &str, locale: &str) -> (String, String) {
+/// Q&A session over an email conversation. `chain` is chronological; the last
+/// entry is the message open in the reading pane. Returns (system, preamble) —
+/// the preamble is folded into the first user turn, questions arrive as turns.
+pub fn ask_session(chain: &[EmailBlock], now: &str, locale: &str) -> (String, String) {
+    if chain.len() <= 1 {
+        let system = format!(
+            "You answer the user's questions about a specific email. Answer only from \
+             the email's content; if it doesn't contain the answer, say so plainly. \
+             Be brief. {} {}",
+            now_block(now),
+            locale_line(locale)
+        );
+        let preamble = render_emails(chain, MAX_BODY_CHARS);
+        return (system, preamble);
+    }
     let system = format!(
-        "You answer questions about a specific email. Answer only from the email's \
-         content; if it doesn't contain the answer, say so plainly. Be brief. {} {}",
+        "You answer the user's questions about an email conversation. Answer only \
+         from the emails' content; if they don't contain the answer, say so plainly. \
+         Questions are usually about the LAST (most recent) message — use the earlier \
+         messages as context. Be brief. {} {}",
         now_block(now),
         locale_line(locale)
     );
-    let user = format!(
-        "{}\n\nQuestion: {question}",
-        render_emails(std::slice::from_ref(email), MAX_BODY_CHARS)
+    let (earlier, last) = chain.split_at(chain.len() - 1);
+    let per_email = (MAX_BODY_CHARS / chain.len()).min(MAX_CHAIN_CHARS);
+    let preamble = format!(
+        "The email conversation, oldest first:\n\n{}\n\n{}",
+        render_emails(earlier, per_email),
+        render_emails(last, MAX_BODY_CHARS)
     );
-    (system, user)
+    (system, preamble)
 }
 
 pub fn chat(
