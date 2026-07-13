@@ -59,8 +59,8 @@
     .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
     .brand svg { display: block; }
     .nav-links { margin-left: auto; display: flex; align-items: center; gap: 22px; }
-    .nav-links a { color: var(--muted); font-size: 15px; font-weight: 500; transition: color .15s; }
-    .nav-links a:hover { color: var(--text); }
+    .nav-links a:not(.btn) { color: var(--muted); font-size: 15px; font-weight: 500; transition: color .15s; }
+    .nav-links a:not(.btn):hover { color: var(--text); }
 
     .lang {
       display: inline-flex; align-items: center; gap: 7px;
