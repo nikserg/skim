@@ -521,9 +521,11 @@ pub async fn ai_recap(
     channel: Channel<AiEvent>,
 ) -> Result<()> {
     const RECAP_LIMIT: usize = 20;
+    /// (message id, thread id, subject, from)
+    type RecapRow = (i64, Option<i64>, String, String);
 
     let ctx = ai_context(&state.db).await?;
-    let (rows, unread_total): (Vec<(i64, Option<i64>, String, String)>, usize) = state
+    let (rows, unread_total): (Vec<RecapRow>, usize) = state
         .db
         .call(move |conn| {
             let mut stmt = conn.prepare_cached(
