@@ -1,0 +1,29 @@
+name: perm-test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Attempt release create with GITHUB_TOKEN
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          resp=$(gh api -X POST "repos/${{ github.repository }}/releases" \
+            -f tag_name=perm-test-delete-me -f name=perm-test -F draft=true 2>&1)
+          code=$?
+          echo "$resp"
+          if [ $code -eq 0 ]; then
+            echo "CREATE_OK"
+            id=$(echo "$resp" | jq -r .id)
+            gh api -X DELETE "repos/${{ github.repository }}/releases/$id" && echo "cleaned up"
+          else
+            echo "CREATE_FAILED"
+            exit 1
+          fi
