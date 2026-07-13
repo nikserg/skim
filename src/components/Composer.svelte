@@ -3,6 +3,7 @@
   import { aiApi, aiStream, api, errorMessage } from "../lib/api";
   import { t } from "../lib/i18n/index.svelte";
   import type { Draft } from "../lib/types";
+  import AddressInput from "./AddressInput.svelte";
 
   let { draftId }: { draftId: number } = $props();
 
@@ -153,7 +154,7 @@
     <div class="fields">
       <label class="field">
         <span class="microlabel">{t("compose.to")}</span>
-        <input bind:value={draft.to} oninput={scheduleSave} spellcheck="false" />
+        <AddressInput bind:value={draft.to} onchange={scheduleSave} />
         {#if !showCc}
           <button class="cc-toggle microlabel" onclick={() => (showCc = true)}>
             {t("compose.cc")}
@@ -163,11 +164,11 @@
       {#if showCc}
         <label class="field">
           <span class="microlabel">{t("compose.cc")}</span>
-          <input bind:value={draft.cc} oninput={scheduleSave} spellcheck="false" />
+          <AddressInput bind:value={draft.cc} onchange={scheduleSave} />
         </label>
         <label class="field">
           <span class="microlabel">{t("compose.bcc")}</span>
-          <input bind:value={draft.bcc} oninput={scheduleSave} spellcheck="false" />
+          <AddressInput bind:value={draft.bcc} onchange={scheduleSave} />
         </label>
       {/if}
       <label class="field">

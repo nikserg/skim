@@ -3,8 +3,77 @@ use crate::db::{accounts as db_accounts, bodies};
 use crate::error::{Result, SkimError};
 use crate::mail::threading;
 use crate::state::AppState;
+use serde::Serialize;
 use serde_json::json;
 use tauri::{AppHandle, Emitter, State};
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddressSuggestion {
+    pub name: Option<String>,
+    pub addr: String,
+}
+
+/// Autocomplete for the To/Cc/Bcc fields. Candidates come from the whole
+/// mailbox — people the user wrote to rank above mere senders.
+#[tauri::command]
+pub async fn suggest_addresses(
+    state: State<'_, AppState>,
+    query: String,
+) -> Result<Vec<AddressSuggestion>> {
+    let q = query.trim().to_string();
+    if q.is_empty() {
+        return Ok(Vec::new());
+    }
+    state
+        .db
+        .call(move |conn| {
+            let like = format!(
+                "%{}%",
+                q.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+            );
+            let mut stmt = conn.prepare_cached(
+                "WITH cand(addr, name, weight, d) AS (
+                     SELECT je.value->>'addr', je.value->>'name', 3, m.date
+                     FROM messages m
+                     JOIN folders f ON m.folder_id = f.id,
+                          json_each(COALESCE(m.to_addrs, '[]')) je
+                     WHERE f.role = 'sent'
+                     UNION ALL
+                     SELECT je.value->>'addr', je.value->>'name', 2, m.date
+                     FROM messages m
+                     JOIN folders f ON m.folder_id = f.id,
+                          json_each(COALESCE(m.cc_addrs, '[]')) je
+                     WHERE f.role = 'sent'
+                     UNION ALL
+                     SELECT m.from_addr, m.from_name, 1, m.date
+                     FROM messages m
+                     JOIN folders f ON m.folder_id = f.id
+                     WHERE m.from_addr IS NOT NULL AND f.role != 'junk'
+                 )
+                 SELECT addr,
+                        MAX(CASE WHEN name IS NOT NULL AND name != '' THEN name END),
+                        SUM(weight) AS score,
+                        MAX(d) AS last_date
+                 FROM cand
+                 WHERE addr IS NOT NULL
+                   AND (addr LIKE ?1 ESCAPE '\\' OR COALESCE(name, '') LIKE ?1 ESCAPE '\\')
+                 GROUP BY LOWER(addr)
+                 ORDER BY score DESC, last_date DESC
+                 LIMIT 8",
+            )?;
+            let rows = stmt
+                .query_map(rusqlite::params![like], |r| {
+                    Ok(AddressSuggestion {
+                        addr: r.get(0)?,
+                        name: r.get(1)?,
+                    })
+                })?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+}
 
 #[tauri::command]
 pub async fn create_draft(state: State<'_, AppState>) -> Result<Draft> {

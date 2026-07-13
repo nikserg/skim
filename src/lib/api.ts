@@ -68,11 +68,18 @@ export const api = {
     invoke<Draft>("get_reply_template", { messageId, mode }),
   sendDraft: (draftId: number) => invoke<void>("send_draft", { draftId }),
   openComposeWindow: (draftId: number) => invoke<void>("open_compose_window", { draftId }),
+  suggestAddresses: (query: string) =>
+    invoke<AddressSuggestion[]>("suggest_addresses", { query }),
 
   // settings
   getSettings: () => invoke<Record<string, string>>("get_settings"),
   setSetting: (key: string, value: string) => invoke<void>("set_setting", { key, value }),
 };
+
+export interface AddressSuggestion {
+  name: string | null;
+  addr: string;
+}
 
 export function errorMessage(e: unknown): string {
   if (e && typeof e === "object" && "message" in e) return String(e.message);

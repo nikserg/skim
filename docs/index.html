@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Skim — Email at the speed of thought</title>
+  <meta name="description" content="A fast, native, minimalist email client for Windows — with your own Claude as the copilot. Free & open source, ~5 MB, no admin rights.">
+
+  <!-- Open Graph / social preview -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Skim — Email at the speed of thought">
+  <meta property="og:description" content="A fast, native, minimalist email client for Windows, with AI on your own terms. Free & open source.">
+  <meta property="og:image" content="https://nikserg.github.io/skim/skim-light.png">
+  <meta property="og:url" content="https://nikserg.github.io/skim/">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236b46f2'/%3E%3Crect x='8' y='11' width='16' height='2.6' rx='1.3' fill='white'/%3E%3Crect x='8' y='18' width='10' height='2.6' rx='1.3' fill='white' fill-opacity='0.75'/%3E%3C/svg%3E">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --violet: #6b46f2;
+      --violet-soft: rgba(107, 70, 242, 0.14);
+      --bg: #0d0e12;
+      --bg-2: #14151b;
+      --panel: #1a1b22;
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #eceef2;
+      --muted: #9a9ea9;
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Hanken Grotesk", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+    /* ---- Nav ---- */
+    nav {
+      position: sticky; top: 0; z-index: 10;
+      background: rgba(13, 14, 18, 0.78);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    nav .wrap { display: flex; align-items: center; gap: 16px; height: 62px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+    .brand svg { display: block; }
+    .nav-links { margin-left: auto; display: flex; align-items: center; gap: 22px; }
+    .nav-links a { color: var(--muted); font-size: 15px; font-weight: 500; transition: color .15s; }
+    .nav-links a:hover { color: var(--text); }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 9px;
+      background: var(--violet); color: #fff;
+      padding: 11px 20px; border-radius: 10px;
+      font-weight: 600; font-size: 15px;
+      border: 1px solid transparent;
+      transition: transform .12s ease, box-shadow .2s ease, background .15s;
+      box-shadow: 0 6px 22px rgba(107, 70, 242, 0.35);
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 10px 30px rgba(107, 70, 242, 0.45); }
+    .btn.ghost {
+      background: transparent; color: var(--text);
+      border-color: var(--border); box-shadow: none;
+    }
+    .btn.ghost:hover { border-color: rgba(255,255,255,0.22); background: rgba(255,255,255,0.03); }
+
+    /* ---- Hero ---- */
+    header.hero { padding: 88px 0 40px; text-align: center; position: relative; overflow: hidden; }
+    header.hero::before {
+      content: ""; position: absolute; top: -180px; left: 50%; transform: translateX(-50%);
+      width: 640px; height: 640px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(107,70,242,0.22), transparent 62%);
+      pointer-events: none;
+    }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 13px; font-weight: 600; letter-spacing: .02em;
+      color: var(--violet); background: var(--violet-soft);
+      padding: 6px 14px; border-radius: 999px; margin-bottom: 26px;
+      position: relative;
+    }
+    h1 {
+      font-size: clamp(38px, 6vw, 66px); line-height: 1.05; font-weight: 800;
+      letter-spacing: -0.02em; margin: 0 0 20px; position: relative;
+    }
+    .sub {
+      font-size: clamp(17px, 2.4vw, 21px); color: var(--muted);
+      max-width: 620px; margin: 0 auto 34px; position: relative;
+    }
+    .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; position: relative; }
+    .cta-note { margin-top: 18px; font-size: 13.5px; color: var(--muted); position: relative; }
+    .cta-note code { color: var(--text); font-size: 12.5px; }
+
+    .shot {
+      margin-top: 60px; position: relative;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+    }
+    .shot img { display: block; width: 100%; height: auto; }
+    .shot-cap { text-align: center; color: var(--muted); font-size: 13.5px; margin-top: 16px; }
+
+    /* ---- Sections ---- */
+    section { padding: 66px 0; }
+    section.alt { background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    h2 { font-size: clamp(26px, 3.6vw, 36px); font-weight: 800; letter-spacing: -0.01em; margin: 0 0 10px; }
+    .lead { color: var(--muted); font-size: 17px; max-width: 620px; margin: 0 0 40px; }
+    .center { text-align: center; }
+    .center .lead { margin-left: auto; margin-right: auto; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+    .card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px;
+      transition: border-color .2s, transform .2s;
+    }
+    .card:hover { border-color: rgba(255,255,255,0.16); transform: translateY(-2px); }
+    .card .ic { font-size: 22px; margin-bottom: 12px; display: block; }
+    .card h3 { margin: 0 0 8px; font-size: 17px; font-weight: 700; }
+    .card p { margin: 0; color: var(--muted); font-size: 14.5px; }
+
+    /* ---- AI section (violet accent) ---- */
+    .ai {
+      background:
+        radial-gradient(700px 300px at 80% -10%, rgba(107,70,242,0.20), transparent),
+        var(--bg-2);
+      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    }
+    .ai .eyebrow { margin-bottom: 18px; }
+    .ai-list { list-style: none; padding: 0; margin: 34px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 14px; }
+    .ai-list li {
+      background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+      border-left: 3px solid var(--violet);
+      border-radius: 10px; padding: 16px 18px; font-size: 14.5px; color: var(--muted);
+    }
+    .ai-list li b { color: var(--text); font-weight: 600; }
+
+    /* ---- Shortcuts ---- */
+    .keys { display: flex; flex-wrap: wrap; gap: 10px; }
+    .keys span {
+      font-family: "IBM Plex Mono", monospace; font-size: 13px;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 12px; color: var(--muted);
+    }
+    .keys span b { color: var(--text); }
+
+    .install-box {
+      background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 20px; justify-content: space-between;
+    }
+    .install-box .txt { max-width: 560px; }
+    .install-box h3 { margin: 0 0 6px; font-size: 20px; }
+    .install-box p { margin: 0; color: var(--muted); font-size: 14.5px; }
+
+    /* ---- Footer ---- */
+    footer { padding: 44px 0 60px; border-top: 1px solid var(--border); color: var(--muted); font-size: 14px; }
+    footer .wrap { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; }
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--text); }
+    .foot-links { display: flex; gap: 20px; flex-wrap: wrap; }
+
+    @media (max-width: 620px) {
+      .nav-links a:not(.btn) { display: none; }
+      header.hero { padding-top: 56px; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="wrap">
+      <a class="brand" href="#">
+        <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
+          <rect width="32" height="32" rx="7" fill="#6b46f2"/>
+          <rect x="8" y="11" width="16" height="2.6" rx="1.3" fill="white"/>
+          <rect x="8" y="18" width="10" height="2.6" rx="1.3" fill="white" fill-opacity="0.75"/>
+        </svg>
+        Skim
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#ai">AI</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/nikserg/skim">GitHub</a>
+        <a class="btn" href="https://github.com/nikserg/skim/releases/latest">Download</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="wrap">
+      <span class="eyebrow">✦ Your own Claude as the copilot</span>
+      <h1>Email at the speed<br>of thought.</h1>
+      <p class="sub">A fast, native, minimalist email client for Windows. Rust core, tiny footprint, no Electron — and AI strictly on your terms.</p>
+      <div class="cta-row">
+        <a class="btn" href="https://github.com/nikserg/skim/releases/latest">⬇&nbsp; Download for Windows</a>
+        <a class="btn ghost" href="https://github.com/nikserg/skim">View on GitHub</a>
+      </div>
+      <p class="cta-note">Free &amp; open source · ~5 MB installer · no admin rights · grab <code>Skim_x.y.z_x64-setup.exe</code></p>
+
+      <div class="shot">
+        <img src="skim-light.png" alt="Skim — light theme, three-pane email client">
+      </div>
+      <p class="shot-cap">One violet accent, reserved exclusively for AI. Everything else stays out of your way.</p>
+    </div>
+  </header>
+
+  <!-- Why -->
+  <section id="why">
+    <div class="wrap">
+      <h2>Why Skim</h2>
+      <p class="lead">Most mail clients are either web apps in a trench coat or twenty-year-old battleships. Skim is neither.</p>
+      <div class="grid">
+        <div class="card">
+          <span class="ic">⚡</span>
+          <h3>Native &amp; fast</h3>
+          <p>Rust core + WebView2 UI (Tauri 2). A few-megabyte installer, instant cold start, tiny idle memory. No Electron.</p>
+        </div>
+        <div class="card">
+          <span class="ic">🔒</span>
+          <h3>Local-first &amp; private</h3>
+          <p>Mail syncs over IMAP straight into a local SQLite cache. Works offline, search is instant, zero telemetry.</p>
+        </div>
+        <div class="card">
+          <span class="ic">✦</span>
+          <h3>AI on your terms</h3>
+          <p>Bring your own key — Anthropic or OpenRouter. Requests go directly from your machine to the provider. No key? Still a great client.</p>
+        </div>
+        <div class="card">
+          <span class="ic">🌍</span>
+          <h3>Built for humans</h3>
+          <p>11 languages, light &amp; dark themes, keyboard-first. Switchable at runtime, no restart.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features" class="alt">
+    <div class="wrap">
+      <h2>Everything you need, nothing you don't</h2>
+      <p class="lead">One account, three panes, and a command palette that gets out of your way.</p>
+      <div class="grid">
+        <div class="card">
+          <h3>Any mailbox</h3>
+          <p>Gmail, Outlook, Yahoo, iCloud, or any IMAP/SMTP server. Google sign-in via OAuth or an app password. Autoconfig for the big providers.</p>
+        </div>
+        <div class="card">
+          <h3>Offline-first actions</h3>
+          <p>Archive, delete, star, read/unread and send apply instantly and queue in SQLite — Skim syncs when the network returns.</p>
+        </div>
+        <div class="card">
+          <h3>Instant search</h3>
+          <p>Full-text search (SQLite FTS5) over subject, sender, recipients and bodies. <code>Ctrl+K</code> palette jumps anywhere as you type.</p>
+        </div>
+        <div class="card">
+          <h3>Real threading</h3>
+          <p>Conversation threading via References / In-Reply-To with subject fallback. Reply, reply-all and forward with proper headers.</p>
+        </div>
+        <div class="card">
+          <h3>Push &amp; tray</h3>
+          <p>IMAP IDLE push + polling, new-mail notifications with a mark-read action. Lives in the tray, syncing in the background.</p>
+        </div>
+        <div class="card">
+          <h3>Safe HTML mail</h3>
+          <p>HTML sanitized in Rust (ammonia), rendered in a sandboxed iframe with strict CSP. Remote images blocked by default.</p>
+        </div>
+      </div>
+
+      <div style="margin-top:40px">
+        <div class="keys">
+          <span><b>Ctrl K</b> · palette</span>
+          <span><b>Ctrl N</b> · compose</span>
+          <span><b>j</b>/<b>k</b> · move</span>
+          <span><b>e</b> · archive</span>
+          <span><b>#</b> · delete</span>
+          <span><b>s</b> · star</span>
+          <span><b>u</b> · unread</span>
+          <span><b>r</b> · reply</span>
+          <span><b>/</b> · search</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AI -->
+  <section id="ai" class="ai">
+    <div class="wrap">
+      <span class="eyebrow">✦ Bring your own key</span>
+      <h2>AI that respects your bill and your privacy</h2>
+      <p class="lead">Paste an Anthropic or OpenRouter key and the ✦ violet buttons light up. Your key, your bill — no markup, no proxy, no accounts. Stored in Windows Credential Manager.</p>
+      <ul class="ai-list">
+        <li><b>Draft reply</b> — tell Claude what to say, get a draft in your voice; make it shorter, warmer or more formal in one click.</li>
+        <li><b>AI Recap</b> — one click digests every unread email in your inbox, action items first with cited sources, and marks them read.</li>
+        <li><b>Summarize</b> — long threads in a few bullets, action items called out.</li>
+        <li><b>Ask about this</b> — question any specific email.</li>
+        <li><b>Mailbox chat</b> — "which invoices are still unpaid this month?" Answers cite the source emails as clickable chips.</li>
+        <li><b>Your writer, your voice</b> — set your name and style, give the AI standing instructions. Two providers: Claude direct, or OpenRouter for GPT, Gemini, Grok and hundreds more.</li>
+      </ul>
+
+      <div class="shot" style="margin-top:48px">
+        <img src="skim-dark.png" alt="Skim — dark theme with AI features">
+      </div>
+    </div>
+  </section>
+
+  <!-- Install -->
+  <section id="install">
+    <div class="wrap">
+      <div class="install-box">
+        <div class="txt">
+          <h3>Install in seconds</h3>
+          <p>Download the latest installer — the <code>.exe</code> (NSIS) installs per-user without admin rights; an <code>.msi</code> is published for managed environments. Requires Windows 10/11 with WebView2 (preinstalled on Windows 11).</p>
+        </div>
+        <a class="btn" href="https://github.com/nikserg/skim/releases/latest">⬇&nbsp; Get the latest release</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <span>MIT © Skim contributors</span>
+      <div class="foot-links">
+        <a href="https://github.com/nikserg/skim">Source</a>
+        <a href="https://github.com/nikserg/skim/releases">Releases</a>
+        <a href="https://github.com/nikserg/skim/blob/main/CONTRIBUTING.md">Contribute</a>
+        <a href="https://github.com/nikserg/skim/issues">Issues</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
