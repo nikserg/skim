@@ -170,6 +170,52 @@ pub fn draft(
     (system, user)
 }
 
+/// System prompt + reply-context preamble for an interactive drafting session.
+/// Each user turn is an instruction; the assistant answers with the full,
+/// current email body. `reply_chain` is empty for a fresh email; otherwise it
+/// is the conversation being replied to (chronological, replied-to last) and
+/// the preamble carries it. The caller folds the preamble into the first turn.
+pub fn compose_session(
+    reply_chain: &[EmailBlock],
+    profile: &WriterProfile,
+    now: &str,
+    locale: &str,
+) -> (String, String) {
+    let language_rule = if reply_chain.is_empty() {
+        format!(
+            "Write in the language the instructions imply; otherwise {}",
+            locale_line(locale)
+        )
+    } else {
+        "Write in the language of the message being replied to — NOT the user's \
+         interface language, unless they are the same."
+            .to_string()
+    };
+    let system = format!(
+        "You draft emails for {}, writing in their voice (first person). This is an \
+         interactive drafting session: each user message is an instruction or a revision \
+         request. Always reply with ONLY the complete, current email body — no subject \
+         line, no commentary, no code fences, no placeholder signature blocks. Apply each \
+         new instruction to the draft so far, keeping everything the user did not ask to \
+         change. {} {language_rule} {}{}",
+        profile.name,
+        now_block(now),
+        style_directive(profile),
+        profile_block(profile),
+    );
+    let preamble = if reply_chain.is_empty() {
+        String::new()
+    } else {
+        let per_email = (MAX_BODY_CHARS / reply_chain.len().max(1)).min(MAX_CHAIN_CHARS);
+        format!(
+            "You are drafting a reply to the LAST message in this conversation \
+             (oldest first):\n\n{}",
+            render_emails(reply_chain, per_email)
+        )
+    };
+    (system, preamble)
+}
+
 pub fn adjust(
     current_text: &str,
     adjustment: &str,

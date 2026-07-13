@@ -2,6 +2,7 @@
 //! (OpenAI-compatible). The user's own key is used; requests go directly
 //! from this machine to openrouter.ai.
 
+use super::ChatMessage;
 use crate::error::{Result, SkimError};
 use futures::StreamExt;
 use serde::Deserialize;
@@ -14,7 +15,7 @@ pub const DEFAULT_MODEL: &str = "anthropic/claude-sonnet-5";
 pub struct Request {
     pub model: String,
     pub system: String,
-    pub user: String,
+    pub messages: Vec<ChatMessage>,
     pub max_tokens: u32,
 }
 
@@ -60,13 +61,15 @@ async fn stream_once(
     request: &Request,
     on_delta: &mut impl FnMut(&str),
 ) -> Result<Option<String>> {
+    // System prompt first, then the (possibly multi-turn) conversation.
+    let mut messages = vec![json!({ "role": "system", "content": request.system })];
+    for m in &request.messages {
+        messages.push(json!({ "role": m.role, "content": m.content }));
+    }
     let body = json!({
         "model": request.model,
         "max_tokens": request.max_tokens,
-        "messages": [
-            { "role": "system", "content": request.system },
-            { "role": "user", "content": request.user },
-        ],
+        "messages": messages,
         "stream": true,
     });
 

@@ -8,6 +8,9 @@
 
   let iframe: HTMLIFrameElement | undefined = $state();
   let height = $state(120);
+  let resizeObs: ResizeObserver | null = null;
+
+  $effect(() => () => resizeObs?.disconnect());
 
   const srcdoc = $derived(buildDoc(html, ui.effective === "dark"));
 
@@ -55,9 +58,20 @@
     const doc = iframe?.contentDocument;
     if (!doc) return;
     const measure = () => {
-      height = Math.min(Math.max(doc.documentElement.scrollHeight, 40) + 8, 20000);
+      const h = Math.min(Math.max(doc.documentElement.scrollHeight, 40) + 8, 20000);
+      // Guard against feedback loops with percentage-height emails.
+      if (Math.abs(h - height) > 1) height = h;
     };
     measure();
+    // Content reflows after load — web fonts settling, table-based layouts
+    // relaxing, async images. Track every layout change instead of measuring
+    // once, so the iframe never gets its own scrollbar.
+    resizeObs?.disconnect();
+    const obs = new ResizeObserver(measure);
+    obs.observe(doc.documentElement);
+    if (doc.body) obs.observe(doc.body);
+    resizeObs = obs;
+    doc.fonts?.ready.then(measure).catch(() => {});
     // Images loading later change the height.
     for (const img of Array.from(doc.images)) {
       img.addEventListener("load", measure);

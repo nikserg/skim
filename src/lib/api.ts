@@ -130,6 +130,7 @@ export function aiStream(
     | "ai_summarize"
     | "ai_draft"
     | "ai_adjust_draft"
+    | "ai_compose"
     | "ai_ask"
     | "ai_chat"
     | "ai_analyze_style"

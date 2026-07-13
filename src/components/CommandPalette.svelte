@@ -184,14 +184,7 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      if (chat) {
-        exitChat();
-      } else {
-        palette.hide();
-      }
-    } else if (e.key === "ArrowDown") {
+    if (e.key === "ArrowDown") {
       e.preventDefault();
       active = Math.min(active + 1, totalItems - 1);
     } else if (e.key === "ArrowUp") {
@@ -203,6 +196,20 @@
     }
   }
 
+  // Escape is handled at the window level so it works in chat mode too,
+  // where the search input (and its keydown handler) is not mounted.
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (!palette.open) return;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      if (chat) {
+        exitChat();
+      } else {
+        palette.hide();
+      }
+    }
+  }
+
   function formatDate(unix: number): string {
     return new Date(unix * 1000).toLocaleDateString(getLocale(), {
       month: "short",
@@ -210,6 +217,8 @@
     });
   }
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 {#if palette.open}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -240,7 +249,7 @@
               </div>
             </div>
           {/if}
-          <div class="chat-footer microlabel">ESC ↩</div>
+          <button class="chat-footer microlabel" onclick={exitChat}>ESC ↩</button>
         </div>
       {:else}
       <div class="input-row">
@@ -517,6 +526,10 @@
     color: var(--accent);
   }
   .chat-footer {
-    text-align: right;
+    align-self: flex-end;
+    color: var(--text-faint);
+  }
+  .chat-footer:hover {
+    color: var(--text);
   }
 </style>

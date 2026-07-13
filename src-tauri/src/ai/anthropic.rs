@@ -1,21 +1,16 @@
 //! Minimal streaming client for the Anthropic Messages API. The user's own
 //! key is used; requests go directly from this machine to api.anthropic.com.
 
+use super::ChatMessage;
 use crate::error::{Result, SkimError};
 use futures::StreamExt;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 
 const API_BASE: &str = "https://api.anthropic.com/v1";
 const API_VERSION: &str = "2023-06-01";
 
 pub const DEFAULT_MODEL: &str = "claude-sonnet-5";
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ChatMessage {
-    pub role: &'static str, // "user" | "assistant"
-    pub content: String,
-}
 
 pub struct Request {
     pub model: String,

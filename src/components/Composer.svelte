@@ -16,11 +16,29 @@
   // ---- AI drafting ----
   let aiAvailable = $state(false);
   let instruction = $state("");
+
+  /** Grow a textarea to fit its content (used by the AI instruction box). */
+  function autogrow(node: HTMLTextAreaElement) {
+    const resize = () => {
+      node.style.height = "auto";
+      node.style.height = `${node.scrollHeight}px`;
+    };
+    resize();
+    node.addEventListener("input", resize);
+    return { destroy: () => node.removeEventListener("input", resize) };
+  }
   let aiBusy = $state(false);
-  let generatedOnce = $state(false);
   let cancelAi: (() => void) | null = null;
   /** Quoted original (reply/forward), preserved below AI-generated text. */
   let quotedTail = "";
+
+  // The AI drafting session: one shared conversation the user refines turn by
+  // turn. User turns are instructions; assistant turns are the drafts the AI
+  // produced. The newest assistant turn mirrors the editable body.
+  type ChatTurn = { role: "user" | "assistant"; content: string };
+  let convo = $state<ChatTurn[]>([]);
+  const userTurns = $derived(convo.filter((tn) => tn.role === "user"));
+  const hasDraft = $derived(convo.some((tn) => tn.role === "assistant"));
 
   $effect(() => {
     void aiApi
@@ -36,51 +54,88 @@
     return [body, ""];
   }
 
-  function runAi(command: "ai_draft" | "ai_adjust_draft", args: Record<string, unknown>) {
+  /** Push an instruction into the session and stream the revised draft. */
+  function sendInstruction(text: string) {
     if (!draft || aiBusy) return;
+    const instr = text.trim();
+    if (!instr) return;
+
+    // Respect manual edits: sync the current body (AI-authored part) back into
+    // the last assistant turn, so the AI revises exactly what the user sees.
+    const [current, tail] = splitQuote(draft.body);
+    quotedTail = tail;
+    if (current.trim()) {
+      for (let i = convo.length - 1; i >= 0; i--) {
+        if (convo[i].role === "assistant") {
+          convo[i] = { role: "assistant", content: current.trim() };
+          break;
+        }
+      }
+    }
+
+    convo.push({ role: "user", content: instr });
+    instruction = "";
+    runCompose();
+  }
+
+  function runCompose() {
+    if (!draft) return;
     cancelAi?.();
     aiBusy = true;
     error = "";
-    const [, tail] = splitQuote(draft.body);
-    quotedTail = tail;
-    draft.body = "";
-    cancelAi = aiStream(command, args, {
-      delta: (text) => {
-        if (draft) draft.body += text;
+    draft.body = quotedTail;
+    let streamed = "";
+    cancelAi = aiStream(
+      "ai_compose",
+      {
+        turns: convo.map((tn) => ({ role: tn.role, content: tn.content })),
+        replyToMessageId: draft.replyToMessageId,
       },
-      done: () => {
-        if (draft && quotedTail) draft.body = `${draft.body}\n${quotedTail}`;
-        aiBusy = false;
-        generatedOnce = true;
-        scheduleSave();
+      {
+        delta: (text) => {
+          streamed += text;
+          if (draft) draft.body = quotedTail ? `${streamed}\n${quotedTail}` : streamed;
+        },
+        done: () => {
+          const text = streamed.trim();
+          if (text) {
+            convo.push({ role: "assistant", content: text });
+          } else {
+            // Nothing usable came back — drop the user turn so the next round
+            // doesn't carry a dangling instruction with no reply.
+            const last = convo[convo.length - 1];
+            if (last?.role === "user") convo.pop();
+          }
+          aiBusy = false;
+          scheduleSave();
+        },
+        error: (_code, message) => {
+          aiBusy = false;
+          error = message;
+          // Roll the failed instruction back into the input so it isn't lost.
+          const last = convo[convo.length - 1];
+          if (last?.role === "user") {
+            instruction = last.content;
+            convo.pop();
+          }
+          if (draft && quotedTail && !draft.body) draft.body = quotedTail;
+        },
       },
-      error: (_code, message) => {
-        aiBusy = false;
-        error = message;
-        if (draft && quotedTail && !draft.body) draft.body = quotedTail;
-      },
-    });
+    );
   }
 
-  function generate(tone?: string) {
-    if (!draft || !instruction.trim()) return;
-    runAi("ai_draft", {
-      instruction: instruction.trim(),
-      replyToMessageId: draft.replyToMessageId,
-      tone: tone ?? null,
-    });
-  }
-
-  function adjust(adjustment: "shorter" | "warmer" | "formal") {
-    if (!draft) return;
-    const [current] = splitQuote(draft.body);
-    if (!current.trim()) return;
-    runAi("ai_adjust_draft", { currentText: current, adjustment });
+  // The tone chips are just quick instructions fed into the same session; the
+  // localized label doubles as the instruction and shows in the transcript.
+  function adjust(kind: "shorter" | "warmer" | "formal") {
+    sendInstruction(t(`ai.${kind}`));
   }
 
   function stopAi() {
     cancelAi?.();
     aiBusy = false;
+    // Drop the unanswered instruction so the session stays consistent.
+    const last = convo[convo.length - 1];
+    if (last?.role === "user") convo.pop();
   }
 
   $effect(() => {
@@ -179,24 +234,37 @@
 
     {#if aiAvailable}
       <div class="ai-bar">
+        {#if userTurns.length > 0}
+          <!-- The running session: instructions given so far, so it's clear
+               this is one ongoing conversation about the draft. -->
+          <div class="ai-thread">
+            {#each userTurns as turn, i (i)}
+              <div class="ai-turn">{turn.content}</div>
+            {/each}
+            {#if aiBusy}
+              <div class="ai-turn pending">✦ {t("ai.thinking")}</div>
+            {/if}
+          </div>
+        {/if}
         <form
           class="ai-input"
           onsubmit={(e) => {
             e.preventDefault();
-            generate();
+            sendInstruction(instruction);
           }}
         >
           <span class="spark">✦</span>
           <textarea
             class="instruction"
+            use:autogrow
             bind:value={instruction}
-            placeholder={t("ai.instruction_placeholder")}
-            rows="2"
+            placeholder={hasDraft ? t("ai.refine_placeholder") : t("ai.instruction_placeholder")}
+            rows="1"
             spellcheck="false"
             onkeydown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault();
-                generate();
+                sendInstruction(instruction);
               }
             }}
           ></textarea>
@@ -204,11 +272,11 @@
             <button type="button" class="ai-chip" onclick={stopAi}>{t("ai.stop")}</button>
           {:else}
             <button type="submit" class="ai-chip solid" disabled={!instruction.trim()}>
-              ✦ {generatedOnce ? t("ai.regenerate") : t("ai.generate")}
+              ✦ {hasDraft ? t("ai.refine") : t("ai.generate")}
             </button>
           {/if}
         </form>
-        {#if generatedOnce && !aiBusy}
+        {#if hasDraft && !aiBusy}
           <div class="tone-chips">
             <button class="ai-chip" onclick={() => adjust("shorter")}>{t("ai.shorter")}</button>
             <button class="ai-chip" onclick={() => adjust("warmer")}>{t("ai.warmer")}</button>
@@ -332,6 +400,36 @@
     flex-direction: column;
     gap: 8px;
   }
+  .ai-thread {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 108px;
+    overflow-y: auto;
+  }
+  .ai-turn {
+    align-self: flex-start;
+    max-width: 100%;
+    padding: 4px 10px;
+    border-radius: var(--radius-s);
+    background: var(--accent-soft);
+    color: var(--text);
+    font-size: 12.5px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .ai-turn.pending {
+    background: transparent;
+    color: var(--accent);
+    padding-left: 0;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.45;
+    }
+  }
   .ai-input {
     display: flex;
     align-items: flex-start;
@@ -349,8 +447,10 @@
     font-size: 13px;
     line-height: 1.5;
     user-select: text;
-    resize: vertical;
-    min-height: 38px;
+    resize: none;
+    min-height: 20px;
+    max-height: 180px;
+    overflow-y: auto;
     padding: 0;
     font-family: inherit;
   }

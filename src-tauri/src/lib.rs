@@ -202,6 +202,7 @@ pub fn run() {
             commands::ai::ai_summarize,
             commands::ai::ai_draft,
             commands::ai::ai_adjust_draft,
+            commands::ai::ai_compose,
             commands::ai::ai_ask,
             commands::ai::ai_chat,
             commands::ai::ai_analyze_style,

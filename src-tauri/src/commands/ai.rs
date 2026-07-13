@@ -1,10 +1,10 @@
 use crate::ai::retrieval::Citation;
-use crate::ai::{anthropic, openrouter, prompts, retrieval};
+use crate::ai::{anthropic, openrouter, prompts, retrieval, ChatMessage};
 use crate::db::{bodies, queries, Db};
 use crate::error::{Result, SkimError};
 use crate::secrets;
 use crate::state::AppState;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tauri::State;
 
@@ -149,7 +149,7 @@ fn spawn_stream(
     request_id: String,
     ctx: AiContext,
     system: String,
-    user: String,
+    messages: Vec<ChatMessage>,
     max_tokens: u32,
     citations: Vec<Citation>,
     channel: Channel<AiEvent>,
@@ -165,10 +165,7 @@ fn spawn_stream(
                 let request = anthropic::Request {
                     model: ctx.model,
                     system,
-                    messages: vec![anthropic::ChatMessage {
-                        role: "user",
-                        content: user,
-                    }],
+                    messages,
                     max_tokens,
                 };
                 anthropic::stream(&ctx.key, &request, &mut on_delta).await
@@ -177,7 +174,7 @@ fn spawn_stream(
                 let request = openrouter::Request {
                     model: ctx.model,
                     system,
-                    user,
+                    messages,
                     max_tokens,
                 };
                 openrouter::stream(&ctx.key, &request, &mut on_delta).await
@@ -199,6 +196,14 @@ fn spawn_stream(
         tasks.retain(|_, h| !h.is_finished());
         tasks.insert(request_id, task.abort_handle());
     }
+}
+
+/// A single user turn — the shape every one-shot feature sends.
+fn user_turn(content: String) -> Vec<ChatMessage> {
+    vec![ChatMessage {
+        role: "user",
+        content,
+    }]
 }
 
 #[tauri::command]
@@ -306,7 +311,7 @@ pub async fn ai_summarize(
         request_id,
         ctx,
         system,
-        user,
+        user_turn(user),
         1024,
         Vec::new(),
         channel,
@@ -418,7 +423,7 @@ pub async fn ai_draft(
         request_id,
         ctx,
         system,
-        user,
+        user_turn(user),
         2048,
         Vec::new(),
         channel,
@@ -443,7 +448,70 @@ pub async fn ai_adjust_draft(
         request_id,
         ctx,
         system,
-        user,
+        user_turn(user),
+        2048,
+        Vec::new(),
+        channel,
+    );
+    Ok(())
+}
+
+/// One turn of the composer's drafting conversation, as sent by the frontend.
+/// `role` is "user" (an instruction) or "assistant" (a draft the AI produced).
+#[derive(Debug, Deserialize)]
+pub struct ComposeTurn {
+    pub role: String,
+    pub content: String,
+}
+
+/// Interactive email drafting. Unlike `ai_draft`/`ai_adjust_draft` (one-shot),
+/// this carries the whole conversation so the user can refine the draft turn by
+/// turn against a single shared context. The assistant's reply IS the current
+/// email body; the newest turn must be a user instruction.
+#[tauri::command]
+pub async fn ai_compose(
+    state: State<'_, AppState>,
+    request_id: String,
+    turns: Vec<ComposeTurn>,
+    reply_to_message_id: Option<i64>,
+    channel: Channel<AiEvent>,
+) -> Result<()> {
+    let ctx = ai_context(&state.db).await?;
+    // A reply sees the whole conversation, not just the last message.
+    let chain = match reply_to_message_id {
+        Some(id) => reply_chain(&state, id, 8).await?,
+        None => Vec::new(),
+    };
+    let profile = writer_profile(&state).await?;
+    let (system, preamble) = prompts::compose_session(&chain, &profile, &ctx.now, &ctx.locale);
+
+    // The reply/quote context is folded into the first user turn so the whole
+    // session shares it without re-sending it every round.
+    let mut messages: Vec<ChatMessage> = Vec::with_capacity(turns.len());
+    let mut injected = false;
+    for turn in &turns {
+        let role: &'static str = if turn.role == "assistant" {
+            "assistant"
+        } else {
+            "user"
+        };
+        let content = if !injected && role == "user" && !preamble.is_empty() {
+            injected = true;
+            format!("{preamble}\n\n{}", turn.content)
+        } else {
+            turn.content.clone()
+        };
+        messages.push(ChatMessage { role, content });
+    }
+    if messages.is_empty() {
+        return Err(SkimError::other("ai", "no instruction provided"));
+    }
+    spawn_stream(
+        &state,
+        request_id,
+        ctx,
+        system,
+        messages,
         2048,
         Vec::new(),
         channel,
@@ -467,7 +535,7 @@ pub async fn ai_ask(
         request_id,
         ctx,
         system,
-        user,
+        user_turn(user),
         2048,
         Vec::new(),
         channel,
@@ -506,7 +574,14 @@ pub async fn ai_chat(
         .collect();
     let (system, user) = prompts::chat(&question, &context, &ctx.now, &ctx.locale);
     spawn_stream(
-        &state, request_id, ctx, system, user, 4096, citations, channel,
+        &state,
+        request_id,
+        ctx,
+        system,
+        user_turn(user),
+        4096,
+        citations,
+        channel,
     );
     Ok(())
 }
@@ -581,7 +656,14 @@ pub async fn ai_recap(
     let more = unread_total.saturating_sub(context.len());
     let (system, user) = prompts::recap(&context, more, &ctx.now, &ctx.locale);
     spawn_stream(
-        &state, request_id, ctx, system, user, 2048, citations, channel,
+        &state,
+        request_id,
+        ctx,
+        system,
+        user_turn(user),
+        2048,
+        citations,
+        channel,
     );
     Ok(())
 }
@@ -678,7 +760,7 @@ pub async fn ai_analyze_style(
         let request = anthropic::Request {
             model: ctx.model.clone(),
             system: system.clone(),
-            messages: vec![anthropic::ChatMessage {
+            messages: vec![ChatMessage {
                 role: "user",
                 content: user.clone(),
             }],
@@ -697,7 +779,7 @@ pub async fn ai_analyze_style(
                 let request = openrouter::Request {
                     model: ctx.model,
                     system,
-                    user,
+                    messages: user_turn(user),
                     max_tokens: 1024,
                 };
                 openrouter::stream(&ctx.key, &request, &mut on_delta).await
