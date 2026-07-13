@@ -284,6 +284,7 @@ pub fn recap(
          call out deadlines explicitly.\n\
          - Newsletters and promos get at most a few words each, grouped together.\n\
          - Cite each email with its index like [2] after the bullet.\n\
+         Formatting: '-' bullets and **bold** only — no headings, no tables. \
          No preamble beyond the TL;DR.\n\n{blocks}{tail}"
     );
     (system, user)

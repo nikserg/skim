@@ -3,6 +3,7 @@
   // phase 7 (ask a question ending with "?").
   import { aiStream, api, type Citation } from "../lib/api";
   import { getLocale, t } from "../lib/i18n/index.svelte";
+  import { mdLite } from "../lib/md";
   import { ai } from "../lib/stores/ai.svelte";
   import { mail } from "../lib/stores/mail.svelte";
   import { palette } from "../lib/stores/palette.svelte";
@@ -223,7 +224,7 @@
             {#if chat.answer === "" && chat.status === "streaming"}
               <span class="thinking">{t("ai.thinking")}</span>
             {:else}
-              <div class="chat-text">{chat.answer}</div>
+              <div class="chat-text md-body">{@html mdLite(chat.answer)}</div>
             {/if}
           </div>
           {#if chat.citations.length > 0}

@@ -3,6 +3,7 @@
   // reading pane while open; covered messages are marked read on success.
   import { aiStream, api, type Citation } from "../lib/api";
   import { t } from "../lib/i18n/index.svelte";
+  import { mdLite } from "../lib/md";
   import { mail } from "../lib/stores/mail.svelte";
   import { ui } from "../lib/stores/ui.svelte";
 
@@ -77,7 +78,7 @@
     {:else if status === "error"}
       <div class="error">{text}</div>
     {:else}
-      <div class="text">{text}</div>
+      <div class="text md-body">{@html mdLite(text)}</div>
       {#if status === "done"}
         {#if markedCount > 0}
           <div class="marked microlabel">✓ {t("ai.recap_marked", { n: markedCount })}</div>
@@ -164,8 +165,6 @@
   .text {
     font-size: 14px;
     line-height: 1.65;
-    white-space: pre-wrap;
-    user-select: text;
     max-width: 640px;
   }
   .marked {

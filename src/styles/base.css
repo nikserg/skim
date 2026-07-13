@@ -78,3 +78,37 @@ a {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Rendered AI answers (lib/md.ts mdLite) — global because injected via {@html} */
+.md-body {
+  user-select: text;
+  cursor: text;
+}
+.md-body .md-p {
+  margin: 0 0 3px;
+}
+.md-body .md-gap {
+  height: 10px;
+}
+.md-body .md-li {
+  position: relative;
+  padding-left: 18px;
+  margin: 0 0 5px;
+}
+.md-body .md-li::before {
+  content: "•";
+  position: absolute;
+  left: 4px;
+  color: var(--accent);
+}
+.md-body .md-h {
+  font-weight: 700;
+  margin: 10px 0 4px;
+}
+.md-body code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--hover);
+  padding: 1px 4px;
+  border-radius: 4px;
+}

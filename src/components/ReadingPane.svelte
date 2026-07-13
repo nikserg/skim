@@ -1,6 +1,7 @@
 <script lang="ts">
   import { aiStream, api } from "../lib/api";
   import { getLocale, t } from "../lib/i18n/index.svelte";
+  import { mdLite } from "../lib/md";
   import { ai } from "../lib/stores/ai.svelte";
   import { mail } from "../lib/stores/mail.svelte";
   import { ui } from "../lib/stores/ui.svelte";
@@ -302,7 +303,7 @@
             {#if aiPanel.text === "" && aiPanel.status === "streaming"}
               <span class="thinking">{t("ai.thinking")}</span>
             {:else}
-              <div class="ai-text">{aiPanel.text}</div>
+              <div class="ai-text md-body">{@html mdLite(aiPanel.text)}</div>
             {/if}
           </div>
         {/if}
