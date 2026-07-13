@@ -8,6 +8,8 @@ const state = $state({
   /** Resolved light/dark after applying the system preference. */
   effective: "light" as "light" | "dark",
   settingsOpen: false,
+  /** AI Recap panel occupies the reading pane while open. */
+  recapOpen: false,
 });
 
 function effectiveTheme(): "light" | "dark" {
@@ -48,5 +50,14 @@ export const ui = {
   },
   closeSettings() {
     state.settingsOpen = false;
+  },
+  get recapOpen() {
+    return state.recapOpen;
+  },
+  openRecap() {
+    state.recapOpen = true;
+  },
+  closeRecap() {
+    state.recapOpen = false;
   },
 };

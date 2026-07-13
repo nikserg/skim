@@ -64,6 +64,7 @@ Most mail clients are either web apps in a trench coat or twenty-year-old battle
 
 **AI (bring your own key)**
 - **Draft reply** — tell Claude what to say (“confirm the timeline, keep it warm”), get a draft in your voice; make it shorter, warmer, or more formal with one click
+- **AI Recap** — opened your inbox to six unread emails? One click gets a digest of all of them, action items first with cited sources, and marks them read
 - **Summarize** — long threads in a few bullets, action items called out
 - **Ask about this** — question a specific email
 - **Mailbox chat** — ask “which invoices are still unpaid this month?” in the palette; answers cite the source emails as clickable chips

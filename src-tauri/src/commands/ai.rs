@@ -511,6 +511,79 @@ pub async fn ai_chat(
     Ok(())
 }
 
+/// AI catch-up over the folder's unread mail. Streams the digest and returns
+/// the covered messages as citations — the frontend marks those read.
+#[tauri::command]
+pub async fn ai_recap(
+    state: State<'_, AppState>,
+    request_id: String,
+    folder_id: i64,
+    channel: Channel<AiEvent>,
+) -> Result<()> {
+    const RECAP_LIMIT: usize = 20;
+
+    let ctx = ai_context(&state.db).await?;
+    let (rows, unread_total): (Vec<(i64, Option<i64>, String, String)>, usize) = state
+        .db
+        .call(move |conn| {
+            let mut stmt = conn.prepare_cached(
+                "SELECT id, thread_id, COALESCE(subject, ''),
+                        COALESCE(NULLIF(from_name, ''), COALESCE(from_addr, ''))
+                 FROM messages
+                 WHERE folder_id = ?1 AND is_read = 0
+                 ORDER BY date DESC LIMIT ?2",
+            )?;
+            let rows = stmt
+                .query_map(rusqlite::params![folder_id, RECAP_LIMIT as i64], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+                })?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            let total: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM messages WHERE folder_id = ?1 AND is_read = 0",
+                rusqlite::params![folder_id],
+                |r| r.get(0),
+            )?;
+            Ok((rows, total as usize))
+        })
+        .await?;
+    if rows.is_empty() {
+        return Err(SkimError::other("mail", "no unread messages"));
+    }
+
+    let total = rows.len();
+    let mut context: Vec<(usize, prompts::EmailBlock)> = Vec::with_capacity(total);
+    let mut citations: Vec<Citation> = Vec::with_capacity(total);
+    for (i, (id, thread_id, subject, from)) in rows.into_iter().enumerate() {
+        let _ = channel.send(AiEvent::Progress {
+            current: i + 1,
+            total,
+        });
+        let Ok(block) = email_block(&state, id).await else {
+            continue;
+        };
+        let index = citations.len() + 1;
+        citations.push(Citation {
+            index,
+            message_id: id,
+            thread_id,
+            folder_id,
+            subject,
+            from,
+        });
+        context.push((index, block));
+    }
+    if context.is_empty() {
+        return Err(SkimError::other("mail", "no unread messages"));
+    }
+
+    let more = unread_total.saturating_sub(context.len());
+    let (system, user) = prompts::recap(&context, more, &ctx.now, &ctx.locale);
+    spawn_stream(
+        &state, request_id, ctx, system, user, 2048, citations, channel,
+    );
+    Ok(())
+}
+
 // ---- personal style analysis ----------------------------------------------
 
 /// The user's own words: quoted tails, quote lines, and the signature

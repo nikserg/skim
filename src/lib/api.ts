@@ -119,7 +119,14 @@ export const aiApi = {
 
 /** Start a streaming AI request. Returns a cancel function. */
 export function aiStream(
-  command: "ai_summarize" | "ai_draft" | "ai_adjust_draft" | "ai_ask" | "ai_chat" | "ai_analyze_style",
+  command:
+    | "ai_summarize"
+    | "ai_draft"
+    | "ai_adjust_draft"
+    | "ai_ask"
+    | "ai_chat"
+    | "ai_analyze_style"
+    | "ai_recap",
   args: Record<string, unknown>,
   on: AiHandlers,
 ): () => void {

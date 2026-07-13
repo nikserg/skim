@@ -204,6 +204,7 @@ pub fn run() {
             commands::ai::ai_ask,
             commands::ai::ai_chat,
             commands::ai::ai_analyze_style,
+            commands::ai::ai_recap,
             commands::search::search_messages,
             commands::search::thread_message_ids,
             commands::settings::get_settings,

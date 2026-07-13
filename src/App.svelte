@@ -3,6 +3,7 @@
   import Sidebar from "./components/Sidebar.svelte";
   import MessageList from "./components/MessageList.svelte";
   import ReadingPane from "./components/ReadingPane.svelte";
+  import AiRecap from "./components/AiRecap.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import Onboarding from "./components/onboarding/Onboarding.svelte";
   import { api } from "./lib/api";
@@ -14,6 +15,11 @@
   import type { Account, Theme } from "./lib/types";
 
   let ready = $state(false);
+
+  // Opening a message dismisses the recap panel.
+  $effect(() => {
+    if (mail.selectedThreadId !== null && ui.recapOpen) ui.closeRecap();
+  });
 
   $effect(() => {
     void (async () => {
@@ -138,7 +144,8 @@
         void replyToSelected();
         break;
       case "Escape":
-        mail.selectedThreadId = null;
+        if (ui.recapOpen) ui.closeRecap();
+        else mail.selectedThreadId = null;
         break;
     }
   }
@@ -153,7 +160,11 @@
       <main class="panes">
         <Sidebar />
         <MessageList />
-        <ReadingPane />
+        {#if ui.recapOpen && mail.selectedThreadId === null}
+          <AiRecap />
+        {:else}
+          <ReadingPane />
+        {/if}
       </main>
       <CommandPalette />
     {:else}

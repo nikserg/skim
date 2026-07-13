@@ -243,6 +243,52 @@ pub fn chat(
     (system, user)
 }
 
+/// Catch-up digest of unread mail. `context` is numbered newest-first;
+/// `more` is how many older unread messages didn't fit.
+pub fn recap(
+    context: &[(usize, EmailBlock)],
+    more: usize,
+    now: &str,
+    locale: &str,
+) -> (String, String) {
+    let system = format!(
+        "You are Skim's mailbox assistant. The user just opened their inbox and \
+         wants to catch up without reading everything. {} {}",
+        now_block(now),
+        locale_line(locale)
+    );
+    let blocks = context
+        .iter()
+        .map(|(i, e)| {
+            format!(
+                "<email index=\"{i}\" from=\"{}\" date=\"{}\" subject=\"{}\">\n{}\n</email>",
+                e.from,
+                e.date,
+                e.subject,
+                truncate(&e.body, MAX_CONTEXT_CHARS)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let tail = if more > 0 {
+        format!("\n\n(There are {more} more, older unread emails not included here.)")
+    } else {
+        String::new()
+    };
+    let user = format!(
+        "These are the user's unread emails, newest first. Write a recap:\n\
+         - Start with a single TL;DR line.\n\
+         - Then one short bullet per email (merge closely related ones), naming \
+         the sender and the gist.\n\
+         - Put things that need an action or a reply first and say what's needed; \
+         call out deadlines explicitly.\n\
+         - Newsletters and promos get at most a few words each, grouped together.\n\
+         - Cite each email with its index like [2] after the bullet.\n\
+         No preamble beyond the TL;DR.\n\n{blocks}{tail}"
+    );
+    (system, user)
+}
+
 /// Prompt for distilling the user's writing style from their sent mail.
 /// `samples` are the user's own words (quoted tails stripped), newest first.
 pub fn style_analysis(samples: &[String], locale: &str) -> (String, String) {
