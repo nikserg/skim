@@ -3,22 +3,91 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Skim — Email at the speed of thought</title>
-  <meta name="description" content="A fast, native, minimalist email client for Windows — with your own Claude as the copilot. Free & open source, ~5 MB, no admin rights.">
+  <title>Skim — Fast, Open-Source AI Email Client for Windows</title>
+  <meta name="description" content="Skim is a free, open-source email client for Windows with a built-in AI copilot. Native Rust core, ~5 MB installer, offline-first, instant search — bring your own AI key.">
+  <link rel="canonical" href="https://skim-tech.com/">
 
   <!-- Open Graph / social preview -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Skim — Email at the speed of thought">
-  <meta property="og:description" content="A fast, native, minimalist email client for Windows, with AI on your own terms. Free & open source.">
-  <meta property="og:image" content="https://nikserg.github.io/skim/skim-light.png">
-  <meta property="og:url" content="https://nikserg.github.io/skim/">
+  <meta property="og:site_name" content="Skim">
+  <meta property="og:title" content="Skim — Fast, Open-Source AI Email Client for Windows">
+  <meta property="og:description" content="A fast, native, minimalist email client for Windows with an AI copilot on your own terms. Free & open source, ~5 MB, no admin rights.">
+  <meta property="og:image" content="https://skim-tech.com/skim-light.png">
+  <meta property="og:image:width" content="1600">
+  <meta property="og:image:height" content="1068">
+  <meta property="og:image:alt" content="Skim — a three-pane Windows email client, light theme">
+  <meta property="og:url" content="https://skim-tech.com/">
+  <meta property="og:locale" content="en_US">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Skim — Fast, Open-Source AI Email Client for Windows">
+  <meta name="twitter:description" content="A fast, native, minimalist email client for Windows with an AI copilot on your own terms. Free & open source, ~5 MB, no admin rights.">
+  <meta name="twitter:image" content="https://skim-tech.com/skim-light.png">
 
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236b46f2'/%3E%3Crect x='8' y='11' width='16' height='2.6' rx='1.3' fill='white'/%3E%3Crect x='8' y='18' width='10' height='2.6' rx='1.3' fill='white' fill-opacity='0.75'/%3E%3C/svg%3E">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Skim",
+    "operatingSystem": "Windows 10, Windows 11",
+    "applicationCategory": "CommunicationApplication",
+    "applicationSubCategory": "Email Client",
+    "description": "A fast, free, open-source email client for Windows with a built-in AI copilot. Native Rust core, ~5 MB installer, offline-first, instant full-text search.",
+    "url": "https://skim-tech.com/",
+    "downloadUrl": "https://github.com/nikserg/skim/releases/latest",
+    "softwareVersion": "0.1.4",
+    "screenshot": [
+      "https://skim-tech.com/skim-light.png",
+      "https://skim-tech.com/skim-dark.png"
+    ],
+    "license": "https://github.com/nikserg/skim/blob/main/LICENSE",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "sameAs": ["https://github.com/nikserg/skim"]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is Skim free?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Skim is free and open source under the MIT license — no subscription, no account, no upsell. The AI features are optional and use your own API key, so you pay your AI provider directly at cost." }
+      },
+      {
+        "@type": "Question",
+        "name": "Which email providers does Skim support?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Gmail (one-click Google sign-in or an app password), Outlook, Yahoo and iCloud via app passwords, and any other mailbox over standard IMAP/SMTP. Server settings are filled in automatically for the big providers." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does the AI read my email?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Only when you ask it to. AI features stay off until you paste your own Anthropic or OpenRouter key, and every request goes directly from your machine to the provider — no middleman servers. The key is stored in Windows Credential Manager." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does Skim run on Windows 10 and Windows 11?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes — Skim supports Windows 10 and 11 with WebView2 (preinstalled on Windows 11). The installer is about 5 MB and installs per-user, no admin rights required." }
+      },
+      {
+        "@type": "Question",
+        "name": "How is Skim different from Outlook or Thunderbird?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Skim is deliberately small: a fast, keyboard-first Windows email client with a native Rust core instead of Electron, offline-first actions, instant local search, and an AI copilot that works with your own key. No calendar, no rules engine, no bloat." }
+      },
+      {
+        "@type": "Question",
+        "name": "Is my email stored locally?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Mail syncs over IMAP straight into a local SQLite cache on your device, so Skim works offline and search is instant. There are no Skim servers and zero telemetry." }
+      }
+    ]
+  }
+  </script>
 
   <style>
     :root {
@@ -181,6 +250,27 @@
     .install-box h3 { margin: 0 0 6px; font-size: 20px; }
     .install-box p { margin: 0; color: var(--muted); font-size: 14.5px; }
 
+    /* ---- FAQ ---- */
+    .faq-list { display: grid; gap: 12px; max-width: 760px; }
+    .faq-list details {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 0;
+      transition: border-color .2s;
+    }
+    .faq-list details:hover { border-color: rgba(255,255,255,0.16); }
+    .faq-list summary {
+      cursor: pointer; list-style: none;
+      padding: 18px 22px; font-weight: 600; font-size: 15.5px;
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    }
+    .faq-list summary::-webkit-details-marker { display: none; }
+    .faq-list summary::after {
+      content: "+"; color: var(--muted); font-weight: 500; font-size: 19px;
+      flex-shrink: 0; transition: transform .15s;
+    }
+    .faq-list details[open] summary::after { transform: rotate(45deg); }
+    .faq-list details p { margin: 0; padding: 0 22px 18px; color: var(--muted); font-size: 14.5px; }
+
     /* ---- Footer ---- */
     footer { padding: 44px 0 60px; border-top: 1px solid var(--border); color: var(--muted); font-size: 14px; }
     footer .wrap { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; }
@@ -210,6 +300,7 @@
         <a href="#features" data-i18n="nav_features">Features</a>
         <a href="#ai" data-i18n="nav_ai">AI</a>
         <a href="#install" data-i18n="nav_install">Install</a>
+        <a href="#faq" data-i18n="nav_faq">FAQ</a>
         <a href="https://github.com/nikserg/skim" data-i18n="nav_github">GitHub</a>
         <label class="lang" title="Language">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
@@ -224,7 +315,7 @@
     <div class="wrap">
       <span class="eyebrow" data-i18n="hero_eyebrow">✦ Your own Claude as the copilot</span>
       <h1 data-i18n-html="hero_h1">Email at the speed<br>of thought.</h1>
-      <p class="sub" data-i18n="hero_sub">A fast, native, minimalist email client for Windows. Rust core, tiny footprint, no Electron — and AI strictly on your terms.</p>
+      <p class="sub" data-i18n="hero_sub">A fast, native, minimalist email client for Windows — with an AI copilot strictly on your terms. Rust core, tiny footprint, no Electron.</p>
       <div class="cta-row">
         <a class="btn" href="https://github.com/nikserg/skim/releases/latest" data-i18n="hero_cta_download">⬇&nbsp; Download for Windows</a>
         <a class="btn ghost" href="https://github.com/nikserg/skim" data-i18n="hero_cta_github">View on GitHub</a>
@@ -241,7 +332,7 @@
   <!-- Why -->
   <section id="why">
     <div class="wrap">
-      <h2 data-i18n="why_h2">Why Skim</h2>
+      <h2 data-i18n="why_h2">A different kind of Windows email client</h2>
       <p class="lead" data-i18n="why_lead">Most mail clients are either web apps in a trench coat or twenty-year-old battleships. Skim is neither.</p>
       <div class="grid">
         <div class="card">
@@ -320,7 +411,7 @@
   <section id="ai" class="ai">
     <div class="wrap">
       <span class="eyebrow" data-i18n="ai_eyebrow">✦ Bring your own key</span>
-      <h2 data-i18n="ai_h2">AI that respects your bill and your privacy</h2>
+      <h2 data-i18n="ai_h2">An AI email assistant that respects your bill and your privacy</h2>
       <p class="lead" data-i18n="ai_lead">Paste an Anthropic or OpenRouter key and the ✦ violet buttons light up. Your key, your bill — no markup, no proxy, no accounts. Stored in Windows Credential Manager.</p>
       <ul class="ai-list">
         <li data-i18n-html="ai_1"><b>Draft reply</b> — tell Claude what to say, get a draft in your voice; make it shorter, warmer or more formal in one click.</li>
@@ -346,6 +437,40 @@
           <p data-i18n-html="install_p">Download the latest installer — the <code>.exe</code> (NSIS) installs per-user without admin rights; an <code>.msi</code> is published for managed environments. Requires Windows 10/11 with WebView2 (preinstalled on Windows 11).</p>
         </div>
         <a class="btn" href="https://github.com/nikserg/skim/releases/latest" data-i18n="install_btn">⬇&nbsp; Get the latest release</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq" class="alt">
+    <div class="wrap">
+      <h2 data-i18n="faq_h2">Frequently asked questions</h2>
+      <p class="lead" data-i18n="faq_lead">Everything people usually ask before switching their Windows email client.</p>
+      <div class="faq-list">
+        <details>
+          <summary data-i18n="faq_1_q">Is Skim free?</summary>
+          <p data-i18n="faq_1_a">Yes. Skim is free and open source under the MIT license — no subscription, no account, no upsell. The AI features are optional and use your own API key, so you pay your AI provider directly at cost.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_2_q">Which email providers does Skim support?</summary>
+          <p data-i18n="faq_2_a">Gmail (one-click Google sign-in or an app password), Outlook, Yahoo and iCloud via app passwords, and any other mailbox over standard IMAP/SMTP. Server settings are filled in automatically for the big providers.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_3_q">Does the AI read my email?</summary>
+          <p data-i18n="faq_3_a">Only when you ask it to. AI features stay off until you paste your own Anthropic or OpenRouter key, and every request goes directly from your machine to the provider — no middleman servers. The key is stored in Windows Credential Manager.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_4_q">Does Skim run on Windows 10 and Windows 11?</summary>
+          <p data-i18n="faq_4_a">Yes — Skim supports Windows 10 and 11 with WebView2 (preinstalled on Windows 11). The installer is about 5 MB and installs per-user, no admin rights required.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_5_q">How is Skim different from Outlook or Thunderbird?</summary>
+          <p data-i18n="faq_5_a">Skim is deliberately small: a fast, keyboard-first Windows email client with a native Rust core instead of Electron, offline-first actions, instant local search, and an AI copilot that works with your own key. No calendar, no rules engine, no bloat.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_6_q">Is my email stored locally?</summary>
+          <p data-i18n="faq_6_a">Yes. Mail syncs over IMAP straight into a local SQLite cache on your device, so Skim works offline and search is instant. There are no Skim servers and zero telemetry.</p>
+        </details>
       </div>
     </div>
   </section>

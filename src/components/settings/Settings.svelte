@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getVersion } from "@tauri-apps/api/app";
   import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { aiApi, aiStream, api, errorMessage } from "../../lib/api";
@@ -22,6 +23,7 @@
   let notifications = $state("on");
   let autostart = $state(true);
   let confirmingRemove = $state(false);
+  let appVersion = $state("");
 
   // AI writer profile
   let aiName = $state("");
@@ -51,6 +53,9 @@
     });
     void isEnabled()
       .then((on) => (autostart = on))
+      .catch(() => {});
+    void getVersion()
+      .then((v) => (appVersion = v))
       .catch(() => {});
   });
 
@@ -497,7 +502,7 @@
         {/if}
       </section>
 
-      <div class="about microlabel">Skim v0.1 · {t("onb.footer")} · MIT</div>
+      <div class="about microlabel">Skim{appVersion ? ` v${appVersion}` : ""} · {t("onb.footer")} · MIT</div>
     </div>
   </div>
 </div>

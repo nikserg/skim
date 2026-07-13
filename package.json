@@ -3,6 +3,11 @@
   "version": "0.1.4",
   "description": "A fast, minimalist, AI-native email client for Windows",
   "license": "MIT",
+  "homepage": "https://skim-tech.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nikserg/skim.git"
+  },
   "private": true,
   "type": "module",
   "scripts": {

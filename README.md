@@ -12,6 +12,7 @@ A fast, native, minimalist email client for Windows — with your own Claude as 
 [![License: MIT](https://img.shields.io/badge/License-MIT-6b46f2.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4.svg)](#install)
 [![Rust](https://img.shields.io/badge/core-Rust%20%2B%20Tauri%202-orange.svg)](#architecture)
+[![Website](https://img.shields.io/badge/website-skim--tech.com-6b46f2.svg)](https://skim-tech.com)
 
 <br>
 
@@ -21,6 +22,10 @@ A fast, native, minimalist email client for Windows — with your own Claude as 
 
 <sub><b>Free & open source · ~5 MB installer · no admin rights needed</b><br>
 Grab <code>Skim_x.y.z_x64-setup.exe</code> from the latest release</sub>
+
+<br><br>
+
+<a href="https://skim-tech.com">Website</a> · <a href="https://github.com/nikserg/skim/releases/latest">Download</a> · <a href="https://github.com/nikserg/skim/issues">Report a bug</a> · <a href="CONTRIBUTING.md">Contribute</a>
 
 <br><br>
 
