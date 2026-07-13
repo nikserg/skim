@@ -1,0 +1,9 @@
+# Only the static landing in docs/ is deployed.
+# Exclude the app source and heavy build artifacts (src-tauri/target is ~36 GB).
+src-tauri
+node_modules
+dist
+design
+src
+.github
+.idea
