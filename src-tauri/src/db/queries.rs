@@ -207,7 +207,7 @@ pub fn list_threads(
 ) -> rusqlite::Result<Vec<ThreadRow>> {
     let mut stmt = conn.prepare_cached(
         "SELECT t.id,
-                m.from_name, m.from_addr, m.subject, t.snippet, t.last_date,
+                m.from_name, m.from_addr, m.subject, m.snippet, t.last_date,
                 (t.unread_count = 0), t.starred,
                 max(m.has_attachments), t.message_count
          FROM threads t

@@ -74,16 +74,14 @@
   let detail = $state<ThreadDetail | null>(null);
   let bodies = $state<Record<number, RenderedBody | "loading" | "error">>({});
   let loadedFor = $state<number | null>(null);
-  // Minimalism: the pane shows only the newest message of the thread.
-  // Outside the inbox it's the newest message IN THIS folder — in Sent you
-  // want the email you sent, not the reply that came back.
+  // Minimalism: the pane shows only the newest message of the thread IN THE
+  // CURRENT FOLDER — in the inbox that's the incoming message (not your own
+  // reply, which lives in Sent), in Sent it's what you sent.
   const latest = $derived.by(() => {
     const msgs = detail?.messages ?? [];
     if (msgs.length === 0) return null;
-    if (mail.selectedFolder && mail.selectedFolder.role !== "inbox") {
-      const inFolder = msgs.filter((m) => m.folderId === mail.selectedFolderId);
-      if (inFolder.length > 0) return inFolder[inFolder.length - 1];
-    }
+    const inFolder = msgs.filter((m) => m.folderId === mail.selectedFolderId);
+    if (inFolder.length > 0) return inFolder[inFolder.length - 1];
     return msgs[msgs.length - 1];
   });
 
