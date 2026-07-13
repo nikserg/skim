@@ -32,6 +32,13 @@ async function attachListeners() {
     }
     void refreshFolders();
   });
+  // Toast body click: jump to the message's thread.
+  await listen<{ folderId: number; threadId: number }>("mail:open-thread", async (e) => {
+    if (e.payload.folderId !== state.selectedFolderId) {
+      await selectFolder(e.payload.folderId);
+    }
+    state.selectedThreadId = e.payload.threadId;
+  });
   await listen<{ state: SyncState; message: string | null }>("sync:status", (e) => {
     state.syncState = e.payload.state;
     state.syncMessage = e.payload.message ?? null;
