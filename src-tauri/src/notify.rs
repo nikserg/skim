@@ -1,10 +1,12 @@
 //! New-mail desktop notifications (Windows toasts) with a mark-read quick
-//! action. Sent from the sync engine when new inbox mail arrives while the
+//! action; a body click focuses the window and opens the newest message's
+//! thread. Sent from the sync engine when new inbox mail arrives while the
 //! window is unfocused; the "notifications" setting turns them off.
 
 use crate::db::{queries, Db};
 use crate::state::AppState;
-use tauri::{AppHandle, Manager};
+use serde_json::json;
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_winrt_notification::Toast;
 
 const AUMID: &str = "com.skim.app";
@@ -103,9 +105,16 @@ pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
         }
     }
 
-    // Newest of the batch shapes the toast.
+    // Newest of the batch shapes the toast (and is what a body click opens).
     let pks = message_pks.to_vec();
-    let newest: Option<(Option<String>, Option<String>, Option<String>)> = db
+    type NewestRow = (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        i64,
+        Option<i64>,
+    );
+    let newest: Option<NewestRow> = db
         .call(move |conn| {
             use rusqlite::OptionalExtension;
             let placeholders = pks.iter().map(|_| "?").collect::<Vec<_>>().join(",");
@@ -113,20 +122,21 @@ pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
                 pks.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
             conn.query_row(
                 &format!(
-                    "SELECT from_name, from_addr, subject FROM messages
+                    "SELECT from_name, from_addr, subject, folder_id, thread_id FROM messages
                      WHERE id IN ({placeholders}) ORDER BY date DESC LIMIT 1"
                 ),
                 params.as_slice(),
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
             )
             .optional()
         })
         .await
         .ok()
         .flatten();
-    let Some((from_name, from_addr, subject)) = newest else {
+    let Some((from_name, from_addr, subject, folder_id, thread_id)) = newest else {
         return;
     };
+    let open_target = thread_id.map(|tid| (folder_id, tid));
 
     let title = from_name
         .filter(|s| !s.is_empty())
@@ -171,10 +181,16 @@ pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
                         });
                     }
                     _ => {
-                        // Body click → bring the app forward.
+                        // Body click → bring the app forward on the arrived mail.
                         if let Some(window) = app_for_cb.get_webview_window("main") {
                             let _ = window.unminimize();
                             let _ = window.set_focus();
+                        }
+                        if let Some((folder_id, thread_id)) = open_target {
+                            let _ = app_for_cb.emit(
+                                "mail:open-thread",
+                                json!({ "folderId": folder_id, "threadId": thread_id }),
+                            );
                         }
                     }
                 }
