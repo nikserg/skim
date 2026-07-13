@@ -4,7 +4,8 @@ use crate::db::drafts::Draft;
 use crate::db::models::Account;
 use crate::error::{Result, SkimError};
 use crate::mail::imap_client::Credentials;
-use lettre::message::{Mailbox, Message};
+use lettre::message::header::ContentType;
+use lettre::message::{Mailbox, Message, MultiPart, SinglePart};
 use lettre::transport::smtp::authentication::{Credentials as SmtpCredentials, Mechanism};
 use lettre::{AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
 
@@ -66,6 +67,43 @@ pub fn build_message(account: &Account, draft: &Draft, refs: &OutgoingRefs) -> R
 
     let message = builder
         .body(draft.body.clone())
+        .map_err(|e| SkimError::other("send", format!("cannot build message: {e}")))?;
+    Ok(message.formatted())
+}
+
+/// Build an iMIP RSVP message: text/plain + text/calendar (method=REPLY)
+/// alternative, which organizers (Google, Outlook) auto-process.
+pub fn build_calendar_reply(
+    account: &Account,
+    to: &str,
+    subject: &str,
+    text_body: &str,
+    ics: &str,
+) -> Result<Vec<u8>> {
+    let from: Mailbox = match &account.display_name {
+        Some(name) if !name.is_empty() => format!("{} <{}>", name, account.email),
+        _ => account.email.clone(),
+    }
+    .parse()
+    .map_err(|e| SkimError::other("send", format!("invalid sender: {e}")))?;
+
+    let calendar_type = ContentType::parse("text/calendar; charset=utf-8; method=REPLY")
+        .map_err(|e| SkimError::other("send", format!("cannot build message: {e}")))?;
+    let message = Message::builder()
+        .from(from)
+        .to(to
+            .parse()
+            .map_err(|e| SkimError::other("send", format!("invalid recipient {to}: {e}")))?)
+        .subject(subject)
+        .multipart(
+            MultiPart::alternative()
+                .singlepart(SinglePart::plain(text_body.to_string()))
+                .singlepart(
+                    SinglePart::builder()
+                        .header(calendar_type)
+                        .body(ics.to_string()),
+                ),
+        )
         .map_err(|e| SkimError::other("send", format!("cannot build message: {e}")))?;
     Ok(message.formatted())
 }

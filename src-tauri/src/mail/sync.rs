@@ -855,6 +855,9 @@ impl Engine {
         if kind == "send" {
             return self.execute_send(payload).await;
         }
+        if kind == "rsvp" {
+            return self.execute_rsvp(payload).await;
+        }
         let imap_name = payload["imapName"].as_str().unwrap_or_default().to_string();
         let folder_id = payload["folderId"].as_i64();
         let uids: Vec<u32> = payload["uids"]
@@ -982,14 +985,55 @@ impl Engine {
         self.oauth_token = cache;
         smtp::send(&self.account, &creds, &raw).await?;
 
+        let sent_folder_id = self.mirror_to_sent(&raw).await;
+
+        self.db
+            .call(move |conn| crate::db::drafts::delete(conn, draft_id))
+            .await?;
+        let _ = self.app.emit("drafts:updated", json!({}));
+        let _ = self.app.emit("mail:sent", json!({ "draftId": draft_id }));
+        Ok(sent_folder_id)
+    }
+
+    /// Send a queued calendar RSVP (iMIP METHOD:REPLY) to the organizer.
+    /// The payload is self-contained so the op survives the original
+    /// invitation message being archived or deleted.
+    async fn execute_rsvp(&mut self, payload: &serde_json::Value) -> Result<Option<i64>> {
+        let to = payload["to"].as_str().unwrap_or_default().to_string();
+        let subject = payload["subject"].as_str().unwrap_or_default().to_string();
+        let text_body = payload["textBody"].as_str().unwrap_or_default().to_string();
+        let ics = payload["ics"].as_str().unwrap_or_default().to_string();
+        if to.is_empty() || ics.is_empty() {
+            return Ok(None);
+        }
+
+        let raw = smtp::build_calendar_reply(&self.account, &to, &subject, &text_body, &ics)?;
+
+        let mut cache = self.oauth_token.take();
+        let creds = resolve_credentials(&self.db, &self.account, &mut cache).await?;
+        self.oauth_token = cache;
+        smtp::send(&self.account, &creds, &raw).await?;
+
+        Ok(self.mirror_to_sent(&raw).await)
+    }
+
+    /// Mirror an outgoing message to the Sent folder and return that
+    /// folder's id (so the caller resyncs it). Gmail files sent mail on its
+    /// own — appending would duplicate it, so there we only resync.
+    async fn mirror_to_sent(&mut self, raw: &[u8]) -> Option<i64> {
         // Gmail files sent mail automatically; appending would duplicate it.
         let mut sent_folder_id = None;
         if self.account.provider != "gmail" {
             match self.role_folder("sent", "Sent").await {
                 Ok(dest) => {
-                    let session = self.session().await?;
-                    if let Err(e) = session.append(&dest, Some("(\\Seen)"), None, &raw).await {
-                        tracing::warn!(error = %e, "cannot append to Sent");
+                    match self.session().await {
+                        Ok(session) => {
+                            if let Err(e) = session.append(&dest, Some("(\\Seen)"), None, raw).await
+                            {
+                                tracing::warn!(error = %e, "cannot append to Sent");
+                            }
+                        }
+                        Err(e) => tracing::warn!(error = %e, "cannot append to Sent"),
                     }
                     let dest_owned = dest.clone();
                     let account_id = self.account.id.clone();
@@ -1032,12 +1076,7 @@ impl Engine {
                 .flatten();
         }
 
-        self.db
-            .call(move |conn| crate::db::drafts::delete(conn, draft_id))
-            .await?;
-        let _ = self.app.emit("drafts:updated", json!({}));
-        let _ = self.app.emit("mail:sent", json!({ "draftId": draft_id }));
-        Ok(sent_folder_id)
+        sent_folder_id
     }
 
     async fn delete_and_expunge(&mut self, uid_set: &str) -> Result<()> {

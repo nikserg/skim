@@ -336,6 +336,53 @@ pub fn remove_messages_local(conn: &mut Connection, message_ids: &[i64]) -> rusq
     tx.commit()
 }
 
+/// Cache path of the calendar part of a message, if any. Prefers the true
+/// `text/calendar` MIME part over `.ics` file attachments from odd senders.
+pub fn find_calendar_part(conn: &Connection, message_pk: i64) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT cache_path FROM attachments
+         WHERE message_id = ?1
+           AND (mime_type LIKE 'text/calendar%' OR mime_type = 'application/ics'
+                OR filename LIKE '%.ics')
+         ORDER BY (mime_type LIKE 'text/calendar%') DESC LIMIT 1",
+        params![message_pk],
+        |r| r.get(0),
+    )
+    .optional()
+}
+
+/// The user's stored RSVP ('ACCEPTED' | 'DECLINED' | 'TENTATIVE') for an event.
+pub fn get_rsvp(
+    conn: &Connection,
+    account_id: &str,
+    event_uid: &str,
+) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT partstat FROM invite_rsvps WHERE account_id = ?1 AND event_uid = ?2",
+        params![account_id, event_uid],
+        |r| r.get(0),
+    )
+    .optional()
+}
+
+pub fn upsert_rsvp(
+    conn: &Connection,
+    account_id: &str,
+    event_uid: &str,
+    partstat: &str,
+    sequence: i64,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO invite_rsvps (account_id, event_uid, partstat, sequence, responded_at)
+         VALUES (?1, ?2, ?3, ?4, unixepoch())
+         ON CONFLICT(account_id, event_uid) DO UPDATE SET
+           partstat = excluded.partstat, sequence = excluded.sequence,
+           responded_at = excluded.responded_at",
+        params![account_id, event_uid, partstat, sequence],
+    )?;
+    Ok(())
+}
+
 pub fn enqueue_op(
     conn: &Connection,
     account_id: &str,

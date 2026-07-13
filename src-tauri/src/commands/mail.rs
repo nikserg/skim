@@ -1,10 +1,79 @@
-use crate::db::models::{Folder, RenderedBody, ThreadDetail, ThreadRow};
+use crate::db::models::{Folder, InviteView, RenderedBody, ThreadDetail, ThreadRow};
 use crate::db::{bodies, queries};
 use crate::error::{Result, SkimError};
-use crate::mail::sanitize;
+use crate::mail::{ics, sanitize};
 use crate::state::AppState;
 use serde_json::json;
 use tauri::{AppHandle, Emitter, State};
+
+/// Parse the message's calendar part (if any) into card data. Any failure
+/// degrades to None — the message then renders as a plain email.
+pub async fn load_invite(state: &AppState, message_id: i64) -> Option<InviteView> {
+    let found: Option<(String, String)> = state
+        .db
+        .call(move |conn| {
+            use rusqlite::OptionalExtension;
+            let Some(path) = bodies::find_calendar_part(conn, message_id)? else {
+                return Ok(None);
+            };
+            let account_id: Option<String> = conn
+                .query_row(
+                    "SELECT account_id FROM messages WHERE id = ?1",
+                    rusqlite::params![message_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            Ok(account_id.map(|a| (path, a)))
+        })
+        .await
+        .ok()
+        .flatten();
+    let (path, account_id) = found?;
+    let bytes = tokio::fs::read(&path).await.ok()?;
+    let inv = ics::parse_invite(&bytes)?;
+
+    let uid = inv.uid.clone();
+    let my_response: Option<String> = state
+        .db
+        .call(move |conn| bodies::get_rsvp(conn, &account_id, &uid))
+        .await
+        .ok()
+        .flatten()
+        .map(|p| p.to_lowercase());
+
+    let (reply_attendee, reply_partstat) = if inv.method == ics::InviteMethod::Reply {
+        match inv.attendees.first() {
+            Some(a) => (
+                Some(a.name.clone().unwrap_or_else(|| a.email.clone())),
+                a.partstat.clone().map(|p| p.to_lowercase()),
+            ),
+            None => (None, None),
+        }
+    } else {
+        (None, None)
+    };
+
+    Some(InviteView {
+        method: inv.method.as_str().to_string(),
+        can_rsvp: inv.method == ics::InviteMethod::Request && inv.organizer_email.is_some(),
+        uid: inv.uid,
+        sequence: inv.sequence,
+        summary: inv.summary,
+        location: inv.location,
+        organizer_name: inv.organizer_name,
+        organizer_email: inv.organizer_email,
+        starts_at: inv.starts_at,
+        ends_at: inv.ends_at,
+        is_all_day: inv.is_all_day,
+        start_date: inv.start_date,
+        end_date: inv.end_date,
+        rrule: inv.rrule,
+        attendee_count: inv.attendees.len(),
+        my_response,
+        reply_attendee,
+        reply_partstat,
+    })
+}
 
 #[tauri::command]
 pub async fn list_folders(state: State<'_, AppState>, account_id: String) -> Result<Vec<Folder>> {
@@ -117,10 +186,22 @@ pub async fn get_message_body(
         },
     };
 
-    let attachments = state
+    let mut attachments = state
         .db
         .call(move |conn| bodies::list_attachments(conn, message_id))
         .await?;
+
+    let invite = load_invite(&state, message_id).await;
+    if invite.is_some() {
+        // The card supersedes the raw calendar part — hide its chip.
+        attachments.retain(|a| {
+            let mime = a.mime_type.as_deref().unwrap_or("");
+            let name = a.filename.as_deref().unwrap_or("");
+            !(mime.starts_with("text/calendar")
+                || mime == "application/ics"
+                || name.to_ascii_lowercase().ends_with(".ics"))
+        });
+    }
 
     Ok(RenderedBody {
         message_id,
@@ -128,6 +209,7 @@ pub async fn get_message_body(
         blocked_images: rendered.blocked_images,
         from_addr,
         attachments,
+        invite,
     })
 }
 

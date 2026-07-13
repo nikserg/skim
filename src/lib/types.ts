@@ -83,12 +83,34 @@ export interface AttachmentMeta {
   isInline: boolean;
 }
 
+export interface InviteView {
+  method: "request" | "cancel" | "reply";
+  uid: string;
+  sequence: number;
+  summary: string | null;
+  location: string | null;
+  organizerName: string | null;
+  organizerEmail: string | null;
+  startsAt: number | null; // unix seconds, null for all-day
+  endsAt: number | null;
+  isAllDay: boolean;
+  startDate: string | null; // "YYYY-MM-DD", inclusive range
+  endDate: string | null;
+  rrule: string | null;
+  attendeeCount: number;
+  myResponse: "accepted" | "declined" | "tentative" | null;
+  replyAttendee: string | null;
+  replyPartstat: string | null;
+  canRsvp: boolean;
+}
+
 export interface RenderedBody {
   messageId: number;
   html: string;
   blockedImages: number;
   fromAddr: string | null;
   attachments: AttachmentMeta[];
+  invite: InviteView | null;
 }
 
 export interface SearchHit {

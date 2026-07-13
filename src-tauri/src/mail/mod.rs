@@ -1,4 +1,5 @@
 pub mod autoconfig;
+pub mod ics;
 pub mod imap_client;
 pub mod oauth;
 pub mod parse;

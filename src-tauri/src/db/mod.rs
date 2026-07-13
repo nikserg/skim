@@ -9,7 +9,10 @@ use rusqlite::Connection;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-const MIGRATIONS: &[&str] = &[include_str!("migrations/0001_init.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("migrations/0001_init.sql"),
+    include_str!("migrations/0002_invites.sql"),
+];
 
 /// Handle to the single SQLite connection (WAL mode). All access goes through
 /// [`Db::call`], which runs the closure on a blocking thread — SQLite calls
@@ -105,11 +108,11 @@ mod tests {
             let count: i64 = conn.query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN \
                  ('accounts','folders','threads','messages','message_bodies','attachments',\
-                  'drafts','pending_ops','remote_image_senders','settings')",
+                  'drafts','pending_ops','remote_image_senders','settings','invite_rsvps')",
                 [],
                 |r| r.get(0),
             )?;
-            assert_eq!(count, 10);
+            assert_eq!(count, 11);
             Ok(())
         })
         .unwrap();

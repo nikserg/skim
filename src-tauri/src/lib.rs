@@ -195,6 +195,7 @@ pub fn run() {
             commands::compose::send_draft,
             commands::compose::open_compose_window,
             commands::compose::suggest_addresses,
+            commands::invites::rsvp_invite,
             commands::ai::ai_set_key,
             commands::ai::ai_key_status,
             commands::ai::ai_clear_key,

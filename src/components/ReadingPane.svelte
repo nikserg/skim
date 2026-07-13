@@ -8,6 +8,7 @@
   import type { MessageMeta, RenderedBody, ThreadDetail } from "../lib/types";
   import AttachmentChips from "./AttachmentChips.svelte";
   import HtmlViewer from "./HtmlViewer.svelte";
+  import InviteCard from "./InviteCard.svelte";
 
   // ---- AI panel ----
   type AiPanelKind = "summary" | "ask";
@@ -281,9 +282,28 @@
                 </button>
               </div>
             {/if}
-            <div class="body">
-              <HtmlViewer html={body.html} />
-            </div>
+            {#if body.invite}
+              <InviteCard
+                invite={body.invite}
+                onRsvp={(response) => api.rsvpInvite(message.id, response)}
+              />
+            {/if}
+            {#if body.invite && body.invite.method !== "reply"}
+              <!-- The card says it all; the sender's verbose HTML (Google's
+                   banner etc.) stays one click away for Meet links & co. -->
+              {#if body.html}
+                <details class="orig-body">
+                  <summary class="linkish">{t("invite.show_original")}</summary>
+                  <div class="body">
+                    <HtmlViewer html={body.html} />
+                  </div>
+                </details>
+              {/if}
+            {:else}
+              <div class="body">
+                <HtmlViewer html={body.html} />
+              </div>
+            {/if}
             {#if body.attachments.length > 0}
               <AttachmentChips attachments={body.attachments} />
             {/if}
@@ -500,6 +520,17 @@
 
   .body {
     margin-top: 14px;
+  }
+  .orig-body {
+    margin-top: 12px;
+  }
+  .orig-body summary {
+    cursor: pointer;
+    color: var(--text-dim);
+    width: fit-content;
+  }
+  .orig-body summary::-webkit-details-marker {
+    display: none;
   }
   .body-note {
     margin-top: 14px;

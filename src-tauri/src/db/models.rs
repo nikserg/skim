@@ -88,6 +88,35 @@ pub struct ThreadDetail {
     pub messages: Vec<MessageMeta>,
 }
 
+/// Calendar invitation extracted from a message's text/calendar part,
+/// ready for the invite card in the reading pane.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InviteView {
+    pub method: String, // "request" | "cancel" | "reply"
+    pub uid: String,
+    pub sequence: i64,
+    pub summary: Option<String>,
+    pub location: Option<String>,
+    pub organizer_name: Option<String>,
+    pub organizer_email: Option<String>,
+    /// Unix seconds (UTC) for timed events; None for all-day.
+    pub starts_at: Option<i64>,
+    pub ends_at: Option<i64>,
+    pub is_all_day: bool,
+    /// "YYYY-MM-DD", inclusive range, for all-day events.
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+    pub rrule: Option<String>,
+    pub attendee_count: usize,
+    /// The user's stored answer: "accepted" | "declined" | "tentative".
+    pub my_response: Option<String>,
+    /// For method == "reply": who answered and how.
+    pub reply_attendee: Option<String>,
+    pub reply_partstat: Option<String>,
+    pub can_rsvp: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderedBody {
@@ -97,6 +126,7 @@ pub struct RenderedBody {
     pub blocked_images: usize,
     pub from_addr: Option<String>,
     pub attachments: Vec<AttachmentMeta>,
+    pub invite: Option<InviteView>,
 }
 
 /// Headers of a message as parsed from the wire, ready for insertion.
