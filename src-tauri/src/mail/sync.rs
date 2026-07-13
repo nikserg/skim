@@ -1010,6 +1010,26 @@ impl Engine {
                 }
                 Err(e) => tracing::warn!(error = %e, "no Sent folder"),
             }
+        } else {
+            // Give Gmail a moment to file the copy, then resync the Sent
+            // folder so the message shows up right away — otherwise it only
+            // appears on the next polling cycle.
+            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+            let account_id = self.account.id.clone();
+            sent_folder_id = self
+                .db
+                .call(move |conn| {
+                    use rusqlite::OptionalExtension;
+                    conn.query_row(
+                        "SELECT id FROM folders WHERE account_id = ?1 AND role = 'sent'",
+                        rusqlite::params![account_id],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                })
+                .await
+                .ok()
+                .flatten();
         }
 
         self.db

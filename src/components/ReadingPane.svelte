@@ -75,7 +75,23 @@
   let bodies = $state<Record<number, RenderedBody | "loading" | "error">>({});
   let loadedFor = $state<number | null>(null);
   // Minimalism: the pane shows only the newest message of the thread.
-  const latest = $derived(detail?.messages[detail.messages.length - 1] ?? null);
+  // Outside the inbox it's the newest message IN THIS folder — in Sent you
+  // want the email you sent, not the reply that came back.
+  const latest = $derived.by(() => {
+    const msgs = detail?.messages ?? [];
+    if (msgs.length === 0) return null;
+    if (mail.selectedFolder && mail.selectedFolder.role !== "inbox") {
+      const inFolder = msgs.filter((m) => m.folderId === mail.selectedFolderId);
+      if (inFolder.length > 0) return inFolder[inFolder.length - 1];
+    }
+    return msgs[msgs.length - 1];
+  });
+
+  // Fetch the shown message's body on demand.
+  $effect(() => {
+    const m = latest;
+    if (m && bodies[m.id] === undefined) void loadBody(m.id);
+  });
 
   let aiRowOpen = $state(localStorage.getItem("skim.aiRowOpen") !== "0");
   function toggleAiRow() {
@@ -105,7 +121,7 @@
       const d = await api.getThread(threadId);
       if (mail.selectedThreadId !== threadId) return;
       detail = d;
-      void loadBody(d.messages[d.messages.length - 1].id);
+      // Body loading follows `latest` via the effect above.
 
       const unread = d.messages.filter((m) => !m.isRead).map((m) => m.id);
       if (unread.length > 0) {
