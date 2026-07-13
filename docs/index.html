@@ -62,6 +62,23 @@
     .nav-links a { color: var(--muted); font-size: 15px; font-weight: 500; transition: color .15s; }
     .nav-links a:hover { color: var(--text); }
 
+    .lang {
+      display: inline-flex; align-items: center; gap: 7px;
+      color: var(--muted); font-size: 14px;
+    }
+    .lang svg { display: block; opacity: .7; }
+    select#langSelect {
+      appearance: none; -webkit-appearance: none;
+      background: var(--panel); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 7px 28px 7px 11px; font: inherit; font-size: 14px;
+      cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%239a9ea9' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 9px center;
+      transition: border-color .15s;
+    }
+    select#langSelect:hover { border-color: rgba(255,255,255,0.2); }
+
     .btn {
       display: inline-flex; align-items: center; gap: 9px;
       background: var(--violet); color: #fff;
@@ -118,8 +135,6 @@
     section.alt { background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
     h2 { font-size: clamp(26px, 3.6vw, 36px); font-weight: 800; letter-spacing: -0.01em; margin: 0 0 10px; }
     .lead { color: var(--muted); font-size: 17px; max-width: 620px; margin: 0 0 40px; }
-    .center { text-align: center; }
-    .center .lead { margin-left: auto; margin-right: auto; }
 
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
     .card {
@@ -156,6 +171,7 @@
       border-radius: 8px; padding: 8px 12px; color: var(--muted);
     }
     .keys span b { color: var(--text); }
+    .keys span span { font-family: "Hanken Grotesk", sans-serif; }
 
     .install-box {
       background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
@@ -172,7 +188,7 @@
     footer a:hover { color: var(--text); }
     .foot-links { display: flex; gap: 20px; flex-wrap: wrap; }
 
-    @media (max-width: 620px) {
+    @media (max-width: 720px) {
       .nav-links a:not(.btn) { display: none; }
       header.hero { padding-top: 56px; }
     }
@@ -182,7 +198,7 @@
 
   <nav>
     <div class="wrap">
-      <a class="brand" href="#">
+      <a class="brand" href="./">
         <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
           <rect width="32" height="32" rx="7" fill="#6b46f2"/>
           <rect x="8" y="11" width="16" height="2.6" rx="1.3" fill="white"/>
@@ -191,58 +207,62 @@
         Skim
       </a>
       <div class="nav-links">
-        <a href="#features">Features</a>
-        <a href="#ai">AI</a>
-        <a href="#install">Install</a>
-        <a href="https://github.com/nikserg/skim">GitHub</a>
-        <a class="btn" href="https://github.com/nikserg/skim/releases/latest">Download</a>
+        <a href="#features" data-i18n="nav_features">Features</a>
+        <a href="#ai" data-i18n="nav_ai">AI</a>
+        <a href="#install" data-i18n="nav_install">Install</a>
+        <a href="https://github.com/nikserg/skim" data-i18n="nav_github">GitHub</a>
+        <label class="lang" title="Language">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <select id="langSelect" aria-label="Language"></select>
+        </label>
+        <a class="btn" href="https://github.com/nikserg/skim/releases/latest" data-i18n="nav_download">Download</a>
       </div>
     </div>
   </nav>
 
   <header class="hero">
     <div class="wrap">
-      <span class="eyebrow">✦ Your own Claude as the copilot</span>
-      <h1>Email at the speed<br>of thought.</h1>
-      <p class="sub">A fast, native, minimalist email client for Windows. Rust core, tiny footprint, no Electron — and AI strictly on your terms.</p>
+      <span class="eyebrow" data-i18n="hero_eyebrow">✦ Your own Claude as the copilot</span>
+      <h1 data-i18n-html="hero_h1">Email at the speed<br>of thought.</h1>
+      <p class="sub" data-i18n="hero_sub">A fast, native, minimalist email client for Windows. Rust core, tiny footprint, no Electron — and AI strictly on your terms.</p>
       <div class="cta-row">
-        <a class="btn" href="https://github.com/nikserg/skim/releases/latest">⬇&nbsp; Download for Windows</a>
-        <a class="btn ghost" href="https://github.com/nikserg/skim">View on GitHub</a>
+        <a class="btn" href="https://github.com/nikserg/skim/releases/latest" data-i18n="hero_cta_download">⬇&nbsp; Download for Windows</a>
+        <a class="btn ghost" href="https://github.com/nikserg/skim" data-i18n="hero_cta_github">View on GitHub</a>
       </div>
-      <p class="cta-note">Free &amp; open source · ~5 MB installer · no admin rights · grab <code>Skim_x.y.z_x64-setup.exe</code></p>
+      <p class="cta-note" data-i18n-html="hero_cta_note">Free &amp; open source · ~5 MB installer · no admin rights · grab <code>Skim_x.y.z_x64-setup.exe</code></p>
 
       <div class="shot">
         <img src="skim-light.png" alt="Skim — light theme, three-pane email client">
       </div>
-      <p class="shot-cap">One violet accent, reserved exclusively for AI. Everything else stays out of your way.</p>
+      <p class="shot-cap" data-i18n="hero_shotcap">One violet accent, reserved exclusively for AI. Everything else stays out of your way.</p>
     </div>
   </header>
 
   <!-- Why -->
   <section id="why">
     <div class="wrap">
-      <h2>Why Skim</h2>
-      <p class="lead">Most mail clients are either web apps in a trench coat or twenty-year-old battleships. Skim is neither.</p>
+      <h2 data-i18n="why_h2">Why Skim</h2>
+      <p class="lead" data-i18n="why_lead">Most mail clients are either web apps in a trench coat or twenty-year-old battleships. Skim is neither.</p>
       <div class="grid">
         <div class="card">
           <span class="ic">⚡</span>
-          <h3>Native &amp; fast</h3>
-          <p>Rust core + WebView2 UI (Tauri 2). A few-megabyte installer, instant cold start, tiny idle memory. No Electron.</p>
+          <h3 data-i18n="why_1_h">Native &amp; fast</h3>
+          <p data-i18n="why_1_p">Rust core + WebView2 UI (Tauri 2). A few-megabyte installer, instant cold start, tiny idle memory. No Electron.</p>
         </div>
         <div class="card">
           <span class="ic">🔒</span>
-          <h3>Local-first &amp; private</h3>
-          <p>Mail syncs over IMAP straight into a local SQLite cache. Works offline, search is instant, zero telemetry.</p>
+          <h3 data-i18n="why_2_h">Local-first &amp; private</h3>
+          <p data-i18n="why_2_p">Mail syncs over IMAP straight into a local SQLite cache. Works offline, search is instant, zero telemetry.</p>
         </div>
         <div class="card">
           <span class="ic">✦</span>
-          <h3>AI on your terms</h3>
-          <p>Bring your own key — Anthropic or OpenRouter. Requests go directly from your machine to the provider. No key? Still a great client.</p>
+          <h3 data-i18n="why_3_h">AI on your terms</h3>
+          <p data-i18n="why_3_p">Bring your own key — Anthropic or OpenRouter. Requests go directly from your machine to the provider. No key? Still a great client.</p>
         </div>
         <div class="card">
           <span class="ic">🌍</span>
-          <h3>Built for humans</h3>
-          <p>11 languages, light &amp; dark themes, keyboard-first. Switchable at runtime, no restart.</p>
+          <h3 data-i18n="why_4_h">Built for humans</h3>
+          <p data-i18n="why_4_p">11 languages, light &amp; dark themes, keyboard-first. Switchable at runtime, no restart.</p>
         </div>
       </div>
     </div>
@@ -251,46 +271,46 @@
   <!-- Features -->
   <section id="features" class="alt">
     <div class="wrap">
-      <h2>Everything you need, nothing you don't</h2>
-      <p class="lead">One account, three panes, and a command palette that gets out of your way.</p>
+      <h2 data-i18n="feat_h2">Everything you need, nothing you don't</h2>
+      <p class="lead" data-i18n="feat_lead">One account, three panes, and a command palette that gets out of your way.</p>
       <div class="grid">
         <div class="card">
-          <h3>Any mailbox</h3>
-          <p>Gmail, Outlook, Yahoo, iCloud, or any IMAP/SMTP server. Google sign-in via OAuth or an app password. Autoconfig for the big providers.</p>
+          <h3 data-i18n="feat_1_h">Any mailbox</h3>
+          <p data-i18n="feat_1_p">Gmail, Outlook, Yahoo, iCloud, or any IMAP/SMTP server. Google sign-in via OAuth or an app password. Autoconfig for the big providers.</p>
         </div>
         <div class="card">
-          <h3>Offline-first actions</h3>
-          <p>Archive, delete, star, read/unread and send apply instantly and queue in SQLite — Skim syncs when the network returns.</p>
+          <h3 data-i18n="feat_2_h">Offline-first actions</h3>
+          <p data-i18n="feat_2_p">Archive, delete, star, read/unread and send apply instantly and queue in SQLite — Skim syncs when the network returns.</p>
         </div>
         <div class="card">
-          <h3>Instant search</h3>
-          <p>Full-text search (SQLite FTS5) over subject, sender, recipients and bodies. <code>Ctrl+K</code> palette jumps anywhere as you type.</p>
+          <h3 data-i18n="feat_3_h">Instant search</h3>
+          <p data-i18n="feat_3_p">Full-text search (SQLite FTS5) over subject, sender, recipients and bodies. Ctrl+K palette jumps anywhere as you type.</p>
         </div>
         <div class="card">
-          <h3>Real threading</h3>
-          <p>Conversation threading via References / In-Reply-To with subject fallback. Reply, reply-all and forward with proper headers.</p>
+          <h3 data-i18n="feat_4_h">Real threading</h3>
+          <p data-i18n="feat_4_p">Conversation threading via References / In-Reply-To with subject fallback. Reply, reply-all and forward with proper headers.</p>
         </div>
         <div class="card">
-          <h3>Push &amp; tray</h3>
-          <p>IMAP IDLE push + polling, new-mail notifications with a mark-read action. Lives in the tray, syncing in the background.</p>
+          <h3 data-i18n="feat_5_h">Push &amp; tray</h3>
+          <p data-i18n="feat_5_p">IMAP IDLE push + polling, new-mail notifications with a mark-read action. Lives in the tray, syncing in the background.</p>
         </div>
         <div class="card">
-          <h3>Safe HTML mail</h3>
-          <p>HTML sanitized in Rust (ammonia), rendered in a sandboxed iframe with strict CSP. Remote images blocked by default.</p>
+          <h3 data-i18n="feat_6_h">Safe HTML mail</h3>
+          <p data-i18n="feat_6_p">HTML sanitized in Rust (ammonia), rendered in a sandboxed iframe with strict CSP. Remote images blocked by default.</p>
         </div>
       </div>
 
       <div style="margin-top:40px">
         <div class="keys">
-          <span><b>Ctrl K</b> · palette</span>
-          <span><b>Ctrl N</b> · compose</span>
-          <span><b>j</b>/<b>k</b> · move</span>
-          <span><b>e</b> · archive</span>
-          <span><b>#</b> · delete</span>
-          <span><b>s</b> · star</span>
-          <span><b>u</b> · unread</span>
-          <span><b>r</b> · reply</span>
-          <span><b>/</b> · search</span>
+          <span><b>Ctrl K</b> · <span data-i18n="key_palette">palette</span></span>
+          <span><b>Ctrl N</b> · <span data-i18n="key_compose">compose</span></span>
+          <span><b>j</b>/<b>k</b> · <span data-i18n="key_move">move</span></span>
+          <span><b>e</b> · <span data-i18n="key_archive">archive</span></span>
+          <span><b>#</b> · <span data-i18n="key_delete">delete</span></span>
+          <span><b>s</b> · <span data-i18n="key_star">star</span></span>
+          <span><b>u</b> · <span data-i18n="key_unread">unread</span></span>
+          <span><b>r</b> · <span data-i18n="key_reply">reply</span></span>
+          <span><b>/</b> · <span data-i18n="key_search">search</span></span>
         </div>
       </div>
     </div>
@@ -299,16 +319,16 @@
   <!-- AI -->
   <section id="ai" class="ai">
     <div class="wrap">
-      <span class="eyebrow">✦ Bring your own key</span>
-      <h2>AI that respects your bill and your privacy</h2>
-      <p class="lead">Paste an Anthropic or OpenRouter key and the ✦ violet buttons light up. Your key, your bill — no markup, no proxy, no accounts. Stored in Windows Credential Manager.</p>
+      <span class="eyebrow" data-i18n="ai_eyebrow">✦ Bring your own key</span>
+      <h2 data-i18n="ai_h2">AI that respects your bill and your privacy</h2>
+      <p class="lead" data-i18n="ai_lead">Paste an Anthropic or OpenRouter key and the ✦ violet buttons light up. Your key, your bill — no markup, no proxy, no accounts. Stored in Windows Credential Manager.</p>
       <ul class="ai-list">
-        <li><b>Draft reply</b> — tell Claude what to say, get a draft in your voice; make it shorter, warmer or more formal in one click.</li>
-        <li><b>AI Recap</b> — one click digests every unread email in your inbox, action items first with cited sources, and marks them read.</li>
-        <li><b>Summarize</b> — long threads in a few bullets, action items called out.</li>
-        <li><b>Ask about this</b> — question any specific email.</li>
-        <li><b>Mailbox chat</b> — "which invoices are still unpaid this month?" Answers cite the source emails as clickable chips.</li>
-        <li><b>Your writer, your voice</b> — set your name and style, give the AI standing instructions. Two providers: Claude direct, or OpenRouter for GPT, Gemini, Grok and hundreds more.</li>
+        <li data-i18n-html="ai_1"><b>Draft reply</b> — tell Claude what to say, get a draft in your voice; make it shorter, warmer or more formal in one click.</li>
+        <li data-i18n-html="ai_2"><b>AI Recap</b> — one click digests every unread email in your inbox, action items first with cited sources, and marks them read.</li>
+        <li data-i18n-html="ai_3"><b>Summarize</b> — long threads in a few bullets, action items called out.</li>
+        <li data-i18n-html="ai_4"><b>Ask about this</b> — question any specific email.</li>
+        <li data-i18n-html="ai_5"><b>Mailbox chat</b> — "which invoices are still unpaid this month?" Answers cite the source emails as clickable chips.</li>
+        <li data-i18n-html="ai_6"><b>Your writer, your voice</b> — set your name and style, give the AI standing instructions. Two providers: Claude direct, or OpenRouter for GPT, Gemini, Grok and hundreds more.</li>
       </ul>
 
       <div class="shot" style="margin-top:48px">
@@ -322,25 +342,28 @@
     <div class="wrap">
       <div class="install-box">
         <div class="txt">
-          <h3>Install in seconds</h3>
-          <p>Download the latest installer — the <code>.exe</code> (NSIS) installs per-user without admin rights; an <code>.msi</code> is published for managed environments. Requires Windows 10/11 with WebView2 (preinstalled on Windows 11).</p>
+          <h3 data-i18n="install_h3">Install in seconds</h3>
+          <p data-i18n-html="install_p">Download the latest installer — the <code>.exe</code> (NSIS) installs per-user without admin rights; an <code>.msi</code> is published for managed environments. Requires Windows 10/11 with WebView2 (preinstalled on Windows 11).</p>
         </div>
-        <a class="btn" href="https://github.com/nikserg/skim/releases/latest">⬇&nbsp; Get the latest release</a>
+        <a class="btn" href="https://github.com/nikserg/skim/releases/latest" data-i18n="install_btn">⬇&nbsp; Get the latest release</a>
       </div>
     </div>
   </section>
 
   <footer>
     <div class="wrap">
-      <span>MIT © Skim contributors</span>
+      <span data-i18n="foot_copy">MIT © Skim contributors</span>
       <div class="foot-links">
-        <a href="https://github.com/nikserg/skim">Source</a>
-        <a href="https://github.com/nikserg/skim/releases">Releases</a>
-        <a href="https://github.com/nikserg/skim/blob/main/CONTRIBUTING.md">Contribute</a>
-        <a href="https://github.com/nikserg/skim/issues">Issues</a>
+        <a href="https://github.com/nikserg/skim" data-i18n="foot_source">Source</a>
+        <a href="https://github.com/nikserg/skim/releases" data-i18n="foot_releases">Releases</a>
+        <a href="privacy.html" data-i18n="foot_privacy">Privacy</a>
+        <a href="terms.html" data-i18n="foot_terms">Terms</a>
+        <a href="https://github.com/nikserg/skim/issues" data-i18n="foot_issues">Issues</a>
       </div>
     </div>
   </footer>
 
+  <script src="assets/locales.js"></script>
+  <script src="assets/app.js"></script>
 </body>
 </html>

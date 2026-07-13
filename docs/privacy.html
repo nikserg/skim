@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy — Skim</title>
+  <meta name="description" content="Skim's privacy policy. Skim is a local-first Windows email client: your mail and credentials stay on your device, and the developer collects nothing.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236b46f2'/%3E%3Crect x='8' y='11' width='16' height='2.6' rx='1.3' fill='white'/%3E%3Crect x='8' y='18' width='10' height='2.6' rx='1.3' fill='white' fill-opacity='0.75'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="assets/legal.css" rel="stylesheet">
+</head>
+<body>
+
+  <nav>
+    <div class="wrap">
+      <a class="brand" href="./">
+        <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
+          <rect width="32" height="32" rx="7" fill="#6b46f2"/>
+          <rect x="8" y="11" width="16" height="2.6" rx="1.3" fill="white"/>
+          <rect x="8" y="18" width="10" height="2.6" rx="1.3" fill="white" fill-opacity="0.75"/>
+        </svg>
+        Skim
+      </a>
+      <div class="nav-links">
+        <a href="./" data-i18n="nav_home">Home</a>
+        <a href="https://github.com/nikserg/skim" data-i18n="nav_github">GitHub</a>
+        <label class="lang" title="Language">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <select id="langSelect" aria-label="Language"></select>
+        </label>
+        <a class="btn" href="https://github.com/nikserg/skim/releases/latest" data-i18n="nav_download">Download</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <div class="wrap legal">
+      <h1>Privacy Policy</h1>
+      <p class="updated">Last updated: July 13, 2026</p>
+      <p class="note" data-i18n="legal_note">This document is provided in English, which is the authoritative version.</p>
+
+      <p class="lead">Skim is a <strong>local-first, open-source email client</strong> for Windows. It runs entirely on your own computer. This policy explains what data Skim handles, where that data goes, and — importantly — what the Skim project does <em>not</em> collect.</p>
+
+      <h2>The short version</h2>
+      <ul>
+        <li>Skim has <strong>no servers</strong>. The Skim project does not collect, receive, store, or transmit your email, contacts, credentials, or usage data.</li>
+        <li>Your mail is synced <strong>directly between your device and your mail provider</strong> over IMAP/SMTP, and cached locally on your device.</li>
+        <li>AI features are <strong>optional</strong> and only work when you supply your own API key. Nothing is sent to an AI provider unless you trigger an AI action.</li>
+        <li>There is <strong>no telemetry</strong>, no analytics, and no tracking of any kind.</li>
+      </ul>
+
+      <h2>Who this policy is from</h2>
+      <p>"Skim", "we", or "the project" refers to the developer and contributors of the open-source Skim application, distributed under the MIT license at <a href="https://github.com/nikserg/skim">github.com/nikserg/skim</a>. Because Skim runs locally and operates no backend service, the project is not a data controller of your mailbox content — you connect Skim directly to services you already control.</p>
+
+      <h2>Information Skim handles, and where it stays</h2>
+      <p>All of the following is processed and stored <strong>only on your device</strong>. It is never sent to the Skim project.</p>
+
+      <h3>Account credentials and tokens</h3>
+      <p>To connect to your mailbox, Skim needs either an app password or an OAuth token. These secrets — along with any AI API key — are stored in the <strong>Windows Credential Manager</strong>, the operating system's secure credential store. They are never written to Skim's database or to any configuration file, and are used solely to authenticate with the services you chose.</p>
+
+      <h3>Email content and metadata</h3>
+      <p>Skim synchronizes your messages, folders, and flags over IMAP straight from your mail provider into a <strong>local SQLite cache</strong> on your device. This local copy powers offline access and instant full-text search. It is stored on your machine and is not shared with anyone. Outgoing mail is sent through your provider's SMTP server.</p>
+
+      <h3>AI feature data (optional)</h3>
+      <p>Skim's AI features are disabled until you add your own API key for Anthropic or OpenRouter. When — and only when — you invoke an AI action (for example "Draft reply", "Summarize", "AI Recap", or a mailbox question), Skim sends the <strong>relevant message content and your prompt directly from your device to the AI provider you selected</strong>, over an encrypted connection, in order to generate the result. That request is governed by the chosen provider's own privacy policy. Skim adds no proxy, no intermediary server, and no account of its own. If you never add a key, no email content ever leaves your device for AI purposes.</p>
+
+      <h3>Local application settings</h3>
+      <p>Your preferences (language, theme, writer profile, and similar) are stored locally on your device so the app remembers them between launches.</p>
+
+      <h2>What the Skim project collects</h2>
+      <p><strong>Nothing.</strong> Skim contains no analytics SDKs, no telemetry, no crash reporting to us, no advertising identifiers, and no phone-home behavior. We have no way to see your mailbox, your usage, or whether you use AI features at all.</p>
+
+      <h2>Google user data and Limited Use</h2>
+      <p>If you connect a Gmail account using "Continue with Google", Skim uses Google OAuth to obtain access to your Google mailbox on your behalf. The token is stored in Windows Credential Manager and used only to display and manage your mail within Skim, on your device.</p>
+      <p>Skim's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including its <strong>Limited Use</strong> requirements. Specifically:</p>
+      <ul>
+        <li>Google user data is used <strong>only to provide and improve the app's user-facing email features</strong> that you can see in Skim.</li>
+        <li>Skim does <strong>not</strong> transfer Google user data to the Skim project or to any third party, except (a) as necessary to provide a feature you invoke — such as sending message content to an AI provider you configured — or (b) as required by law.</li>
+        <li>Skim does <strong>not</strong> use Google user data for advertising, and does not sell it.</li>
+        <li>Skim does <strong>not</strong> allow humans to read your Google user data, except where you give explicit consent for specific messages, where it is necessary for security purposes (such as investigating abuse), or where required by law.</li>
+      </ul>
+
+      <h2>Third-party services</h2>
+      <p>Because you connect Skim directly to services you choose, the data you route through them is subject to their privacy policies:</p>
+      <ul>
+        <li>Your <strong>email provider</strong> (e.g. Google, Microsoft, Yahoo, Apple, or any IMAP/SMTP host).</li>
+        <li>Your chosen <strong>AI provider</strong>, if you enable AI: <a href="https://www.anthropic.com/legal/privacy">Anthropic</a> or <a href="https://openrouter.ai/privacy">OpenRouter</a>.</li>
+      </ul>
+
+      <h2>Security</h2>
+      <p>All connections to mail servers and AI providers use TLS encryption. Secrets are held in the Windows Credential Manager rather than in plaintext. Because your data never leaves your device except to the services you connect, the attack surface controlled by the Skim project is effectively limited to the application code itself, which is open source and auditable.</p>
+
+      <h2>Data retention and deletion</h2>
+      <p>You are in full control of your data because it lives on your machine. To remove it:</p>
+      <ul>
+        <li><strong>Disconnect an account</strong> in Skim to delete its local cache and remove its stored credentials.</li>
+        <li><strong>Remove your API key</strong> in Settings → Skim AI to revoke AI access; the key is deleted from Credential Manager.</li>
+        <li><strong>Uninstall Skim</strong> to remove the application. You may also delete the local database and any remaining entries in Windows Credential Manager.</li>
+        <li>You can revoke Skim's Google access at any time from your <a href="https://myaccount.google.com/permissions">Google Account permissions</a> page.</li>
+      </ul>
+
+      <h2>Children</h2>
+      <p>Skim is a general-purpose productivity tool and is not directed to children under 13 (or the minimum age of digital consent in your jurisdiction).</p>
+
+      <h2>Changes to this policy</h2>
+      <p>We may update this policy as the software evolves. Material changes will be reflected here with a new "Last updated" date, and the history is publicly visible in the project's Git repository.</p>
+
+      <h2>Contact</h2>
+      <p>Questions about this policy or Skim's data practices can be raised via <a href="https://github.com/nikserg/skim/issues">GitHub Issues</a>.</p>
+    </div>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span data-i18n="foot_copy">MIT © Skim contributors</span>
+      <div class="foot-links">
+        <a href="./" data-i18n="nav_home">Home</a>
+        <a href="https://github.com/nikserg/skim" data-i18n="foot_source">Source</a>
+        <a href="privacy.html" data-i18n="foot_privacy">Privacy</a>
+        <a href="terms.html" data-i18n="foot_terms">Terms</a>
+        <a href="https://github.com/nikserg/skim/issues" data-i18n="foot_issues">Issues</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/locales.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
