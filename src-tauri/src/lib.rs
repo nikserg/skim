@@ -122,7 +122,7 @@ pub fn run() {
                     .with(|conn| db::queries::get_setting(conn, "autostart"))
                     .ok()
                     .flatten()
-                    .map_or(true, |v| v == "1");
+                    .is_none_or(|v| v == "1");
                 let autolaunch = app.autolaunch();
                 match (wanted, autolaunch.is_enabled().unwrap_or(false)) {
                     (true, false) => {
