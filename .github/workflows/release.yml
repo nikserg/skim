@@ -40,5 +40,5 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Skim ${{ github.ref_name }}"
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
