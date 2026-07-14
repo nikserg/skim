@@ -12,7 +12,22 @@
 
   $effect(() => () => resizeObs?.disconnect());
 
-  const srcdoc = $derived(buildDoc(html, ui.effective === "dark"));
+  // Emails that carry their own colors (inline color/background, bgcolor,
+  // <font color>) assume a light page background they never declare. Honor
+  // that by rendering them on the light canvas even in dark theme — forcing
+  // the dark canvas produced dark-on-dark, invisible text. Plain-text and
+  // colorless emails still follow the app theme.
+  const srcdoc = $derived(
+    buildDoc(html, ui.effective === "dark" && !hasOwnColors(html)),
+  );
+
+  function hasOwnColors(body: string): boolean {
+    return (
+      /(?:^|[;\s"'])(?:background-color|background|color)\s*:/i.test(body) ||
+      /\bbgcolor\s*=/i.test(body) ||
+      /<font\b[^>]*\bcolor\s*=/i.test(body)
+    );
+  }
 
   function buildDoc(body: string, dark: boolean): string {
     // The default canvas follows the app theme; emails that bring their own

@@ -3,6 +3,10 @@ import type { Theme } from "../types";
 
 const media = window.matchMedia("(prefers-color-scheme: dark)");
 
+/** AI actions the reading pane exposes to the global keyboard handler. */
+type ReadingAiActions = { draftReply: () => void; summarize: () => void; ask: () => void };
+let readingAi: ReadingAiActions | null = null;
+
 const state = $state({
   theme: "system" as Theme,
   /** Resolved light/dark after applying the system preference. */
@@ -70,5 +74,11 @@ export const ui = {
   },
   closeShortcuts() {
     state.shortcutsOpen = false;
+  },
+  get readingAi() {
+    return readingAi;
+  },
+  setReadingAi(actions: ReadingAiActions | null) {
+    readingAi = actions;
   },
 };

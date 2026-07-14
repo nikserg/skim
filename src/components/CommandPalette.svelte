@@ -194,19 +194,22 @@
   }
 
   async function activate(index: number) {
-    if (index < filteredCommands.length) {
-      const cmd = filteredCommands[index];
+    if (aiItemVisible && index === 0) {
+      startChat(input.trim());
+      return;
+    }
+    const cmdIndex = index - (aiItemVisible ? 1 : 0);
+    if (cmdIndex < filteredCommands.length) {
+      const cmd = filteredCommands[cmdIndex];
       palette.hide();
       await cmd.run();
       return;
     }
-    const hitIndex = index - filteredCommands.length;
+    const hitIndex = cmdIndex - filteredCommands.length;
     if (hitIndex < hits.length) {
       const hit = hits[hitIndex];
       if (hit) await openHit(hit);
-      return;
     }
-    if (aiItemVisible) startChat(input.trim());
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -310,16 +313,29 @@
           bind:value={input}
           oninput={onInput}
           onkeydown={onKeydown}
-          placeholder={t("palette.placeholder")}
+          placeholder={ai.keyPresent ? t("palette.placeholder_ai") : t("palette.placeholder")}
           spellcheck="false"
         />
         <kbd>ESC</kbd>
       </div>
 
       <div class="items">
+        {#if aiItemVisible}
+          <button
+            class="item ai-item"
+            class:active={active === 0}
+            onclick={() => activate(0)}
+            onmouseenter={() => (active = 0)}
+          >
+            <span class="cmd-icon spark">✦</span>
+            <span class="label">{t("ai.ask_ai", { q: input.trim() })}</span>
+          </button>
+        {/if}
+
         {#if filteredCommands.length > 0}
           <div class="microlabel section">{t("palette.commands")}</div>
-          {#each filteredCommands as cmd, i (cmd.id)}
+          {#each filteredCommands as cmd, j (cmd.id)}
+            {@const i = (aiItemVisible ? 1 : 0) + j}
             <button
               class="item"
               class:active={active === i}
@@ -336,7 +352,7 @@
         {#if hits.length > 0}
           <div class="microlabel section">{t("palette.results")}</div>
           {#each hits as hit, j (hit.messageId)}
-            {@const i = filteredCommands.length + j}
+            {@const i = (aiItemVisible ? 1 : 0) + filteredCommands.length + j}
             <button
               class="item"
               class:active={active === i}
@@ -356,19 +372,6 @@
               <span class="date microlabel">{formatDate(hit.date)}</span>
             </button>
           {/each}
-        {/if}
-
-        {#if aiItemVisible}
-          {@const i = filteredCommands.length + hits.length}
-          <button
-            class="item ai-item"
-            class:active={active === i}
-            onclick={() => activate(i)}
-            onmouseenter={() => (active = i)}
-          >
-            <span class="cmd-icon spark">✦</span>
-            <span class="label">{t("ai.ask_ai", { q: input.trim() })}</span>
-          </button>
         {/if}
 
         {#if totalItems === 0 && input.trim().length >= 2}

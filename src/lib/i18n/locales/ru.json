@@ -123,6 +123,7 @@
   "onb.ai_verifying": "Проверка…",
   "onb.ai_verified": "Проверен ✓",
   "palette.placeholder": "Поиск по почте или команда…",
+  "palette.placeholder_ai": "Поиск | ✦ AI",
   "palette.no_results": "Ничего не найдено",
   "palette.commands": "Команды",
   "palette.results": "Письма",

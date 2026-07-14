@@ -115,6 +115,7 @@
   "onb.ai_verifying": "Verifying…",
   "onb.ai_verified": "Verified ✓",
   "palette.placeholder": "Search mail or type a command…",
+  "palette.placeholder_ai": "Search | ✦ AI",
   "palette.no_results": "Nothing found",
   "palette.commands": "Commands",
   "palette.results": "Messages",

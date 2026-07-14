@@ -3,7 +3,8 @@
 //! One worker IMAP session executes everything (folder sync, body fetches,
 //! the offline op queue) serialized through an mpsc command channel. A second
 //! lightweight connection IDLEs on INBOX and pokes the worker when new mail
-//! arrives; a 5-minute poll covers servers without IDLE.
+//! arrives; a periodic poll reconciles what IDLE can't see (other folders,
+//! flag/read state changed on another device), gated by a cheap STATUS probe.
 
 use crate::db::models::{Account, NewMessage};
 use crate::db::{bodies, queries, Db};
@@ -19,7 +20,9 @@ use tokio::sync::{mpsc, oneshot};
 const INBOX_WINDOW: u32 = 500;
 const FOLDER_WINDOW: u32 = 200;
 const CHUNK: u32 = 100;
-const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+// IDLE keeps the inbox instant, so this poll only backfills the slow-changing
+// rest (other folders, read state from other devices) — it can run infrequently.
+const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(300);
 const IDLE_REISSUE: std::time::Duration = std::time::Duration::from_secs(25 * 60);
 
 pub enum SyncCommand {
@@ -69,6 +72,16 @@ struct Engine {
     session: Option<imap_client::Session>,
     selected: Option<String>,
     oauth_token: Option<(String, i64)>,
+}
+
+/// A folder's server-side STATUS snapshot. When an untouched folder reports the
+/// same values as last pass, its expensive SELECT + flag fetch can be skipped.
+#[derive(Clone, Copy)]
+struct FolderStatus {
+    uidvalidity: i64,
+    uidnext: i64,
+    exists: i64,
+    unseen: i64,
 }
 
 pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> SyncHandle {
@@ -253,13 +266,50 @@ impl Engine {
             .call(move |conn| queries::list_folders(conn, &account_id))
             .await?;
 
+        let started = std::time::Instant::now();
+        let total = folders.len();
+        let mut synced = 0usize;
+        let mut skipped = 0usize;
         let mut any_changes = false;
         for folder in folders {
             if folder.role.as_deref() == Some("all") {
                 continue;
             }
+
+            // A cheap STATUS probe gates the expensive SELECT + flag fetch:
+            // skip folders that report the same snapshot as the last pass. IMAP
+            // forbids STATUS on the selected mailbox, so that one always syncs.
+            let probe = if self.selected.as_deref() == Some(&folder.imap_name) {
+                None
+            } else {
+                match self.probe_status(&folder.imap_name).await {
+                    Ok(st) => {
+                        if self.status_matches(folder.id, &st).await {
+                            skipped += 1;
+                            continue;
+                        }
+                        Some(st)
+                    }
+                    // A probe failure that looks like a session problem aborts
+                    // the pass; anything else falls through to a full sync.
+                    Err(e) => match e.code() {
+                        "auth" | "network" | "tls" | "oauth" | "oauth_expired" => return Err(e),
+                        _ => {
+                            tracing::debug!(folder = %folder.imap_name, error = %e, "STATUS probe failed");
+                            None
+                        }
+                    },
+                }
+            };
+
             match self.sync_folder(folder.id, &folder.imap_name).await {
-                Ok(changed) => any_changes |= changed,
+                Ok(changed) => {
+                    synced += 1;
+                    any_changes |= changed;
+                    if let Some(st) = probe {
+                        self.store_status(folder.id, &st).await;
+                    }
+                }
                 Err(e) => {
                     tracing::warn!(folder = %folder.imap_name, error = %e, "folder sync failed");
                     match e.code() {
@@ -272,7 +322,75 @@ impl Engine {
         if any_changes {
             let _ = self.app.emit("mail:updated", json!({}));
         }
+        tracing::info!(
+            total,
+            synced,
+            skipped,
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "folder sweep complete"
+        );
         Ok(())
+    }
+
+    /// Cheap server-side snapshot of a folder — one round-trip, no SELECT.
+    async fn probe_status(&mut self, imap_name: &str) -> Result<FolderStatus> {
+        let session = self.session().await?;
+        let mb = session
+            .status(imap_name, "(UIDVALIDITY UIDNEXT MESSAGES UNSEEN)")
+            .await
+            .map_err(imap_err)?;
+        Ok(FolderStatus {
+            uidvalidity: mb.uid_validity.unwrap_or(0) as i64,
+            uidnext: mb.uid_next.unwrap_or(0) as i64,
+            exists: mb.exists as i64,
+            unseen: mb.unseen.unwrap_or(0) as i64,
+        })
+    }
+
+    /// True when `st` equals the snapshot stored on the last successful sync, so
+    /// the folder is provably unchanged and can be skipped.
+    async fn status_matches(&self, folder_id: i64, st: &FolderStatus) -> bool {
+        let stored = self
+            .db
+            .call(move |conn| {
+                conn.query_row(
+                    "SELECT status_uidvalidity, status_uidnext, status_exists, status_unseen
+                     FROM folders WHERE id = ?1",
+                    rusqlite::params![folder_id],
+                    |r| {
+                        Ok((
+                            r.get::<_, Option<i64>>(0)?,
+                            r.get::<_, Option<i64>>(1)?,
+                            r.get::<_, Option<i64>>(2)?,
+                            r.get::<_, Option<i64>>(3)?,
+                        ))
+                    },
+                )
+            })
+            .await;
+        matches!(
+            stored,
+            Ok((Some(uv), Some(un), Some(ex), Some(us)))
+                if uv == st.uidvalidity && un == st.uidnext && ex == st.exists && us == st.unseen
+        )
+    }
+
+    /// Persist the snapshot that `status_matches` compares against next pass.
+    async fn store_status(&self, folder_id: i64, st: &FolderStatus) {
+        let st = *st;
+        let _ = self
+            .db
+            .call(move |conn| {
+                conn.execute(
+                    "UPDATE folders
+                     SET status_uidvalidity = ?2, status_uidnext = ?3,
+                         status_exists = ?4, status_unseen = ?5
+                     WHERE id = ?1",
+                    rusqlite::params![folder_id, st.uidvalidity, st.uidnext, st.exists, st.unseen],
+                )
+                .map(|_| ())
+            })
+            .await;
     }
 
     async fn discover_folders(&mut self) -> Result<()> {

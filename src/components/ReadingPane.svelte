@@ -126,6 +126,14 @@
     localStorage.setItem("skim.aiRowOpen", aiRowOpen ? "1" : "0");
   }
 
+  // Expose the AI actions to the global keyboard handler in App.svelte. The
+  // closures read the current reactive `latest`/`detail`, so a single
+  // registration stays correct across thread changes.
+  $effect(() => {
+    ui.setReadingAi({ draftReply: aiDraftReply, summarize, ask: openAsk });
+    return () => ui.setReadingAi(null);
+  });
+
   $effect(() => {
     const threadId = mail.selectedThreadId;
     if (threadId === null) {
@@ -416,9 +424,9 @@
       {#if aiRowOpen}
         {#if ai.keyPresent}
           <div class="ai-row">
-            <button class="ai-btn" onclick={aiDraftReply}>✦ {t("ai.draft_reply")}</button>
-            <button class="ai-btn" onclick={summarize}>✦ {t("ai.summarize")}</button>
-            <button class="ai-btn" onclick={openAsk}>✦ {t("ai.ask_about")}</button>
+            <button class="ai-btn" onclick={aiDraftReply}>✦ {t("ai.draft_reply")}<kbd>D</kbd></button>
+            <button class="ai-btn" onclick={summarize}>✦ {t("ai.summarize")}<kbd>M</kbd></button>
+            <button class="ai-btn" onclick={openAsk}>✦ {t("ai.ask_about")}<kbd>Q</kbd></button>
           </div>
         {:else}
           <div class="ai-row ai-hint">
@@ -440,8 +448,8 @@
           ✦
         </button>
         <button class="btn" onclick={() => reply("reply")}>{t("reading.reply")}<kbd>R</kbd></button>
-        <button class="btn" onclick={() => reply("reply_all")}>{t("reading.reply_all")}</button>
-        <button class="btn" onclick={() => reply("forward")}>{t("reading.forward")}</button>
+        <button class="btn" onclick={() => reply("reply_all")}>{t("reading.reply_all")}<kbd>A</kbd></button>
+        <button class="btn" onclick={() => reply("forward")}>{t("reading.forward")}<kbd>F</kbd></button>
       </div>
     </footer>
   {/if}
@@ -501,7 +509,8 @@
     font-size: 10px;
     color: var(--text-faint);
   }
-  .btn kbd {
+  .btn kbd,
+  .ai-btn kbd {
     margin-left: 6px;
   }
 

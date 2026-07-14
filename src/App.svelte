@@ -89,12 +89,12 @@
     }
   }
 
-  async function replyToSelected() {
+  async function replyToSelected(mode: "reply" | "reply_all" | "forward" = "reply") {
     const thread = mail.selectedThread;
     if (!thread) return;
     const detail = await api.getThread(thread.id);
     const latest = detail.messages[detail.messages.length - 1];
-    const draft = await api.getReplyTemplate(latest.id, "reply");
+    const draft = await api.getReplyTemplate(latest.id, mode);
     await api.openComposeWindow(draft.id);
   }
 
@@ -139,7 +139,22 @@
         void actOnSelected("unread");
         return;
       case "KeyR":
-        void replyToSelected();
+        void replyToSelected("reply");
+        return;
+      case "KeyA":
+        void replyToSelected("reply_all");
+        return;
+      case "KeyF":
+        void replyToSelected("forward");
+        return;
+      case "KeyD":
+        if (ai.keyPresent) ui.readingAi?.draftReply();
+        return;
+      case "KeyM":
+        if (ai.keyPresent) ui.readingAi?.summarize();
+        return;
+      case "KeyQ":
+        if (ai.keyPresent) ui.readingAi?.ask();
         return;
     }
 

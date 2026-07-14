@@ -14,6 +14,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001_init.sql"),
     include_str!("migrations/0002_invites.sql"),
     include_str!("migrations/0003_draft_attachments.sql"),
+    include_str!("migrations/0004_folder_status.sql"),
 ];
 
 /// Handle to the single SQLite connection (WAL mode). All access goes through

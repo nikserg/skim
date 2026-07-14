@@ -30,6 +30,17 @@
         { label: t("reading.star"), keys: ["S"] },
         { label: t("reading.toggle_read"), keys: ["U"] },
         { label: t("reading.reply"), keys: ["R"] },
+        { label: t("reading.reply_all"), keys: ["A"] },
+        { label: t("reading.forward"), keys: ["F"] },
+      ],
+    },
+    {
+      // Brand name, matching the hardcoded AI-toggle title in ReadingPane — not localized.
+      title: "Skim AI",
+      rows: [
+        { label: t("ai.draft_reply"), keys: ["D"] },
+        { label: t("ai.summarize"), keys: ["M"] },
+        { label: t("ai.ask_about"), keys: ["Q"] },
       ],
     },
     {
