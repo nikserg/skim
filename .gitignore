@@ -10,6 +10,7 @@ src-tauri/target/
 .env
 .vscode/
 .idea/
+.claude/
 
 # Design sources (kept locally, not shipped)
 design/
