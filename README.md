@@ -4,7 +4,7 @@
 
 # Skim
 
-**A free AI email client for Windows that doesn't suck _(that much)_.**
+**A free AI email client for Windows that doesn't suck _(that hard)_.**
 
 Minimalist, native, fast. Bring your own AI key for the assistant and co-writer. No subscriptions, free forever.
 
