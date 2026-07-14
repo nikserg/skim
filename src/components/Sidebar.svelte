@@ -33,6 +33,11 @@
     junk: "M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM3.5 3.5l9 9",
   };
 
+  // "Отправленные" и "Черновики" содержат письма, написанные самим
+  // пользователем, — счётчик непрочитанных для них бессмысленен.
+  const noUnreadRoles = new Set(["sent", "drafts"]);
+  const showsUnread = (role: string | null) => !(role && noUnreadRoles.has(role));
+
   const mainFolders = $derived(
     mail.folders.filter((f) => f.role !== null && f.role !== "all" && f.role !== "starred"),
   );
@@ -43,6 +48,7 @@
   <button class="compose" onclick={compose}>
     <span class="plus">+</span>
     {t("nav.compose")}
+    <kbd>Ctrl N</kbd>
   </button>
 
   <button class="search" onclick={() => palette.show()}>
@@ -64,7 +70,7 @@
           <path d={roleIcon[folder.role ?? "inbox"] ?? roleIcon.inbox} />
         </svg>
         <span class="name">{folder.role && roleKey[folder.role] ? t(roleKey[folder.role]) : folder.displayName}</span>
-        {#if folder.unreadCount > 0}
+        {#if folder.unreadCount > 0 && showsUnread(folder.role)}
           <span class="count">{folder.unreadCount}</span>
         {/if}
       </button>
@@ -168,6 +174,10 @@
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-faint);
+  }
+  .compose kbd {
+    color: var(--bg);
+    opacity: 0.55;
   }
 
   .section {

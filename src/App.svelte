@@ -5,6 +5,7 @@
   import ReadingPane from "./components/ReadingPane.svelte";
   import AiRecap from "./components/AiRecap.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
+  import ShortcutsOverlay from "./components/ShortcutsOverlay.svelte";
   import Onboarding from "./components/onboarding/Onboarding.svelte";
   import { api } from "./lib/api";
   import { setLocale } from "./lib/i18n/index.svelte";
@@ -79,10 +80,12 @@
         mail.patchThreadRow(thread.id, { isStarred: !thread.isStarred });
         void api.setStarred(ids, !thread.isStarred);
         break;
-      case "unread":
-        mail.patchThreadRow(thread.id, { isRead: false });
-        void api.markRead(ids, false);
+      case "unread": {
+        const next = !thread.isRead;
+        mail.patchThreadRow(thread.id, { isRead: next });
+        void api.markRead(ids, next);
         break;
+      }
     }
   }
 
@@ -116,7 +119,8 @@
       void composeNew();
       return;
     }
-    if (palette.open || isTyping() || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (palette.open || ui.shortcutsOpen || isTyping() || e.ctrlKey || e.metaKey || e.altKey)
+      return;
 
     switch (e.code) {
       case "KeyJ":
@@ -144,6 +148,10 @@
       case "/":
         e.preventDefault();
         palette.show();
+        break;
+      case "?":
+        e.preventDefault();
+        ui.openShortcuts();
         break;
       case "#":
       case "Delete":
@@ -173,6 +181,9 @@
         {/if}
       </main>
       <CommandPalette />
+      {#if ui.shortcutsOpen}
+        <ShortcutsOverlay />
+      {/if}
     {:else}
       <Onboarding oncomplete={onboarded} />
     {/if}

@@ -1,5 +1,6 @@
 pub mod accounts;
 pub mod bodies;
+pub mod draft_attachments;
 pub mod drafts;
 pub mod models;
 pub mod queries;
@@ -12,6 +13,7 @@ use std::sync::{Arc, Mutex};
 const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001_init.sql"),
     include_str!("migrations/0002_invites.sql"),
+    include_str!("migrations/0003_draft_attachments.sql"),
 ];
 
 /// Handle to the single SQLite connection (WAL mode). All access goes through

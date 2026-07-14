@@ -2,7 +2,7 @@
   // The compose window's root component (mounted for #/compose/{id}).
   import { aiApi, aiStream, api, errorMessage } from "../lib/api";
   import { t } from "../lib/i18n/index.svelte";
-  import type { Draft } from "../lib/types";
+  import type { Draft, DraftAttachment } from "../lib/types";
   import AddressInput from "./AddressInput.svelte";
 
   let { draftId }: { draftId: number } = $props();
@@ -12,6 +12,63 @@
   let sending = $state(false);
   let error = $state("");
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // ---- Attachments ----
+  const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+  let attachments = $state<DraftAttachment[]>([]);
+  let dragActive = $state(false);
+  let fileInput = $state<HTMLInputElement | null>(null);
+
+  function formatSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  /** Read each file's bytes and stage it on the draft. Shared by the paperclip
+   *  button and drag & drop. */
+  async function attachFiles(files: FileList | File[] | null) {
+    if (!draft || !files) return;
+    for (const file of Array.from(files)) {
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        error = t("compose.attach_too_large");
+        continue;
+      }
+      try {
+        const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
+        const meta = await api.addDraftAttachment(
+          draft.id,
+          file.name,
+          file.type || "application/octet-stream",
+          bytes,
+        );
+        attachments.push(meta);
+      } catch (e) {
+        error = errorMessage(e);
+      }
+    }
+  }
+
+  async function pickFiles(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    await attachFiles(input.files);
+    input.value = ""; // allow re-picking the same file
+  }
+
+  async function removeAttachment(id: number) {
+    try {
+      await api.removeDraftAttachment(id);
+      attachments = attachments.filter((a) => a.id !== id);
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
+
+  function onDrop(e: DragEvent) {
+    e.preventDefault();
+    dragActive = false;
+    void attachFiles(e.dataTransfer?.files ?? null);
+  }
 
   // ---- AI drafting ----
   let aiAvailable = $state(false);
@@ -176,6 +233,7 @@
         const d = await api.getDraft(draftId);
         draft = d;
         showCc = d.cc.length > 0 || d.bcc.length > 0;
+        attachments = await api.listDraftAttachments(draftId);
       } catch (e) {
         error = errorMessage(e);
       }
@@ -224,7 +282,20 @@
   const title = $derived(draft?.subject || t("compose.new"));
 </script>
 
-<div class="compose-window">
+<div
+  class="compose-window"
+  role="region"
+  ondragover={(e) => {
+    e.preventDefault();
+    dragActive = true;
+  }}
+  ondragleave={(e) => {
+    // Only clear when the pointer actually leaves the window, not on child
+    // boundaries (dragleave fires when moving between child elements).
+    if (e.currentTarget === e.target) dragActive = false;
+  }}
+  ondrop={onDrop}
+>
   <header class="titlebar" data-tauri-drag-region>
     <span class="title" data-tauri-drag-region>{title}</span>
     <div class="controls">
@@ -335,6 +406,21 @@
       spellcheck="true"
     ></textarea>
 
+    {#if attachments.length > 0}
+      <div class="attach-row">
+        {#each attachments as a (a.id)}
+          <div class="chip">
+            <svg class="clip" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12.5 7.5l-5 5a3 3 0 0 1-4.243-4.243l5.657-5.657a2 2 0 0 1 2.829 2.829l-5.657 5.657a1 1 0 0 1-1.415-1.415l4.95-4.95" /></svg>
+            <span class="name">{a.filename}</span>
+            <span class="size">{formatSize(a.size)}</span>
+            <button class="remove" onclick={() => removeAttachment(a.id)} title={t("compose.attach_remove")} aria-label={t("compose.attach_remove")}>
+              <svg width="11" height="11" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1 1l8 8M9 1L1 9" /></svg>
+            </button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+
     {#if error}
       <div class="error">{error}</div>
     {/if}
@@ -343,11 +429,21 @@
       <button class="send" onclick={send} disabled={sending || !draft.to.trim()}>
         {sending ? t("compose.sending") : t("compose.send")}
       </button>
+      <button class="attach" onclick={() => fileInput?.click()} title={t("compose.attach")} aria-label={t("compose.attach")}>
+        <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12.5 7.5l-5 5a3 3 0 0 1-4.243-4.243l5.657-5.657a2 2 0 0 1 2.829 2.829l-5.657 5.657a1 1 0 0 1-1.415-1.415l4.95-4.95" /></svg>
+      </button>
+      <input bind:this={fileInput} type="file" multiple class="file-input" onchange={pickFiles} />
       <div class="grow"></div>
       <button class="discard" onclick={discard} title={t("compose.discard")}>
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 4h10M6.5 4V2.5h3V4M4.5 4l.5 9.5h6l.5-9.5M6.7 6.5v5M9.3 6.5v5" /></svg>
       </button>
     </footer>
+  {/if}
+
+  {#if dragActive}
+    <div class="drop-overlay">
+      <div class="drop-hint">{t("compose.drop_hint")}</div>
+    </div>
   {/if}
 </div>
 
@@ -357,6 +453,7 @@
     display: flex;
     flex-direction: column;
     background: var(--surface);
+    position: relative;
   }
 
   .titlebar {
@@ -564,6 +661,21 @@
   .grow {
     flex: 1;
   }
+  .attach {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-s);
+    color: var(--text-dim);
+  }
+  .attach:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .file-input {
+    display: none;
+  }
   .discard {
     width: 34px;
     height: 34px;
@@ -575,5 +687,71 @@
   .discard:hover {
     background: var(--hover);
     color: var(--danger);
+  }
+
+  /* Staged-attachment chips, above the footer. */
+  .attach-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 20px 0;
+  }
+  .chip {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 6px 5px 10px;
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--radius-s);
+    font-size: 12.5px;
+    max-width: 100%;
+  }
+  .chip .clip {
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .chip .name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chip .size {
+    color: var(--text-faint);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    flex-shrink: 0;
+  }
+  .chip .remove {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: var(--radius-s);
+    color: var(--text-faint);
+    flex-shrink: 0;
+  }
+  .chip .remove:hover {
+    background: var(--hover);
+    color: var(--danger);
+  }
+
+  /* Drop target feedback while dragging files over the window. */
+  .drop-overlay {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: color-mix(in srgb, var(--surface) 78%, transparent);
+    pointer-events: none;
+    z-index: 10;
+  }
+  .drop-hint {
+    padding: 14px 26px;
+    border: 1.5px dashed var(--accent);
+    border-radius: var(--radius-m);
+    color: var(--accent);
+    font-size: 13.5px;
+    font-weight: 600;
+    background: var(--surface);
   }
 </style>

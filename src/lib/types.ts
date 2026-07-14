@@ -136,6 +136,15 @@ export interface Draft {
   body: string;
 }
 
+/** A file staged on a draft. Metadata only — the bytes stay in the backend. */
+export interface DraftAttachment {
+  id: number;
+  draftId: number;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
 export interface SkimError {
   code: string;
   message: string;

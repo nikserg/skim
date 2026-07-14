@@ -1,3 +1,4 @@
+use crate::db::draft_attachments::{self, DraftAttachment};
 use crate::db::drafts::{self, Draft};
 use crate::db::{accounts as db_accounts, bodies};
 use crate::error::{Result, SkimError};
@@ -117,6 +118,46 @@ pub async fn delete_draft(app: AppHandle, state: State<'_, AppState>, draft_id: 
         .await?;
     let _ = app.emit("drafts:updated", json!({}));
     Ok(())
+}
+
+/// Largest single attachment we accept, in bytes. Guards against wedging the
+/// SMTP submission (most servers cap the whole message near 25 MB).
+const MAX_ATTACHMENT_BYTES: usize = 25 * 1024 * 1024;
+
+#[tauri::command]
+pub async fn add_draft_attachment(
+    state: State<'_, AppState>,
+    draft_id: i64,
+    filename: String,
+    mime_type: String,
+    data: Vec<u8>,
+) -> Result<DraftAttachment> {
+    if data.len() > MAX_ATTACHMENT_BYTES {
+        return Err(SkimError::other("attach", "file too large"));
+    }
+    state
+        .db
+        .call(move |conn| draft_attachments::add(conn, draft_id, &filename, &mime_type, &data))
+        .await
+}
+
+#[tauri::command]
+pub async fn list_draft_attachments(
+    state: State<'_, AppState>,
+    draft_id: i64,
+) -> Result<Vec<DraftAttachment>> {
+    state
+        .db
+        .call(move |conn| draft_attachments::list(conn, draft_id))
+        .await
+}
+
+#[tauri::command]
+pub async fn remove_draft_attachment(state: State<'_, AppState>, attachment_id: i64) -> Result<()> {
+    state
+        .db
+        .call(move |conn| draft_attachments::remove(conn, attachment_id))
+        .await
 }
 
 /// Prefill a reply/forward draft from an existing message.
@@ -344,6 +385,10 @@ pub async fn open_compose_window(app: AppHandle, draft_id: i64) -> Result<()> {
     .inner_size(720.0, 680.0)
     .min_inner_size(520.0, 420.0)
     .decorations(false)
+    // Let HTML5 dragover/drop reach the webview (for file attachments) instead
+    // of Tauri intercepting native file drops. Window-move via
+    // data-tauri-drag-region is unaffected.
+    .disable_drag_drop_handler()
     .center()
     .build()
     .map_err(|e| SkimError::other("window", e.to_string()))?;

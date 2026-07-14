@@ -978,7 +978,12 @@ impl Engine {
             }
         };
 
-        let raw = smtp::build_message(&self.account, &draft, &refs)?;
+        let attachments = self
+            .db
+            .call(move |conn| crate::db::draft_attachments::load_for_send(conn, draft_id))
+            .await?;
+
+        let raw = smtp::build_message(&self.account, &draft, &refs, &attachments)?;
 
         let mut cache = self.oauth_token.take();
         let creds = resolve_credentials(&self.db, &self.account, &mut cache).await?;

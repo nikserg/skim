@@ -121,6 +121,12 @@
         label: t("palette.sync"),
         run: () => mail.syncNow(),
       },
+      {
+        id: "shortcuts",
+        label: t("palette.shortcuts"),
+        hint: "?",
+        run: () => ui.openShortcuts(),
+      },
     ];
     const roleKey: Record<string, string> = {
       inbox: "nav.inbox",

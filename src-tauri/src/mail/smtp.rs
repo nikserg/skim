@@ -5,7 +5,7 @@ use crate::db::models::Account;
 use crate::error::{Result, SkimError};
 use crate::mail::imap_client::Credentials;
 use lettre::message::header::ContentType;
-use lettre::message::{Mailbox, Message, MultiPart, SinglePart};
+use lettre::message::{Attachment, Mailbox, Message, MultiPart, SinglePart};
 use lettre::transport::smtp::authentication::{Credentials as SmtpCredentials, Mechanism};
 use lettre::{AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
 
@@ -25,7 +25,16 @@ pub struct OutgoingRefs {
 
 /// Build the RFC822 message for a draft. Returns the raw bytes so the same
 /// payload can be submitted over SMTP and appended to the Sent folder.
-pub fn build_message(account: &Account, draft: &Draft, refs: &OutgoingRefs) -> Result<Vec<u8>> {
+///
+/// `attachments` is a list of `(filename, mime_type, bytes)`. With none, the
+/// message is a single text/plain part (unchanged from plain mail); with any,
+/// it becomes a `multipart/mixed` of the body plus one part per file.
+pub fn build_message(
+    account: &Account,
+    draft: &Draft,
+    refs: &OutgoingRefs,
+    attachments: &[(String, String, Vec<u8>)],
+) -> Result<Vec<u8>> {
     let from: Mailbox = match &account.display_name {
         Some(name) if !name.is_empty() => format!("{} <{}>", name, account.email),
         _ => account.email.clone(),
@@ -65,9 +74,19 @@ pub fn build_message(account: &Account, draft: &Draft, refs: &OutgoingRefs) -> R
         builder = builder.references(refs.references.join(" "));
     }
 
-    let message = builder
-        .body(draft.body.clone())
-        .map_err(|e| SkimError::other("send", format!("cannot build message: {e}")))?;
+    let message = if attachments.is_empty() {
+        builder.body(draft.body.clone())
+    } else {
+        let mut multipart = MultiPart::mixed().singlepart(SinglePart::plain(draft.body.clone()));
+        for (filename, mime_type, bytes) in attachments {
+            let content_type = ContentType::parse(mime_type)
+                .unwrap_or(ContentType::parse("application/octet-stream").unwrap());
+            multipart = multipart
+                .singlepart(Attachment::new(filename.clone()).body(bytes.clone(), content_type));
+        }
+        builder.multipart(multipart)
+    }
+    .map_err(|e| SkimError::other("send", format!("cannot build message: {e}")))?;
     Ok(message.formatted())
 }
 
@@ -191,5 +210,82 @@ fn map_smtp_error(e: lettre::transport::smtp::Error) -> SkimError {
         SkimError::other("send", msg)
     } else {
         SkimError::other("network", msg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn account() -> Account {
+        Account {
+            id: "acct".into(),
+            email: "me@example.com".into(),
+            display_name: Some("Me".into()),
+            provider: "generic".into(),
+            imap_host: "imap.example.com".into(),
+            imap_port: 993,
+            smtp_host: "smtp.example.com".into(),
+            smtp_port: 587,
+            smtp_security: "tls".into(),
+            auth_kind: "password".into(),
+        }
+    }
+
+    fn draft() -> Draft {
+        Draft {
+            id: 1,
+            account_id: "acct".into(),
+            reply_to_message_id: None,
+            mode: "new".into(),
+            to: "you@example.com".into(),
+            cc: String::new(),
+            bcc: String::new(),
+            subject: "Hi".into(),
+            body: "Body text".into(),
+        }
+    }
+
+    fn no_refs() -> OutgoingRefs {
+        OutgoingRefs {
+            in_reply_to: None,
+            references: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn plain_message_has_no_multipart() {
+        let raw = build_message(&account(), &draft(), &no_refs(), &[]).unwrap();
+        let text = String::from_utf8_lossy(&raw);
+        assert!(!text.to_ascii_lowercase().contains("multipart/mixed"));
+        assert!(text.contains("Body text"));
+    }
+
+    #[test]
+    fn attachment_produces_multipart_with_file() {
+        let attachments = vec![(
+            "report.txt".to_string(),
+            "text/plain".to_string(),
+            b"hello attachment".to_vec(),
+        )];
+        let raw = build_message(&account(), &draft(), &no_refs(), &attachments).unwrap();
+        let text = String::from_utf8_lossy(&raw);
+        assert!(text.to_ascii_lowercase().contains("multipart/mixed"));
+        // The filename appears in the Content-Disposition of the attachment part.
+        assert!(text.contains("report.txt"));
+        assert!(text.contains("Body text"));
+    }
+
+    #[test]
+    fn bad_mime_falls_back_to_octet_stream() {
+        let attachments = vec![(
+            "blob.bin".to_string(),
+            "not a mime type".to_string(),
+            vec![0u8, 1, 2, 3],
+        )];
+        // Must not panic on an unparseable MIME type.
+        let raw = build_message(&account(), &draft(), &no_refs(), &attachments).unwrap();
+        let text = String::from_utf8_lossy(&raw);
+        assert!(text.contains("blob.bin"));
     }
 }

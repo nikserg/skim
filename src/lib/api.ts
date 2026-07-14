@@ -3,6 +3,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   Account,
   Draft,
+  DraftAttachment,
   Folder,
   RenderedBody,
   SearchHit,
@@ -71,6 +72,17 @@ export const api = {
   getReplyTemplate: (messageId: number, mode: "reply" | "reply_all" | "forward") =>
     invoke<Draft>("get_reply_template", { messageId, mode }),
   sendDraft: (draftId: number) => invoke<void>("send_draft", { draftId }),
+  addDraftAttachment: (
+    draftId: number,
+    filename: string,
+    mimeType: string,
+    data: number[],
+  ) =>
+    invoke<DraftAttachment>("add_draft_attachment", { draftId, filename, mimeType, data }),
+  listDraftAttachments: (draftId: number) =>
+    invoke<DraftAttachment[]>("list_draft_attachments", { draftId }),
+  removeDraftAttachment: (attachmentId: number) =>
+    invoke<void>("remove_draft_attachment", { attachmentId }),
   openComposeWindow: (draftId: number) => invoke<void>("open_compose_window", { draftId }),
   suggestAddresses: (query: string) =>
     invoke<AddressSuggestion[]>("suggest_addresses", { query }),

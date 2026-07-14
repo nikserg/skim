@@ -10,6 +10,8 @@ const state = $state({
   settingsOpen: false,
   /** AI Recap panel occupies the reading pane while open. */
   recapOpen: false,
+  /** Keyboard-shortcuts cheat sheet overlay. */
+  shortcutsOpen: false,
 });
 
 function effectiveTheme(): "light" | "dark" {
@@ -59,5 +61,14 @@ export const ui = {
   },
   closeRecap() {
     state.recapOpen = false;
+  },
+  get shortcutsOpen() {
+    return state.shortcutsOpen;
+  },
+  openShortcuts() {
+    state.shortcutsOpen = true;
+  },
+  closeShortcuts() {
+    state.shortcutsOpen = false;
   },
 };

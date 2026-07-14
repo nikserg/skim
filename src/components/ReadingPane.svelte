@@ -184,6 +184,10 @@
 
   const allIds = $derived(detail?.messages.map((m) => m.id) ?? []);
   const anyStarred = $derived(detail?.messages.some((m) => m.isStarred) ?? false);
+  // Read state tracks the visible thread row so the button and the global U
+  // shortcut (App.svelte) always agree. Opening a thread auto-marks it read,
+  // so this is normally true while the pane is shown.
+  const isRead = $derived(mail.selectedThread?.isRead ?? true);
 
   function archive() {
     if (!detail) return;
@@ -212,10 +216,11 @@
     void api.setStarred(allIds, on);
   }
 
-  function markUnread() {
+  function toggleRead() {
     if (!detail) return;
-    mail.patchThreadRow(detail.id, { isRead: false });
-    void api.markRead(allIds, false);
+    const next = !isRead;
+    mail.patchThreadRow(detail.id, { isRead: next });
+    void api.markRead(allIds, next);
   }
 
   function initial(name: string | null): string {
@@ -255,15 +260,25 @@
       <div class="spacer"></div>
       <button class="tool" onclick={archive} title={t("reading.archive")}>
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h12v3H2V3zm1 3v7h10V6M6.5 9h3" /></svg>
+        <kbd>E</kbd>
       </button>
       <button class="tool" onclick={remove} title={t("reading.delete")}>
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 4h10M6.5 4V2.5h3V4M4.5 4l.5 9.5h6l.5-9.5M6.7 6.5v5M9.3 6.5v5" /></svg>
+        <kbd>Del</kbd>
       </button>
       <button class="tool" class:starred={anyStarred} onclick={toggleStar} title={anyStarred ? t("reading.unstar") : t("reading.star")}>
         <svg width="15" height="15" viewBox="0 0 16 16" fill={anyStarred ? "currentColor" : "none"} stroke="currentColor" stroke-width="1.2"><path d="M8 1.5l2 4.1 4.5.6-3.3 3.2.8 4.5L8 11.8l-4 2.1.8-4.5L1.5 6.2 6 5.6 8 1.5z" /></svg>
+        <kbd>S</kbd>
       </button>
-      <button class="tool" onclick={markUnread} title={t("reading.mark_unread")}>
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="3.5" width="12" height="9" rx="1" /><path d="M2 5l6 4.5L14 5" /></svg>
+      <button class="tool" onclick={toggleRead} title={isRead ? t("reading.mark_unread") : t("reading.mark_read")}>
+        {#if isRead}
+          <!-- Sealed envelope: click to mark unread. -->
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="3.5" width="12" height="9" rx="1" /><path d="M2 5l6 4.5L14 5" /></svg>
+        {:else}
+          <!-- Open envelope: click to mark read. -->
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 6.5l6-4 6 4v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-6z" /><path d="M2 6.5l6 4.5 6-4.5" /></svg>
+        {/if}
+        <kbd>U</kbd>
       </button>
     </header>
 
@@ -424,7 +439,7 @@
         >
           ✦
         </button>
-        <button class="btn" onclick={() => reply("reply")}>{t("reading.reply")}</button>
+        <button class="btn" onclick={() => reply("reply")}>{t("reading.reply")}<kbd>R</kbd></button>
         <button class="btn" onclick={() => reply("reply_all")}>{t("reading.reply_all")}</button>
         <button class="btn" onclick={() => reply("forward")}>{t("reading.forward")}</button>
       </div>
@@ -466,10 +481,11 @@
     flex: 1;
   }
   .tool {
-    width: 32px;
     height: 32px;
-    display: grid;
-    place-items: center;
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
     border-radius: var(--radius-s);
     color: var(--text-dim);
   }
@@ -479,6 +495,14 @@
   }
   .tool.starred {
     color: var(--text);
+  }
+  kbd {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-faint);
+  }
+  .btn kbd {
+    margin-left: 6px;
   }
 
   .scroll {
