@@ -4,9 +4,9 @@
 
 # Skim
 
-**Email at the speed of thought.**
+**A free AI email client for Windows that doesn't suck _(that much)_.**
 
-A fast, native, minimalist email client for Windows — with your own Claude as the copilot.
+Minimalist, native, fast. Bring your own AI key for the assistant and co-writer. No subscriptions, free forever.
 
 [![CI](https://github.com/nikserg/skim/actions/workflows/ci.yml/badge.svg)](https://github.com/nikserg/skim/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-6b46f2.svg)](LICENSE)
@@ -31,19 +31,19 @@ Grab <code>Skim_x.y.z_x64-setup.exe</code> from the latest release</sub>
 
 <img src="docs/skim-light.png" alt="Skim — light theme" width="800">
 
-<sub>One violet accent, reserved exclusively for AI. Everything else stays out of your way.</sub>
-
 </div>
 
 ---
 
 ## Why Skim
 
-Most mail clients are either web apps in a trench coat or twenty-year-old battleships. Skim is neither:
+Email clients usually come in two flavors: a browser cosplaying as an app, or a monstrous do-everything suite with ICQ-era vibes. Skim is neither:
 
-- ⚡ **Native & fast.** Rust core + WebView2 UI (Tauri 2). The installer is a few megabytes, cold start is instant, idle memory is tiny. No Electron.
-- 🔒 **Local-first & private.** Your mail syncs over IMAP straight into a local SQLite cache. It works offline, search is instant, and nothing ever passes through anyone else's servers. Zero telemetry.
-- ✦ **AI on your terms.** Paste your own API key — Anthropic, or OpenRouter for models from any vendor (Claude, GPT, Gemini, Grok, …) — and the AI drafts replies, summarizes threads, answers questions about a message, and chats across your whole mailbox with cited sources. No key? Skim is a great mail client without it. Requests go directly from your machine to the provider; the key lives in Windows Credential Manager.
+- ⚡ **Native, not Chromium.** A Rust core with a system WebView2 UI (Tauri 2) — no bundled browser like Electron. The installer is a few megabytes, cold start is instant, idle memory is modest. No admin rights.
+- ✂️ **Half the features, cut on purpose.** No calendar, no contacts manager, no rules, no filters, no snooze — none of the stuff you never actually use anyway. Fewer buttons, less cognitive load. Need a do-everything suite? Install Outlook.
+- 🎯 **Actions when you need them.** Buttons appear only when they're useful; there's no menu bar at all. Skim's job is to surface the right action at the right moment.
+- 🔒 **Local and private by default.** Your mail syncs over IMAP straight into a local SQLite cache. It works offline, search is instant, and nothing ever passes through anyone else's servers. Zero telemetry, zero anal probes.
+- ✦ **AI on your terms.** Paste your own key — Anthropic (Claude), or OpenRouter for models from any vendor (Claude, GPT, Gemini, Grok, …) — and Skim drafts in your voice, summarizes threads, answers questions about a message, and chats across your whole mailbox with cited sources. No key? Skim is a great mail client without it. Requests go directly from your machine to the provider; the key lives in Windows Credential Manager.
 - 🌍 **11 languages**, light & dark themes, keyboard-first.
 
 <div align="center">
@@ -68,14 +68,19 @@ Most mail clients are either web apps in a trench coat or twenty-year-old battle
 - Keyboard shortcuts: `j`/`k` move · `e` archive · `#` delete · `s` star · `u` unread · `r` reply · `Ctrl+N` compose · `/` search
 
 **AI (bring your own key)**
-- **Draft reply** — tell Claude what to say (“confirm the timeline, keep it warm”), get a draft in your voice; make it shorter, warmer, or more formal with one click
-- **AI Recap** — opened your inbox to six unread emails? One click gets a digest of all of them, action items first with cited sources, and marks them read
-- **Summarize** — long threads in a few bullets, action items called out
-- **Ask about this** — question a specific email
-- **Mailbox chat** — ask “which invoices are still unpaid this month?” in the palette; answers cite the source emails as clickable chips
-- **Your writer, your voice** — set your name, pick a writing style (formal / friendly / concise / witty / enthusiastic), and give the AI standing instructions ("sign as Nick", "my company is called…")
+
+There's no "Skim Pro" subscription and there never will be. Paste your own key and the ✦ violet buttons come alive:
+
+- **Drafts in your voice** — tell it what to say and get a finished, first-person email. Skim can analyze up to ~100 of your sent messages and match how you write — greetings, sentence length, punctuation. It replies in the *sender's* language, even one you don't speak
+- **Refine in dialogue** — “shorter”, “add a deadline”, “drop the exclamation marks”. Each tweak lands on the current draft, keeping everything you didn't ask to change; your hand-edits are respected too
+- **Ask about an email** — question one message or the whole thread (up to 25 emails in context), with follow-ups. Answers come only from the content — if it's not in the conversation, it says so
+- **Mailbox chat** — ask “which invoices are still unpaid this month?” in the palette; Skim retrieves the relevant mail (FTS5/bm25) and answers with the source emails cited as clickable chips
+- **AI Recap** — one click digests up to 20 unread emails, what-needs-a-reply first with deadlines and cited sources, and marks them read
+- **Context-aware** — every prompt carries the current date, weekday, time, your timezone, your UI language, and the relevant thread. “Reply that I'll make it by Friday” becomes a concrete date
+- **Your writer profile** — set your name, pick a style (formal / friendly / concise / witty / enthusiastic) or “write exactly like me”, and give standing instructions (“sign as Nick”, “my company is called…”)
 - **Two providers** — Anthropic directly (Claude Sonnet 5 default, Opus 4.8, Haiku 4.5) or OpenRouter with one key for every vendor: Claude, GPT, Gemini, Grok, or any model slug you type in
-- Answers follow your UI language
+
+Your key, your bill: Skim talks to the provider's API directly and adds no markup, no proxy, no accounts. The key is stored in Windows Credential Manager.
 
 **Privacy & security**
 - HTML email is sanitized in Rust (ammonia) and rendered in a sandboxed iframe with a strict CSP — scripts never run

@@ -40,7 +40,7 @@
     "description": "A fast, free, open-source email client for Windows with a built-in AI copilot. Native Rust core, ~5 MB installer, offline-first, instant full-text search.",
     "url": "https://skim-tech.com/",
     "downloadUrl": "https://github.com/nikserg/skim/releases/latest",
-    "softwareVersion": "0.1.4",
+    "softwareVersion": "0.1.6",
     "screenshot": [
       "https://skim-tech.com/skim-light.png",
       "https://skim-tech.com/skim-dark.png"
@@ -278,9 +278,91 @@
     footer a:hover { color: var(--text); }
     .foot-links { display: flex; gap: 20px; flex-wrap: wrap; }
 
+    /* ---- Beta-style superscript in H1 ---- */
+    sup.beta {
+      font-size: 0.36em; font-weight: 600; line-height: 0;
+      vertical-align: super; opacity: 0.42; letter-spacing: 0;
+      margin-left: 2px; white-space: nowrap;
+    }
+
+    /* ---- Inline tooltip trigger + popover ---- */
+    .tip {
+      cursor: help; font: inherit; color: inherit;
+      border-bottom: 1.5px dotted currentColor;
+      padding: 0; background: none;
+    }
+    .tip-pop {
+      position: absolute; z-index: 60; max-width: 320px;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 13px 15px;
+      font-size: 13.5px; font-weight: 400; line-height: 1.55;
+      color: var(--muted); text-align: left; letter-spacing: 0;
+      box-shadow: 0 14px 44px rgba(0,0,0,0.5);
+      opacity: 0; transform: translateY(4px); pointer-events: none;
+      transition: opacity .14s ease, transform .14s ease;
+    }
+    .tip-pop.show { opacity: 1; transform: translateY(0); }
+    .tip-pop b { color: var(--text); }
+
+    /* ---- Command-palette mockup ---- */
+    .palette-demo {
+      max-width: 560px; margin: 40px 0 34px;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+      box-shadow: 0 24px 70px rgba(0,0,0,0.5);
+    }
+    .pd-input {
+      display: flex; align-items: center; gap: 11px;
+      padding: 16px 18px; border-bottom: 1px solid var(--border);
+      color: var(--muted); font-size: 15.5px;
+    }
+    .pd-input svg { flex-shrink: 0; opacity: .6; }
+    .pd-caret {
+      display: inline-block; width: 1.5px; height: 17px;
+      background: var(--violet); margin-left: -6px;
+      animation: pd-blink 1.1s step-end infinite;
+    }
+    @keyframes pd-blink { 50% { opacity: 0; } }
+    .pd-section {
+      font-size: 11px; font-weight: 600; letter-spacing: .06em;
+      text-transform: uppercase; color: var(--muted);
+      padding: 13px 18px 6px;
+    }
+    .pd-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 9px 18px; font-size: 14.5px; color: var(--text);
+    }
+    .pd-row .pd-ic {
+      width: 20px; text-align: center; color: var(--muted); font-size: 15px; flex-shrink: 0;
+    }
+    .pd-row.sel { background: var(--violet-soft); }
+    .pd-row kbd {
+      margin-left: auto; font-family: "IBM Plex Mono", monospace;
+      font-size: 11.5px; color: var(--muted);
+      border: 1px solid var(--border); border-radius: 6px; padding: 2px 7px;
+    }
+    .pd-row.pd-ai { color: var(--violet); font-weight: 600; }
+    .pd-row.pd-ai .pd-ic { color: var(--violet); }
+    .pd-row.pd-ai q { color: var(--text); font-weight: 400; font-style: normal; }
+    .pd-answer {
+      padding: 4px 18px 16px 50px; font-size: 13.5px; color: var(--muted); line-height: 1.5;
+    }
+    .pd-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+    .pd-chips .src-lbl {
+      font-size: 11px; font-weight: 600; letter-spacing: .05em;
+      text-transform: uppercase; color: var(--muted);
+      width: 100%; margin-bottom: -2px;
+    }
+    .pd-chips span:not(.src-lbl) {
+      font-size: 12px; color: var(--text);
+      background: var(--violet-soft); border: 1px solid rgba(107,70,242,0.3);
+      border-radius: 999px; padding: 4px 11px;
+    }
+
     @media (max-width: 720px) {
       .nav-links a:not(.btn) { display: none; }
       header.hero { padding-top: 56px; }
+      .tip-pop { max-width: min(320px, calc(100vw - 40px)); }
     }
   </style>
 </head>
@@ -297,7 +379,7 @@
         Skim
       </a>
       <div class="nav-links">
-        <a href="#features" data-i18n="nav_features">Features</a>
+        <a href="#product" data-i18n="nav_features">Features</a>
         <a href="#ai" data-i18n="nav_ai">AI</a>
         <a href="#install" data-i18n="nav_install">Install</a>
         <a href="#faq" data-i18n="nav_faq">FAQ</a>
@@ -313,9 +395,8 @@
 
   <header class="hero">
     <div class="wrap">
-      <span class="eyebrow" data-i18n="hero_eyebrow">✦ Your own Claude as the copilot</span>
-      <h1 data-i18n-html="hero_h1">Email at the speed<br>of thought.</h1>
-      <p class="sub" data-i18n="hero_sub">A fast, native, minimalist email client for Windows — with an AI copilot strictly on your terms. Rust core, tiny footprint, no Electron.</p>
+      <h1 data-i18n-html="hero_h1">A free AI email client for Windows that doesn't suck <sup class="beta">(that much)</sup></h1>
+      <p class="sub" data-i18n-html="hero_sub">Minimalist, native, fast. <span class="tip" data-tip="byok">BYOK</span> for the AI assistant and co-writer. No subscriptions — free forever.</p>
       <div class="cta-row">
         <a class="btn" href="https://github.com/nikserg/skim/releases/latest" data-i18n="hero_cta_download">⬇&nbsp; Download for Windows</a>
         <a class="btn ghost" href="https://github.com/nikserg/skim" data-i18n="hero_cta_github">View on GitHub</a>
@@ -325,83 +406,34 @@
       <div class="shot">
         <img src="skim-light.png" alt="Skim — light theme, three-pane email client">
       </div>
-      <p class="shot-cap" data-i18n="hero_shotcap">One violet accent, reserved exclusively for AI. Everything else stays out of your way.</p>
     </div>
   </header>
 
-  <!-- Why -->
-  <section id="why">
+  <!-- Product & design -->
+  <section id="product">
     <div class="wrap">
-      <h2 data-i18n="why_h2">A different kind of Windows email client</h2>
-      <p class="lead" data-i18n="why_lead">Most mail clients are either web apps in a trench coat or twenty-year-old battleships. Skim is neither.</p>
+      <h2 data-i18n="why_h2">Fewer buttons. Less pain.</h2>
+      <p class="lead" data-i18n="why_lead">Email clients usually come in two flavors: a browser cosplaying as an app, or a monstrous do-everything suite with ICQ-era vibes. Skim is neither.</p>
       <div class="grid">
         <div class="card">
           <span class="ic">⚡</span>
-          <h3 data-i18n="why_1_h">Native &amp; fast</h3>
-          <p data-i18n="why_1_p">Rust core + WebView2 UI (Tauri 2). A few-megabyte installer, instant cold start, tiny idle memory. No Electron.</p>
+          <h3 data-i18n="why_1_h">Native, not Chromium</h3>
+          <p data-i18n="why_1_p">A Rust core with a system WebView2 UI — no bundled browser like Electron. The installer is a few megabytes, cold start is instant, idle memory is modest. Installs without admin rights.</p>
+        </div>
+        <div class="card">
+          <span class="ic">✂️</span>
+          <h3 data-i18n="why_2_h">We cut half the features. On purpose.</h3>
+          <p data-i18n="why_2_p">No calendar, no contacts manager, no rules, no filters, no snooze — none of the stuff you never actually use anyway. Fewer buttons means less cognitive load means less irritation. Need a do-everything suite? Install Outlook.</p>
+        </div>
+        <div class="card">
+          <span class="ic">🎯</span>
+          <h3 data-i18n="why_3_h">Actions show up when you need them</h3>
+          <p data-i18n-html="why_3_p">Buttons appear only when they're useful. There's no menu bar at all. Skim's whole job is to surface the right action at the right moment. How well it pulls that off is up for debate — but <a href="https://github.com/nikserg/skim/blob/main/CONTRIBUTING.md">you can help</a>!</p>
         </div>
         <div class="card">
           <span class="ic">🔒</span>
-          <h3 data-i18n="why_2_h">Local-first &amp; private</h3>
-          <p data-i18n="why_2_p">Mail syncs over IMAP straight into a local SQLite cache. Works offline, search is instant, zero telemetry.</p>
-        </div>
-        <div class="card">
-          <span class="ic">✦</span>
-          <h3 data-i18n="why_3_h">AI on your terms</h3>
-          <p data-i18n="why_3_p">Bring your own key — Anthropic or OpenRouter. Requests go directly from your machine to the provider. No key? Still a great client.</p>
-        </div>
-        <div class="card">
-          <span class="ic">🌍</span>
-          <h3 data-i18n="why_4_h">Built for humans</h3>
-          <p data-i18n="why_4_p">11 languages, light &amp; dark themes, keyboard-first. Switchable at runtime, no restart.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Features -->
-  <section id="features" class="alt">
-    <div class="wrap">
-      <h2 data-i18n="feat_h2">Everything you need, nothing you don't</h2>
-      <p class="lead" data-i18n="feat_lead">One account, three panes, and a command palette that gets out of your way.</p>
-      <div class="grid">
-        <div class="card">
-          <h3 data-i18n="feat_1_h">Any mailbox</h3>
-          <p data-i18n="feat_1_p">Gmail, Outlook, Yahoo, iCloud, or any IMAP/SMTP server. Google sign-in via OAuth or an app password. Autoconfig for the big providers.</p>
-        </div>
-        <div class="card">
-          <h3 data-i18n="feat_2_h">Offline-first actions</h3>
-          <p data-i18n="feat_2_p">Archive, delete, star, read/unread and send apply instantly and queue in SQLite — Skim syncs when the network returns.</p>
-        </div>
-        <div class="card">
-          <h3 data-i18n="feat_3_h">Instant search</h3>
-          <p data-i18n="feat_3_p">Full-text search (SQLite FTS5) over subject, sender, recipients and bodies. Ctrl+K palette jumps anywhere as you type.</p>
-        </div>
-        <div class="card">
-          <h3 data-i18n="feat_4_h">Real threading</h3>
-          <p data-i18n="feat_4_p">Conversation threading via References / In-Reply-To with subject fallback. Reply, reply-all and forward with proper headers.</p>
-        </div>
-        <div class="card">
-          <h3 data-i18n="feat_5_h">Push &amp; tray</h3>
-          <p data-i18n="feat_5_p">IMAP IDLE push + polling, new-mail notifications with a mark-read action. Lives in the tray, syncing in the background.</p>
-        </div>
-        <div class="card">
-          <h3 data-i18n="feat_6_h">Safe HTML mail</h3>
-          <p data-i18n="feat_6_p">HTML sanitized in Rust (ammonia), rendered in a sandboxed iframe with strict CSP. Remote images blocked by default.</p>
-        </div>
-      </div>
-
-      <div style="margin-top:40px">
-        <div class="keys">
-          <span><b>Ctrl K</b> · <span data-i18n="key_palette">palette</span></span>
-          <span><b>Ctrl N</b> · <span data-i18n="key_compose">compose</span></span>
-          <span><b>j</b>/<b>k</b> · <span data-i18n="key_move">move</span></span>
-          <span><b>e</b> · <span data-i18n="key_archive">archive</span></span>
-          <span><b>#</b> · <span data-i18n="key_delete">delete</span></span>
-          <span><b>s</b> · <span data-i18n="key_star">star</span></span>
-          <span><b>u</b> · <span data-i18n="key_unread">unread</span></span>
-          <span><b>r</b> · <span data-i18n="key_reply">reply</span></span>
-          <span><b>/</b> · <span data-i18n="key_search">search</span></span>
+          <h3 data-i18n="why_4_h">Local and private by default</h3>
+          <p data-i18n="why_4_p">Mail syncs over IMAP straight into a local SQLite database. It works offline, search is instant (FTS5), and every action applies at once and queues up — Skim catches up when the network returns. Zero telemetry, zero anal probes.</p>
         </div>
       </div>
     </div>
@@ -410,19 +442,66 @@
   <!-- AI -->
   <section id="ai" class="ai">
     <div class="wrap">
-      <span class="eyebrow" data-i18n="ai_eyebrow">✦ Bring your own key</span>
-      <h2 data-i18n="ai_h2">An AI email assistant that respects your bill and your privacy</h2>
-      <p class="lead" data-i18n="ai_lead">Paste an Anthropic or OpenRouter key and the ✦ violet buttons light up. Your key, your bill — no markup, no proxy, no accounts. Stored in Windows Credential Manager.</p>
+      <span class="eyebrow" data-i18n="ai_eyebrow">✦ Your key, your bill</span>
+      <h2 data-i18n-html="ai_h2">AI that knows it's <span class="tip" data-tip="thu">Thursday</span> and writes like you</h2>
+      <p class="lead" data-i18n="ai_lead">There is no “Skim Pro” subscription, and there never will be. Paste your own Anthropic (Claude) or OpenRouter key (Claude, GPT, Gemini, Grok and hundreds more models) and the violet ✦ buttons come alive. Requests go straight from your machine to the provider — no proxy of ours, no markup. You pay the provider at cost; the key lives in Windows Credential Manager. No key? Skim just works as a fast email client (not amazing, but why not?).</p>
       <ul class="ai-list">
-        <li data-i18n-html="ai_1"><b>Draft reply</b> — tell Claude what to say, get a draft in your voice; make it shorter, warmer or more formal in one click.</li>
-        <li data-i18n-html="ai_2"><b>AI Recap</b> — one click digests every unread email in your inbox, action items first with cited sources, and marks them read.</li>
-        <li data-i18n-html="ai_3"><b>Summarize</b> — long threads in a few bullets, action items called out.</li>
-        <li data-i18n-html="ai_4"><b>Ask about this</b> — question any specific email.</li>
-        <li data-i18n-html="ai_5"><b>Mailbox chat</b> — "which invoices are still unpaid this month?" Answers cite the source emails as clickable chips.</li>
-        <li data-i18n-html="ai_6"><b>Your writer, your voice</b> — set your name and style, give the AI standing instructions. Two providers: Claude direct, or OpenRouter for GPT, Gemini, Grok and hundreds more.</li>
+        <li data-i18n-html="ai_1"><b>Drafts in your voice</b> — tell it what to say and get a finished, first-person email. Skim can analyze up to a hundred of your sent messages and write the way you write: the same greetings, sentence length, punctuation. It replies in the sender's language, even one you don't speak.</li>
+        <li data-i18n-html="ai_2"><b>Drafts you refine in dialogue</b> — “shorter”, “add a deadline”, “drop the exclamation marks”. Each tweak lands on the current text, keeping everything you didn't ask to change. Edit by hand and the AI takes that into account too.</li>
+        <li data-i18n-html="ai_3"><b>Ask about an email</b> — a question about one message or the whole thread (up to 25 emails in context), with follow-ups. It answers only from the content: if the answer isn't in the conversation, it says so.</li>
+        <li data-i18n-html="ai_4"><b>Chat with your whole mailbox</b> — “which invoices are still unpaid this month?” right in the command palette. Skim searches your mail (FTS5/bm25), answers, and cites the source emails as clickable chips.</li>
+        <li data-i18n-html="ai_5"><b>AI recap of your unread</b> — one click digests up to 20 unread emails: what needs a reply first, with deadlines and cited sources, newsletters piled off to the side. It marks what it covered as read.</li>
+        <li data-i18n-html="ai_6"><b>It knows the context</b> — every prompt carries the current date, weekday, time and your timezone, your interface language, and — where relevant — the entire thread. So “reply that I'll make it by Friday” becomes a concrete date, not an abstraction.</li>
       </ul>
+    </div>
+  </section>
 
-      <div class="shot" style="margin-top:48px">
+  <!-- Command palette -->
+  <section id="palette" class="alt">
+    <div class="wrap">
+      <h2 data-i18n="feat_h2">Ctrl+K, and it's already done</h2>
+      <p class="lead" data-i18n="feat_lead">One hotkey to anything. Search your mail, jump to any folder, fire quick commands, and ask the AI across your whole mailbox — one window, no mouse.</p>
+
+      <div class="palette-demo" aria-hidden="true">
+        <div class="pd-input">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M20 20l-3.2-3.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span data-i18n="pal_ph">Search mail or type a command…</span><span class="pd-caret"></span>
+        </div>
+        <div class="pd-section" data-i18n="pal_cmd">Commands</div>
+        <div class="pd-row"><span class="pd-ic">✎</span><span data-i18n="pal_new">New message</span><kbd>Ctrl N</kbd></div>
+        <div class="pd-row"><span class="pd-ic">◐</span><span data-i18n="pal_theme">Toggle theme</span></div>
+        <div class="pd-row"><span class="pd-ic">⟳</span><span data-i18n="pal_sync">Sync now</span></div>
+        <div class="pd-row"><span class="pd-ic">→</span><span data-i18n="pal_goto">Go to Inbox</span></div>
+        <div class="pd-section">✦ AI</div>
+        <div class="pd-row pd-ai sel"><span class="pd-ic">✦</span><span><span data-i18n="pal_ai_label">Ask Skim AI:</span> <q data-i18n="pal_ai_q">which invoices are still unpaid?</q></span></div>
+        <div class="pd-answer">
+          <span data-i18n="pal_answer">Two are still open — Acme #1042 and Globex #88.</span>
+          <div class="pd-chips">
+            <span class="src-lbl" data-i18n="pal_sources">Sources</span>
+            <span>Acme Inc. · #1042</span>
+            <span>Globex · reminder</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="keys">
+        <span><b>Ctrl K</b> · <span data-i18n="key_palette">palette</span></span>
+        <span><b>Ctrl N</b> · <span data-i18n="key_compose">compose</span></span>
+        <span><b>j</b>/<b>k</b> · <span data-i18n="key_move">move</span></span>
+        <span><b>e</b> · <span data-i18n="key_archive">archive</span></span>
+        <span><b>#</b> · <span data-i18n="key_delete">delete</span></span>
+        <span><b>s</b> · <span data-i18n="key_star">star</span></span>
+        <span><b>u</b> · <span data-i18n="key_unread">unread</span></span>
+        <span><b>r</b> · <span data-i18n="key_reply">reply</span></span>
+        <span><b>/</b> · <span data-i18n="key_search">search</span></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final screenshot -->
+  <section id="screenshot">
+    <div class="wrap">
+      <div class="shot">
         <img src="skim-dark.png" alt="Skim — dark theme with AI features">
       </div>
     </div>

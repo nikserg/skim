@@ -9,6 +9,8 @@
     ["zh", "中文"], ["ja", "日本語"], ["ko", "한국어"]
   ];
 
+  var currentDict = {};
+
   function dict(code) {
     return (window.I18N && window.I18N[code]) || (window.I18N && window.I18N.en) || {};
   }
@@ -25,6 +27,7 @@
 
   function applyLang(code) {
     var d = dict(code), en = (window.I18N && window.I18N.en) || {};
+    currentDict = d;
     document.documentElement.lang = code;
     document.querySelectorAll("[data-i18n]").forEach(function (el) {
       var k = el.getAttribute("data-i18n");
@@ -39,7 +42,69 @@
     try { localStorage.setItem("skim_lang", code); } catch (e) {}
     var sel = document.getElementById("langSelect");
     if (sel) sel.value = code;
+    hideTip();
+    bindTips();
   }
+
+  /* ---- Inline tooltips (data-tip="byok" -> dict.tip_byok) ---- */
+  var pop = null, popFor = null;
+
+  function ensurePop() {
+    if (!pop) {
+      pop = document.createElement("div");
+      pop.className = "tip-pop";
+      document.body.appendChild(pop);
+    }
+    return pop;
+  }
+
+  function hideTip() {
+    if (pop) { pop.classList.remove("show"); }
+    popFor = null;
+  }
+
+  function showTip(el) {
+    var en = (window.I18N && window.I18N.en) || {};
+    var key = "tip_" + el.getAttribute("data-tip");
+    var text = currentDict[key] != null ? currentDict[key] : en[key];
+    if (text == null) return;
+    var p = ensurePop();
+    p.innerHTML = text;
+    p.classList.add("show");
+    popFor = el;
+    // position below the trigger, clamped to the viewport
+    var r = el.getBoundingClientRect();
+    var margin = 10, width = p.offsetWidth;
+    var left = r.left + window.scrollX;
+    var maxLeft = window.scrollX + document.documentElement.clientWidth - width - margin;
+    if (left > maxLeft) left = maxLeft;
+    if (left < window.scrollX + margin) left = window.scrollX + margin;
+    p.style.left = left + "px";
+    p.style.top = (r.bottom + window.scrollY + 8) + "px";
+  }
+
+  function bindTips() {
+    document.querySelectorAll(".tip").forEach(function (el) {
+      if (el.__tipBound) return;
+      el.__tipBound = true;
+      el.setAttribute("role", "button");
+      el.setAttribute("tabindex", "0");
+      el.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (popFor === el && pop && pop.classList.contains("show")) hideTip();
+        else showTip(el);
+      });
+      el.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showTip(el); }
+      });
+    });
+  }
+
+  document.addEventListener("click", function (e) {
+    if (pop && popFor && !popFor.contains(e.target) && !pop.contains(e.target)) hideTip();
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") hideTip(); });
+  window.addEventListener("resize", hideTip);
 
   function init() {
     var sel = document.getElementById("langSelect");
@@ -50,6 +115,7 @@
       sel.addEventListener("change", function (e) { applyLang(e.target.value); });
     }
     applyLang(pickInitial());
+    bindTips();
   }
 
   if (document.readyState === "loading") {
