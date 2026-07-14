@@ -74,6 +74,8 @@
   "ai.ask_placeholder": "이 메일에 대해 질문…",
   "ai.ask_followup": "추가 질문하기…",
   "ai.thinking": "생각 중…",
+  "ai.expand": "확대",
+  "ai.collapse": "축소",
   "ai.sources": "출처",
   "ai.recap": "AI 요약",
   "ai.recap_title": "AI 요약 — 새 소식 한눈에",

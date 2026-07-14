@@ -9,6 +9,7 @@
 
   let draft = $state<Draft | null>(null);
   let showCc = $state(false);
+  let maximized = $state(false);
   let sending = $state(false);
   let error = $state("");
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -252,6 +253,12 @@
     return getCurrentWindow();
   }
 
+  async function toggleMaximize() {
+    const w = await win();
+    await w.toggleMaximize();
+    maximized = await w.isMaximized();
+  }
+
   async function send() {
     if (!draft || sending) return;
     sending = true;
@@ -302,6 +309,13 @@
       <button class="ctl" onclick={async () => (await win()).minimize()} aria-label="Minimize">
         <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1" /></svg>
       </button>
+      <button class="ctl" onclick={toggleMaximize} aria-label="Maximize">
+        {#if maximized}
+          <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="2.5" width="7" height="7" fill="none" stroke="currentColor" /><path d="M2.5 2.5V0.5H9.5V7.5H7.5" fill="none" stroke="currentColor" /></svg>
+        {:else}
+          <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" /></svg>
+        {/if}
+      </button>
       <button class="ctl ctl-close" onclick={close} aria-label="Close">
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0L10 10M10 0L0 10" stroke="currentColor" stroke-width="1" /></svg>
       </button>
@@ -340,10 +354,13 @@
             {#each userTurns as turn, i (i)}
               <div class="ai-turn">{turn.content}</div>
             {/each}
-            {#if aiBusy}
-              <div class="ai-turn pending">✦ {t("ai.thinking")}</div>
-            {/if}
           </div>
+        {/if}
+        {#if aiBusy}
+          <!-- Progress indicator: kept OUTSIDE the scrollable thread so a tall
+               instruction can't push it below the fold — it must stay visible
+               the whole time the draft is streaming. -->
+          <div class="ai-thinking">✦ {t("ai.thinking")}</div>
         {/if}
         <form
           class="ai-input"
@@ -562,10 +579,11 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  .ai-turn.pending {
-    background: transparent;
+  .ai-thinking {
+    align-self: flex-start;
     color: var(--accent);
-    padding-left: 0;
+    font-size: 12.5px;
+    line-height: 1.4;
     animation: pulse 1.2s ease-in-out infinite;
   }
   @keyframes pulse {

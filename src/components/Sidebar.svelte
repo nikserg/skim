@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from "../lib/api";
   import { t } from "../lib/i18n/index.svelte";
+  import { ai } from "../lib/stores/ai.svelte";
   import { mail } from "../lib/stores/mail.svelte";
   import { palette } from "../lib/stores/palette.svelte";
   import { ui } from "../lib/stores/ui.svelte";
@@ -55,7 +56,7 @@
     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
       <circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" />
     </svg>
-    {t("nav.search")}
+    {ai.keyPresent ? t("palette.placeholder_ai") : t("nav.search")}
     <kbd>Ctrl K</kbd>
   </button>
 

@@ -76,6 +76,8 @@
   "ai.ask_placeholder": "Chiedi qualcosa su questa email…",
   "ai.ask_followup": "Fai un'altra domanda…",
   "ai.thinking": "Sto pensando…",
+  "ai.expand": "Espandi",
+  "ai.collapse": "Riduci",
   "ai.sources": "Fonti",
   "ai.recap": "Riepilogo IA",
   "ai.recap_title": "Riepilogo IA — cosa c'è di nuovo",

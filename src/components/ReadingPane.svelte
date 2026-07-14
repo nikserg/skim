@@ -18,6 +18,7 @@
     text: string;
   } | null>(null);
   let askOpen = $state(false);
+  let askExpanded = $state(false);
   let askQuestion = $state("");
   // The ask dialog so far; completed turns only, the streaming answer lives
   // in aiPanel.text until "done".
@@ -30,6 +31,7 @@
     cancelAi?.();
     aiPanel = null;
     askOpen = false;
+    askExpanded = false;
     askTurns = [];
     askQuestion = "";
   }
@@ -152,6 +154,7 @@
     cancelAi?.();
     aiPanel = null;
     askOpen = false;
+    askExpanded = false;
     askTurns = [];
     askQuestion = "";
     try {
@@ -290,7 +293,7 @@
       </button>
     </header>
 
-    <div class="scroll">
+    <div class="scroll" class:hidden={askExpanded}>
       <h1 class="subject">{detail.subject || "—"}</h1>
 
       {#if latest}
@@ -367,10 +370,25 @@
 
     {#if askOpen || aiPanel}
       <!-- AI dock sits above the actions so it's visible at any scroll position. -->
-      <div class="ai-dock">
-        <button class="dock-close" onclick={closeAiPanel} aria-label="Close">
-          <svg width="9" height="9" viewBox="0 0 10 10"><path d="M0 0L10 10M10 0L0 10" stroke="currentColor" stroke-width="1.2" /></svg>
-        </button>
+      <div class="ai-dock" class:expanded={askExpanded}>
+        <div class="dock-tools">
+          <button
+            class="dock-btn"
+            onclick={() => (askExpanded = !askExpanded)}
+            title={askExpanded ? t("ai.collapse") : t("ai.expand")}
+            aria-label={askExpanded ? t("ai.collapse") : t("ai.expand")}
+            aria-pressed={askExpanded}
+          >
+            {#if askExpanded}
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M5 1v3.5a.5.5 0 0 1-.5.5H1M7 11V7.5a.5.5 0 0 1 .5-.5H11M1 7.5h3.5a.5.5 0 0 1 .5.5V11M11 4.5H7.5a.5.5 0 0 1-.5-.5V1" /></svg>
+            {:else}
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M4.5 1H1v3.5M11 4.5V1H7.5M7.5 11H11V7.5M1 7.5V11h3.5" /></svg>
+            {/if}
+          </button>
+          <button class="dock-btn" onclick={closeAiPanel} aria-label="Close">
+            <svg width="9" height="9" viewBox="0 0 10 10"><path d="M0 0L10 10M10 0L0 10" stroke="currentColor" stroke-width="1.2" /></svg>
+          </button>
+        </div>
         {#if askOpen}
           {#if askTurns.length > 0 || aiPanel}
             <div class="ask-thread" bind:this={askThreadEl}>
@@ -709,19 +727,34 @@
     overflow-y: auto;
     flex-shrink: 0;
   }
-  .dock-close {
+  /* Expanded: the dock takes over the pane so a long chat has room to breathe. */
+  .ai-dock.expanded {
+    flex: 1;
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .scroll.hidden {
+    display: none;
+  }
+  .dock-tools {
     position: absolute;
     top: 10px;
     right: 14px;
+    display: flex;
+    gap: 2px;
+    z-index: 1;
+  }
+  .dock-btn {
     width: 24px;
     height: 24px;
     display: grid;
     place-items: center;
     border-radius: var(--radius-s);
     color: var(--text-faint);
-    z-index: 1;
   }
-  .dock-close:hover {
+  .dock-btn:hover {
     background: var(--hover);
     color: var(--text);
   }
@@ -733,6 +766,11 @@
     max-height: 26vh;
     overflow-y: auto;
     margin-bottom: 10px;
+  }
+  .ai-dock.expanded .ask-thread {
+    flex: 1;
+    max-height: none;
+    min-height: 0;
   }
   .ask-thread .ai-card {
     margin-top: 0;

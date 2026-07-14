@@ -78,6 +78,8 @@
   "ai.ask_placeholder": "Pitaj o ovom imejlu…",
   "ai.ask_followup": "Postavi još jedno pitanje…",
   "ai.thinking": "Razmišljam…",
+  "ai.expand": "Proširi",
+  "ai.collapse": "Skupi",
   "ai.sources": "Izvori",
   "ai.recap": "AI pregled",
   "ai.recap_title": "AI pregled — šta ima novo",

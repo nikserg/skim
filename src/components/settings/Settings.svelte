@@ -502,7 +502,12 @@
         {/if}
       </section>
 
-      <div class="about microlabel">Skim{appVersion ? ` v${appVersion}` : ""} · {t("onb.footer")} · MIT</div>
+      <div class="about microlabel">
+        Skim{appVersion ? ` v${appVersion}` : ""} · {t("onb.footer")} · MIT ·
+        <button class="gh-link" onclick={() => openUrl("https://github.com/nikserg/skim")}>
+          GitHub
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -835,5 +840,18 @@
   .about {
     text-align: center;
     padding-top: 4px;
+  }
+
+  .gh-link {
+    color: inherit;
+    font: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    opacity: 0.85;
+  }
+
+  .gh-link:hover {
+    color: var(--accent);
+    opacity: 1;
   }
 </style>

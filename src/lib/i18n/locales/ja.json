@@ -74,6 +74,8 @@
   "ai.ask_placeholder": "このメールについて質問…",
   "ai.ask_followup": "続けて質問…",
   "ai.thinking": "考え中…",
+  "ai.expand": "拡大",
+  "ai.collapse": "縮小",
   "ai.sources": "出典",
   "ai.recap": "AI まとめ",
   "ai.recap_title": "AI まとめ — 新着ダイジェスト",

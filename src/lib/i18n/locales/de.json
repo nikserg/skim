@@ -76,6 +76,8 @@
   "ai.ask_placeholder": "Frage zu dieser E-Mail…",
   "ai.ask_followup": "Weitere Frage stellen…",
   "ai.thinking": "Denke nach…",
+  "ai.expand": "Vergrößern",
+  "ai.collapse": "Verkleinern",
   "ai.sources": "Quellen",
   "ai.recap": "KI-Überblick",
   "ai.recap_title": "KI-Überblick — was gibt's Neues",

@@ -80,6 +80,8 @@
   "ai.ask_placeholder": "Zapytaj o ten e-mail…",
   "ai.ask_followup": "Zadaj kolejne pytanie…",
   "ai.thinking": "Myślę…",
+  "ai.expand": "Powiększ",
+  "ai.collapse": "Zmniejsz",
   "ai.sources": "Źródła",
   "ai.recap": "Podsumowanie AI",
   "ai.recap_title": "Podsumowanie AI — co nowego",

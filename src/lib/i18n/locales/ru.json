@@ -80,6 +80,8 @@
   "ai.ask_placeholder": "Спросите об этом письме…",
   "ai.ask_followup": "Задайте следующий вопрос…",
   "ai.thinking": "Думаю…",
+  "ai.expand": "Развернуть",
+  "ai.collapse": "Свернуть",
   "ai.step.search": "Поиск: {arg}",
   "ai.step.read": "Читаю «{arg}»",
   "ai.step.found_one": "{n} письмо",

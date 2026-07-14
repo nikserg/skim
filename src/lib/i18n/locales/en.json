@@ -76,6 +76,8 @@
   "ai.ask_placeholder": "Ask about this email…",
   "ai.ask_followup": "Ask a follow-up…",
   "ai.thinking": "Thinking…",
+  "ai.expand": "Expand",
+  "ai.collapse": "Collapse",
   "ai.step.search": "Searched: {arg}",
   "ai.step.read": "Read “{arg}”",
   "ai.step.found_one": "{n} email",

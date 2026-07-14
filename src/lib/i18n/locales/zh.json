@@ -74,6 +74,8 @@
   "ai.ask_placeholder": "针对这封邮件提问…",
   "ai.ask_followup": "继续提问…",
   "ai.thinking": "思考中…",
+  "ai.expand": "展开",
+  "ai.collapse": "收起",
   "ai.sources": "来源",
   "ai.recap": "AI 摘要",
   "ai.recap_title": "AI 摘要 — 新邮件速览",

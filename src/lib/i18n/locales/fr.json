@@ -76,6 +76,8 @@
   "ai.ask_placeholder": "Une question sur cet e-mail…",
   "ai.ask_followup": "Posez une autre question…",
   "ai.thinking": "Réflexion…",
+  "ai.expand": "Agrandir",
+  "ai.collapse": "Réduire",
   "ai.sources": "Sources",
   "ai.recap": "Récap IA",
   "ai.recap_title": "Récap IA — quoi de neuf",
