@@ -27,19 +27,28 @@ pub struct EmailBlock {
     pub date: String,
     pub subject: String,
     pub body: String,
+    /// Rendered attachment context — extracted text and/or notes about files
+    /// provided natively. Empty when the email has no readable attachments or
+    /// the feature didn't request them. Has its own budget, so it is appended
+    /// verbatim (not subject to the body `limit`).
+    pub attachments: String,
 }
 
 fn render_emails(emails: &[EmailBlock], limit: usize) -> String {
     emails
         .iter()
         .map(|e| {
-            format!(
+            let mut block = format!(
                 "--- From: {} | Date: {} | Subject: {} ---\n{}",
                 e.from,
                 e.date,
                 e.subject,
                 truncate(&e.body, limit)
-            )
+            );
+            if !e.attachments.is_empty() {
+                block.push_str(&format!("\n\nAttachments:\n{}", e.attachments));
+            }
+            block
         })
         .collect::<Vec<_>>()
         .join("\n\n")
@@ -53,8 +62,9 @@ pub fn summarize(emails: &[EmailBlock], now: &str, locale: &str) -> (String, Str
     );
     let user = format!(
         "Summarize this email conversation in 2–4 short bullet points. \
-         Call out action items, deadlines, and any asks directed at the user. \
-         No preamble.\n\n{}",
+         Account for any attached files (their extracted text, or documents/images \
+         provided to you directly). Call out action items, deadlines, and any asks \
+         directed at the user. No preamble.\n\n{}",
         render_emails(emails, MAX_BODY_CHARS / emails.len().max(1))
     );
     (system, user)
@@ -260,9 +270,10 @@ pub fn adjust(
 pub fn ask_session(chain: &[EmailBlock], now: &str, locale: &str) -> (String, String) {
     if chain.len() <= 1 {
         let system = format!(
-            "You answer the user's questions about a specific email. Answer only from \
-             the email's content; if it doesn't contain the answer, say so plainly. \
-             Be brief. {} {}",
+            "You answer the user's questions about a specific email. Answer from the \
+             email's content and any attached files — their extracted text, or the \
+             documents/images provided to you directly. If the answer isn't there, say \
+             so plainly. Be brief. {} {}",
             now_block(now),
             locale_line(locale)
         );
@@ -270,10 +281,11 @@ pub fn ask_session(chain: &[EmailBlock], now: &str, locale: &str) -> (String, St
         return (system, preamble);
     }
     let system = format!(
-        "You answer the user's questions about an email conversation. Answer only \
-         from the emails' content; if they don't contain the answer, say so plainly. \
-         Questions are usually about the LAST (most recent) message — use the earlier \
-         messages as context. Be brief. {} {}",
+        "You answer the user's questions about an email conversation. Answer from the \
+         emails' content and any attached files — their extracted text, or the \
+         documents/images provided to you directly. If the answer isn't there, say so \
+         plainly. Questions are usually about the LAST (most recent) message — use the \
+         earlier messages as context. Be brief. {} {}",
         now_block(now),
         locale_line(locale)
     );

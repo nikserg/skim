@@ -634,6 +634,7 @@ pub async fn email_block_owned(
             date: format_date(date),
             subject: subject.unwrap_or_default(),
             body,
+            attachments: String::new(),
         })
     })
     .await

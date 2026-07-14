@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod anthropic;
+pub mod attachments;
 pub mod openrouter;
 pub mod prompts;
 pub mod retrieval;
@@ -10,6 +11,24 @@ pub mod retrieval;
 pub struct ChatMessage {
     pub role: &'static str,
     pub content: String,
+}
+
+/// A binary attachment handed to the model natively (Anthropic `document` /
+/// `image` content blocks). Only produced for the Anthropic provider; the
+/// OpenRouter path falls back to local text extraction instead.
+#[derive(Debug, Clone)]
+pub enum MediaKind {
+    Pdf,
+    Image,
+}
+
+#[derive(Debug, Clone)]
+pub struct MediaBlock {
+    pub kind: MediaKind,
+    /// MIME type, e.g. "application/pdf" or "image/png".
+    pub media_type: String,
+    pub data_base64: String,
+    pub filename: String,
 }
 
 /// A tool the model asked to run, assembled from a provider's streamed

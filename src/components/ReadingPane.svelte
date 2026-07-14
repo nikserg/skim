@@ -104,7 +104,7 @@
 
   let detail = $state<ThreadDetail | null>(null);
   let bodies = $state<Record<number, RenderedBody | "loading" | "error">>({});
-  let loadedFor = $state<number | null>(null);
+  let loadedFor = $state<string | null>(null);
   // Minimalism: the pane shows only the newest message of the thread IN THE
   // CURRENT FOLDER — in the inbox that's the incoming message (not your own
   // reply, which lives in Sent), in Sent it's what you sent.
@@ -136,16 +136,28 @@
     return () => ui.setReadingAi(null);
   });
 
+  // Reload when the thread changes OR when the selected thread gains a new
+  // message. messageCount/date on the row advance via refreshThreads() on the
+  // `mail:updated` event, so this reacts to new mail landing in the thread that
+  // is already open — showing the newest message and marking it read without a
+  // re-click.
+  const loadKey = $derived.by(() => {
+    const id = mail.selectedThreadId;
+    if (id === null) return null;
+    const row = mail.selectedThread;
+    return `${id}:${row?.messageCount ?? 0}:${row?.date ?? 0}`;
+  });
+
   $effect(() => {
-    const threadId = mail.selectedThreadId;
-    if (threadId === null) {
+    const key = loadKey;
+    if (key === null) {
       detail = null;
       loadedFor = null;
       return;
     }
-    if (threadId === loadedFor) return;
-    loadedFor = threadId;
-    void loadThread(threadId);
+    if (key === loadedFor) return;
+    loadedFor = key;
+    void loadThread(mail.selectedThreadId!);
   });
 
   async function loadThread(threadId: number) {

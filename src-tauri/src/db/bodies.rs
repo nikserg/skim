@@ -123,6 +123,38 @@ pub fn list_attachments(
     Ok(rows)
 }
 
+/// A non-inline attachment with its on-disk cache path — enough for the AI
+/// layer to read the bytes and extract/attach content.
+pub struct AttachmentContent {
+    pub filename: Option<String>,
+    pub mime_type: Option<String>,
+    pub size: i64,
+    pub cache_path: Option<String>,
+}
+
+/// Real (non-inline) attachments of a message, with cache paths. Inline `cid:`
+/// parts (email logos etc.) are excluded — same filter as `list_attachments`.
+pub fn list_attachment_files(
+    conn: &Connection,
+    message_pk: i64,
+) -> rusqlite::Result<Vec<AttachmentContent>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT filename, mime_type, size, cache_path
+         FROM attachments WHERE message_id = ?1 AND is_inline = 0 ORDER BY id",
+    )?;
+    let rows = stmt
+        .query_map(params![message_pk], |r| {
+            Ok(AttachmentContent {
+                filename: r.get(0)?,
+                mime_type: r.get(1)?,
+                size: r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                cache_path: r.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 pub struct AttachmentFile {
     pub filename: Option<String>,
     pub mime_type: Option<String>,

@@ -1,11 +1,11 @@
 //! Minimal streaming client for the Anthropic Messages API. The user's own
 //! key is used; requests go directly from this machine to api.anthropic.com.
 
-use super::{AssistantTurn, ChatMessage, ToolCall};
+use super::{AssistantTurn, ChatMessage, MediaBlock, MediaKind, ToolCall};
 use crate::error::{Result, SkimError};
 use futures::StreamExt;
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 const API_BASE: &str = "https://api.anthropic.com/v1";
@@ -17,7 +17,58 @@ pub struct Request {
     pub model: String,
     pub system: String,
     pub messages: Vec<ChatMessage>,
+    /// Native attachments (PDFs/images) appended to the first user turn.
+    pub media: Vec<MediaBlock>,
     pub max_tokens: u32,
+}
+
+/// One attachment as an Anthropic content block.
+fn media_block_json(mb: &MediaBlock) -> Value {
+    match mb.kind {
+        MediaKind::Pdf => json!({
+            "type": "document",
+            "title": mb.filename,
+            "source": {
+                "type": "base64",
+                "media_type": mb.media_type,
+                "data": mb.data_base64,
+            },
+        }),
+        MediaKind::Image => json!({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": mb.media_type,
+                "data": mb.data_base64,
+            },
+        }),
+    }
+}
+
+/// Serialize turns to Anthropic's wire format, folding `media` into the first
+/// user turn as document/image blocks (each preceded by a label). Messages with
+/// no media serialize as `{role, content: "…"}`; the API accepts both shapes.
+fn build_messages(messages: &[ChatMessage], media: &[MediaBlock]) -> Vec<Value> {
+    let mut media_placed = false;
+    messages
+        .iter()
+        .map(|m| {
+            if m.role == "user" && !media_placed && !media.is_empty() {
+                media_placed = true;
+                let mut content = vec![json!({ "type": "text", "text": m.content })];
+                for mb in media {
+                    content.push(json!({
+                        "type": "text",
+                        "text": format!("Attachment \"{}\":", mb.filename),
+                    }));
+                    content.push(media_block_json(mb));
+                }
+                json!({ "role": m.role, "content": content })
+            } else {
+                json!({ "role": m.role, "content": m.content })
+            }
+        })
+        .collect()
 }
 
 /// Validate an API key with a free models-list call.
@@ -67,7 +118,7 @@ async fn stream_once(
         "model": request.model,
         "max_tokens": request.max_tokens,
         "system": request.system,
-        "messages": request.messages,
+        "messages": build_messages(&request.messages, &request.media),
         "stream": true,
     });
 
@@ -399,4 +450,81 @@ struct ToolDelta {
     text: Option<String>,
     #[serde(default)]
     partial_json: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn user(content: &str) -> ChatMessage {
+        ChatMessage {
+            role: "user",
+            content: content.into(),
+        }
+    }
+
+    #[test]
+    fn no_media_keeps_string_content() {
+        let msgs = build_messages(&[user("hi")], &[]);
+        assert_eq!(msgs, vec![json!({ "role": "user", "content": "hi" })]);
+    }
+
+    #[test]
+    fn pdf_folds_into_first_user_turn_as_document() {
+        let media = vec![MediaBlock {
+            kind: MediaKind::Pdf,
+            media_type: "application/pdf".into(),
+            data_base64: "QkFTRTY0".into(),
+            filename: "report.pdf".into(),
+        }];
+        let msgs = build_messages(&[user("what's in the pdf?")], &media);
+        let content = msgs[0]["content"].as_array().unwrap();
+        // text prompt, then a label text block, then the document block.
+        assert_eq!(
+            content[0],
+            json!({ "type": "text", "text": "what's in the pdf?" })
+        );
+        assert_eq!(content[2]["type"], "document");
+        assert_eq!(content[2]["source"]["type"], "base64");
+        assert_eq!(content[2]["source"]["media_type"], "application/pdf");
+        assert_eq!(content[2]["source"]["data"], "QkFTRTY0");
+    }
+
+    #[test]
+    fn image_uses_image_block() {
+        let media = vec![MediaBlock {
+            kind: MediaKind::Image,
+            media_type: "image/png".into(),
+            data_base64: "AAAA".into(),
+            filename: "chart.png".into(),
+        }];
+        let msgs = build_messages(&[user("q")], &media);
+        let content = msgs[0]["content"].as_array().unwrap();
+        assert_eq!(content[2]["type"], "image");
+        assert_eq!(content[2]["source"]["media_type"], "image/png");
+    }
+
+    #[test]
+    fn media_attaches_only_to_first_user_turn() {
+        let media = vec![MediaBlock {
+            kind: MediaKind::Pdf,
+            media_type: "application/pdf".into(),
+            data_base64: "x".into(),
+            filename: "a.pdf".into(),
+        }];
+        let msgs = build_messages(
+            &[
+                user("first"),
+                ChatMessage {
+                    role: "assistant",
+                    content: "reply".into(),
+                },
+                user("second"),
+            ],
+            &media,
+        );
+        assert!(msgs[0]["content"].is_array());
+        assert_eq!(msgs[1], json!({ "role": "assistant", "content": "reply" }));
+        assert_eq!(msgs[2], json!({ "role": "user", "content": "second" }));
+    }
 }

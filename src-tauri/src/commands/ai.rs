@@ -1,5 +1,5 @@
 use crate::ai::retrieval::Citation;
-use crate::ai::{agent, anthropic, openrouter, prompts, ChatMessage};
+use crate::ai::{agent, anthropic, attachments, openrouter, prompts, ChatMessage, MediaBlock};
 use crate::db::{queries, Db};
 use crate::error::{Result, SkimError};
 use crate::secrets;
@@ -172,6 +172,7 @@ fn spawn_stream(
     ctx: AiContext,
     system: String,
     messages: Vec<ChatMessage>,
+    media: Vec<MediaBlock>,
     max_tokens: u32,
     citations: Vec<Citation>,
     channel: Channel<AiEvent>,
@@ -188,11 +189,14 @@ fn spawn_stream(
                     model: ctx.model,
                     system,
                     messages,
+                    media,
                     max_tokens,
                 };
                 anthropic::stream(&ctx.key, &request, &mut on_delta).await
             }
             Provider::OpenRouter => {
+                // OpenRouter has no native attachment path; content was folded
+                // into the prompt text as extracted text, so `media` is unused.
                 let request = openrouter::Request {
                     model: ctx.model,
                     system,
@@ -246,6 +250,30 @@ async fn email_block(state: &State<'_, AppState>, message_id: i64) -> Result<pro
     agent::email_block_owned(&state.db, &engines, message_id).await
 }
 
+/// Enrich `blocks` (aligned 1:1 with `ids`, chronological) with attachment
+/// context and gather native media blocks for the request. Processes the chain
+/// anchor-first (the last id — the open message) so it wins the shared budget.
+/// Bodies must already be built (that triggers the fetch that caches the files).
+async fn collect_attachments(
+    state: &State<'_, AppState>,
+    ctx: &AiContext,
+    ids: &[i64],
+    blocks: &mut [prompts::EmailBlock],
+) -> Vec<MediaBlock> {
+    let native = ctx.provider == Provider::Anthropic;
+    let mut budget = attachments::Budget::default();
+    let mut media: Vec<MediaBlock> = Vec::new();
+    for i in (0..ids.len()).rev() {
+        let collected =
+            attachments::collect_for_message(&state.db, ids[i], native, &mut budget).await;
+        if !collected.notes.is_empty() {
+            blocks[i].attachments = collected.notes;
+        }
+        media.extend(collected.media);
+    }
+    media
+}
+
 // ---- features ------------------------------------------------------------
 
 #[tauri::command]
@@ -272,10 +300,13 @@ pub async fn ai_summarize(
     if ids.is_empty() {
         return Err(SkimError::other("mail", "thread not found"));
     }
-    let mut emails = Vec::new();
-    for id in ids.into_iter().rev() {
-        emails.push(email_block(&state, id).await?);
+    // Chronological, so the last id is the most recent message (the anchor).
+    let chrono_ids: Vec<i64> = ids.into_iter().rev().collect();
+    let mut emails = Vec::with_capacity(chrono_ids.len());
+    for id in &chrono_ids {
+        emails.push(email_block(&state, *id).await?);
     }
+    let media = collect_attachments(&state, &ctx, &chrono_ids, &mut emails).await;
     let (system, user) = prompts::summarize(&emails, &ctx.now, &ctx.locale);
     spawn_stream(
         &state,
@@ -283,6 +314,7 @@ pub async fn ai_summarize(
         ctx,
         system,
         user_turn(user),
+        media,
         1024,
         Vec::new(),
         channel,
@@ -326,7 +358,8 @@ async fn reply_chain(
     state: &State<'_, AppState>,
     message_id: i64,
     limit: usize,
-) -> Result<Vec<prompts::EmailBlock>> {
+    attach: Option<&AiContext>,
+) -> Result<(Vec<prompts::EmailBlock>, Vec<MediaBlock>)> {
     let ids: Vec<i64> = state
         .db
         .call(move |conn| {
@@ -359,10 +392,14 @@ async fn reply_chain(
         })
         .await?;
     let mut chain = Vec::with_capacity(ids.len());
-    for id in ids {
-        chain.push(email_block(state, id).await?);
+    for id in &ids {
+        chain.push(email_block(state, *id).await?);
     }
-    Ok(chain)
+    let media = match attach {
+        Some(ctx) => collect_attachments(state, ctx, &ids, &mut chain).await,
+        None => Vec::new(),
+    };
+    Ok((chain, media))
 }
 
 #[tauri::command]
@@ -376,9 +413,9 @@ pub async fn ai_draft(
 ) -> Result<()> {
     let ctx = ai_context(&state.db).await?;
     // A reply sees the whole conversation, not just the last message.
-    let chain = match reply_to_message_id {
-        Some(id) => reply_chain(&state, id, 8).await?,
-        None => Vec::new(),
+    let (chain, media) = match reply_to_message_id {
+        Some(id) => reply_chain(&state, id, 8, Some(&ctx)).await?,
+        None => (Vec::new(), Vec::new()),
     };
     let profile = writer_profile(&state).await?;
     let (system, user) = prompts::draft(
@@ -395,6 +432,7 @@ pub async fn ai_draft(
         ctx,
         system,
         user_turn(user),
+        media,
         2048,
         Vec::new(),
         channel,
@@ -420,6 +458,7 @@ pub async fn ai_adjust_draft(
         ctx,
         system,
         user_turn(user),
+        Vec::new(),
         2048,
         Vec::new(),
         channel,
@@ -472,9 +511,9 @@ pub async fn ai_compose(
 ) -> Result<()> {
     let ctx = ai_context(&state.db).await?;
     // A reply sees the whole conversation, not just the last message.
-    let chain = match reply_to_message_id {
-        Some(id) => reply_chain(&state, id, 8).await?,
-        None => Vec::new(),
+    let (chain, media) = match reply_to_message_id {
+        Some(id) => reply_chain(&state, id, 8, Some(&ctx)).await?,
+        None => (Vec::new(), Vec::new()),
     };
     let profile = writer_profile(&state).await?;
     let (system, preamble) = prompts::compose_session(&chain, &profile, &ctx.now, &ctx.locale);
@@ -489,6 +528,7 @@ pub async fn ai_compose(
         ctx,
         system,
         messages,
+        media,
         2048,
         Vec::new(),
         channel,
@@ -508,7 +548,7 @@ pub async fn ai_ask(
     channel: Channel<AiEvent>,
 ) -> Result<()> {
     let ctx = ai_context(&state.db).await?;
-    let chain = reply_chain(&state, message_id, 25).await?;
+    let (chain, media) = reply_chain(&state, message_id, 25, Some(&ctx)).await?;
     let (system, preamble) = prompts::ask_session(&chain, &ctx.now, &ctx.locale);
     let messages = session_messages(&turns, &preamble);
     if messages.is_empty() {
@@ -520,6 +560,7 @@ pub async fn ai_ask(
         ctx,
         system,
         messages,
+        media,
         2048,
         Vec::new(),
         channel,
@@ -681,6 +722,7 @@ pub async fn ai_recap(
         ctx,
         system,
         user_turn(user),
+        Vec::new(),
         2048,
         citations,
         channel,
@@ -784,6 +826,7 @@ pub async fn ai_analyze_style(
                 role: "user",
                 content: user.clone(),
             }],
+            media: Vec::new(),
             max_tokens: 1024,
         };
         let mut profile_text = String::new();
