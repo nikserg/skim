@@ -49,6 +49,17 @@
   /* ---- Inline tooltips (data-tip="byok" -> dict.tip_byok) ---- */
   var pop = null, popFor = null;
 
+  /* Easter egg: the "Uh-oh!" from ICQ when you open the ICQ-era tip */
+  var icqSound = null;
+  function playIcqSound() {
+    try {
+      if (!icqSound) icqSound = new Audio("oh-oh-icq-sound.mp3");
+      icqSound.currentTime = 0;
+      var p = icqSound.play();
+      if (p && p.catch) p.catch(function () {});
+    } catch (e) {}
+  }
+
   function ensurePop() {
     if (!pop) {
       pop = document.createElement("div");
@@ -72,6 +83,7 @@
     p.innerHTML = text;
     p.classList.add("show");
     popFor = el;
+    if (el.getAttribute("data-tip") === "icq") playIcqSound();
     // position below the trigger, clamped to the viewport
     var r = el.getBoundingClientRect();
     var margin = 10, width = p.offsetWidth;
