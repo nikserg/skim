@@ -19,35 +19,28 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236b46f2'/%3E%3Crect x='8' y='11' width='16' height='2.6' rx='1.3' fill='white'/%3E%3Crect x='8' y='18' width='10' height='2.6' rx='1.3' fill='white' fill-opacity='0.75'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link href="assets/legal.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@500;600;700&family=Oswald:wght@600;700&family=Permanent+Marker&family=Rock+Salt&family=Special+Elite&display=swap" rel="stylesheet">
+  <link href="assets/zine.css" rel="stylesheet">
 </head>
 <body>
 
-  <nav>
-    <div class="wrap">
-      <a class="brand" href="./">
-        <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
-          <rect width="32" height="32" rx="7" fill="#6b46f2"/>
-          <rect x="8" y="11" width="16" height="2.6" rx="1.3" fill="white"/>
-          <rect x="8" y="18" width="10" height="2.6" rx="1.3" fill="white" fill-opacity="0.75"/>
-        </svg>
-        Skim
-      </a>
-      <div class="nav-links">
-        <a href="./" data-i18n="nav_home">Home</a>
-        <a href="https://github.com/nikserg/skim" data-i18n="nav_github">GitHub</a>
-        <label class="lang" title="Language">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
-          <select id="langSelect" aria-label="Language"></select>
-        </label>
-        <a class="btn" href="https://github.com/nikserg/skim/releases/latest" data-i18n="nav_download">Download</a>
-      </div>
-    </div>
-  </nav>
+  <div class="frame legal-main">
+    <div class="sheet">
+      <div class="grain"></div>
+      <header class="masthead">
+        <a class="mast-logo" href="./">Skim</a>
+        <nav class="mast-nav">
+          <a href="./" data-i18n="nav_home">Home</a>
+          <a href="https://github.com/nikserg/skim" data-i18n="nav_github">GitHub</a>
+          <a class="btn-zine" href="https://github.com/nikserg/skim/releases/latest" data-i18n="nav_download" style="font-size:15px;padding:8px 14px;box-shadow:3px 3px 0 var(--ink);">Download</a>
+          <label class="lang" title="Language">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
+            <select id="langSelect" aria-label="Language"></select>
+          </label>
+        </nav>
+      </header>
 
-  <main>
-    <div class="wrap legal">
+      <main class="legal">
       <h1>Terms of Service</h1>
       <p class="updated">Last updated: July 13, 2026</p>
       <p class="note" data-i18n="legal_note">This document is provided in English, which is the authoritative version.</p>
@@ -88,21 +81,21 @@
 
       <h2>10. Contact</h2>
       <p>Questions about these Terms can be raised via <a href="https://github.com/nikserg/skim/issues">GitHub Issues</a>.</p>
-    </div>
-  </main>
+      </main>
 
-  <footer>
-    <div class="wrap">
-      <span data-i18n="foot_copy">MIT © Skim contributors</span>
-      <div class="foot-links">
-        <a href="./" data-i18n="nav_home">Home</a>
-        <a href="https://github.com/nikserg/skim" data-i18n="foot_source">Source</a>
-        <a href="privacy.html" data-i18n="foot_privacy">Privacy</a>
-        <a href="terms.html" data-i18n="foot_terms">Terms</a>
-        <a href="https://github.com/nikserg/skim/issues" data-i18n="foot_issues">Issues</a>
-      </div>
+      <footer class="zine-footer">
+        <span data-i18n="foot_copy">MIT © Skim contributors</span>
+        <span class="foot-links">
+          <a href="./" data-i18n="nav_home">Home</a>
+          <a href="https://github.com/nikserg/skim" data-i18n="foot_source">Source</a>
+          <a href="privacy.html" data-i18n="foot_privacy">Privacy</a>
+          <a href="terms.html" data-i18n="foot_terms">Terms</a>
+          <a href="https://github.com/nikserg/skim/issues" data-i18n="foot_issues">Issues</a>
+        </span>
+      </footer>
+
     </div>
-  </footer>
+  </div>
 
   <script src="assets/locales.js"></script>
   <script src="assets/app.js"></script>
