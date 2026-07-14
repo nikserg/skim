@@ -205,7 +205,7 @@ h1.ransom { margin: 26px 0 6px; padding: 0; font-weight: normal; }
   padding: 14px 14px 52px; box-shadow: 4px 8px 22px rgba(0,0,0,0.35);
   transform: rotate(3deg); width: 400px; max-width: 100%;
 }
-.polaroid img { display: block; width: 100%; height: auto; filter: contrast(1.02); }
+.polaroid img:not(.decal) { display: block; width: 100%; height: auto; filter: contrast(1.02); }
 .polaroid .tape-c {
   position: absolute; top: -16px; left: 50%; transform: translateX(-50%) rotate(-4deg);
   width: 120px; height: 34px; background: rgba(216,190,120,0.55); box-shadow: 0 2px 5px rgba(0,0,0,0.2);
@@ -217,6 +217,15 @@ h1.ransom { margin: 26px 0 6px; padding: 0; font-weight: normal; }
 
 /* scattered stickers */
 .sticker { position: absolute; z-index: 6; }
+
+/* die-cut punk stickers slapped onto the zine (docs/stickers/*.webp) */
+.decal {
+  position: absolute; z-index: 6; pointer-events: none; user-select: none;
+  filter: drop-shadow(2px 3px 3px rgba(0,0,0,0.35));   /* follows the die-cut edge */
+  width: 88px; height: auto;
+}
+.decal.sm { width: 64px; }
+.decal.lg { width: 116px; }
 
 /* ============================ SECTION HEADINGS ============================ */
 .zine-h2 {
@@ -329,6 +338,17 @@ h1.ransom { margin: 26px 0 6px; padding: 0; font-weight: normal; }
   transform: rotate(-0.5deg); overflow: hidden; margin-top: 6px;
 }
 .shot-plain img { display: block; width: 100%; height: auto; }
+.shot-plain video { display: block; width: 100%; height: auto; }
+
+/* ============================ DEMO VIDEO ============================ */
+.demo-frame { position: relative; max-width: 900px; margin: 0; }
+.demo-vid { cursor: pointer; }
+.demo-note {
+  position: absolute; right: -10px; bottom: -14px; z-index: 6;
+  background: var(--scrap2); font-family: var(--f-hand); font-weight: 700;
+  font-size: 18px; padding: 4px 12px; transform: rotate(-3deg);
+  box-shadow: 2px 3px 6px rgba(0,0,0,0.22); border: 1px solid rgba(0,0,0,0.12);
+}
 
 /* ============================ FAQ ============================ */
 .faq-list { display: flex; flex-direction: column; gap: 12px; max-width: 780px; }
@@ -395,9 +415,13 @@ h1.ransom { margin: 26px 0 6px; padding: 0; font-weight: normal; }
   .frame { padding: 16px 10px 40px; }
   .mast-nav a:not(.mast-more) { }
   .hero-swash-a, .hero-swash-b { display: none; }
-  .sticker { display: none; }
+  .sticker, .decal { display: none; }
   h1.ransom { margin-top: 18px; }
   .polaroid { width: 100%; }
+}
+/* AI-section right-gutter strip needs a real gutter beside the 820px list */
+@media (max-width: 1100px) {
+  .decal-ai { display: none; }
 }
 @media (max-width: 520px) {
   .mast-nav { font-size: 18px; gap: 12px; }

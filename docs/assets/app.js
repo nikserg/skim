@@ -118,6 +118,17 @@
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") hideTip(); });
   window.addEventListener("resize", hideTip);
 
+  /* ---- Demo video: click to pause/resume, respect reduced motion ---- */
+  function initDemoVideo() {
+    var v = document.querySelector(".demo-vid");
+    if (!v) return;
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) { v.removeAttribute("autoplay"); v.pause(); }
+    v.addEventListener("click", function () {
+      if (v.paused) v.play(); else v.pause();
+    });
+  }
+
   function init() {
     var sel = document.getElementById("langSelect");
     if (sel) {
@@ -128,6 +139,7 @@
     }
     applyLang(pickInitial());
     bindTips();
+    initDemoVideo();
   }
 
   if (document.readyState === "loading") {

@@ -12,7 +12,7 @@
   <meta property="og:site_name" content="Skim">
   <meta property="og:title" content="Skim — Fast, Open-Source AI Email Client for Windows">
   <meta property="og:description" content="A fast, native, minimalist email client for Windows with an AI copilot on your own terms. Free & open source, ~5 MB, no admin rights.">
-  <meta property="og:image" content="https://skim-tech.com/skim-light.png">
+  <meta property="og:image" content="https://skim-tech.com/skim-light.jpg">
   <meta property="og:image:width" content="1600">
   <meta property="og:image:height" content="1068">
   <meta property="og:image:alt" content="Skim — a three-pane Windows email client, light theme">
@@ -21,7 +21,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Skim — Fast, Open-Source AI Email Client for Windows">
   <meta name="twitter:description" content="A fast, native, minimalist email client for Windows with an AI copilot on your own terms. Free & open source, ~5 MB, no admin rights.">
-  <meta name="twitter:image" content="https://skim-tech.com/skim-light.png">
+  <meta name="twitter:image" content="https://skim-tech.com/skim-light.jpg">
 
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236b46f2'/%3E%3Crect x='8' y='11' width='16' height='2.6' rx='1.3' fill='white'/%3E%3Crect x='8' y='18' width='10' height='2.6' rx='1.3' fill='white' fill-opacity='0.75'/%3E%3C/svg%3E">
 
@@ -43,8 +43,8 @@
     "downloadUrl": "https://github.com/nikserg/skim/releases/latest",
     "softwareVersion": "0.1.6",
     "screenshot": [
-      "https://skim-tech.com/skim-light.png",
-      "https://skim-tech.com/skim-dark.png"
+      "https://skim-tech.com/skim-light.jpg",
+      "https://skim-tech.com/skim-dark.jpg"
     ],
     "license": "https://github.com/nikserg/skim/blob/main/LICENSE",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -117,6 +117,7 @@
     <header class="section hero" id="top">
       <div class="hero-swash-a"></div>
       <div class="hero-swash-b"></div>
+      <img class="decal sm" src="stickers/safety_pin_top.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="64" style="top:8px;left:-6px;transform:rotate(-8deg);z-index:4;">
 
       <div class="hero-inner">
         <div class="eyebrow" data-i18n="hero_eyebrow">// FREE · OPEN SOURCE · ~5MB · WINDOWS · BYOK //</div>
@@ -136,9 +137,9 @@
 
           <figure class="polaroid">
             <div class="tape-c"></div>
-            <svg class="sticker" width="80" height="80" viewBox="0 0 100 100" style="top:-30px;right:-16px;transform:rotate(10deg);" fill="none" stroke="#171310" stroke-width="6" aria-hidden="true"><circle cx="50" cy="50" r="42"/><path d="M28 68 L72 30 M30 34 H70 V72"/></svg>
-            <svg class="sticker" width="56" height="56" viewBox="0 0 24 24" style="bottom:64px;left:-22px;transform:rotate(-14deg);" fill="#ec1c7d" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
-            <img src="skim-light.png" alt="Skim — light theme, three-pane email client">
+            <img class="decal" src="stickers/anarchy_a.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:-40px;right:-22px;transform:rotate(10deg);">
+            <img class="decal sm" src="stickers/star_circle.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="64" style="bottom:44px;left:-30px;transform:rotate(-14deg);">
+            <img src="skim-light.jpg" alt="Skim — light theme, three-pane email client">
             <figcaption data-i18n="hero_shot_cap">my inbox, finally quiet ♥</figcaption>
           </figure>
         </div>
@@ -146,8 +147,24 @@
 
     </header>
 
+    <!-- ===================== DEMO VIDEO ===================== -->
+    <section class="section" id="demo">
+      <img class="decal" src="stickers/cassette.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="bottom:16px;left:-4px;transform:rotate(-7deg);">
+      <div class="zine-kicker" data-i18n="demo_kicker">▶ watch it move</div>
+      <figure class="demo-frame">
+        <div class="shot-plain">
+          <video class="demo-vid" autoplay muted loop playsinline preload="metadata"
+                 poster="skim-light.jpg" aria-label="Skim in action">
+            <source src="skim-demo.mp4" type="video/mp4">
+          </video>
+        </div>
+        <figcaption class="demo-note" data-i18n="demo_note">no sound needed 🔇</figcaption>
+      </figure>
+    </section>
+
     <!-- ===================== FEATURES ===================== -->
     <section class="section" id="product">
+      <img class="decal" src="stickers/diy_text.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:12px;right:6px;transform:rotate(6deg);">
       <div class="zine-h2" data-i18n="why_h2">Fewer buttons. Less pain.</div>
       <p class="zine-lead" data-i18n-html="why_lead">Email clients usually come in two flavors: a browser cosplaying as an app, or a monstrous do-everything suite with <span class="tip" data-tip="icq">ICQ-era</span> vibes. Skim is neither.</p>
 
@@ -181,6 +198,7 @@
 
     <!-- ===================== COMMAND PALETTE ===================== -->
     <section class="section" id="palette">
+      <img class="decal" src="stickers/no_future.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="bottom:40px;right:8px;transform:rotate(-5deg);">
       <div class="zine-kicker" data-i18n="feat_kicker">&gt;_ one hotkey to anything</div>
       <div class="zine-h2" data-i18n="feat_h2">Ctrl+K, and it's already done</div>
       <p class="zine-lead" data-i18n="feat_lead">One hotkey to anything. Search your mail, jump to any folder, fire quick commands, and ask the AI across your whole mailbox — one window, no mouse.</p>
@@ -229,6 +247,10 @@
 
     <!-- ===================== AI ===================== -->
     <section class="section" id="ai">
+      <img class="decal lg" src="stickers/skull_mohawk.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="116" style="top:120px;left:-30px;transform:rotate(-9deg);">
+      <img class="decal decal-ai" src="stickers/fight_back.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:660px;right:54px;transform:rotate(6deg);">
+      <img class="decal decal-ai lg" src="stickers/punk_person.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="116" style="top:905px;right:14px;transform:rotate(-7deg);">
+      <img class="decal decal-ai" src="stickers/star_circle.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:1170px;right:64px;transform:rotate(4deg);">
       <div class="ai-eyebrow" data-i18n="ai_eyebrow">✦ Your key, your bill</div>
       <div class="ai-h2" data-i18n-html="ai_h2">AI that knows it's <span class="tip" data-tip="thu">Thursday</span> and writes like you</div>
       <p class="zine-lead" data-i18n="ai_lead">There is no “Skim Pro” subscription, and there never will be. Paste your own Anthropic (Claude) or OpenRouter key (Claude, GPT, Gemini, Grok and hundreds more models) and the violet ✦ buttons come alive. Requests go straight from your machine to the provider — no proxy of ours, no markup. You pay the provider at cost; the key lives in Windows Credential Manager. No key? Skim just works as a fast email client (not amazing, but why not?).</p>
@@ -245,11 +267,12 @@
 
     <!-- ===================== DARK SCREENSHOT ===================== -->
     <section class="section" id="screenshot">
-      <div class="shot-plain"><img src="skim-dark.png" alt="Skim — dark theme with AI features"></div>
+      <div class="shot-plain"><img src="skim-dark.jpg" alt="Skim — dark theme with AI features"></div>
     </section>
 
     <!-- ===================== CONTRIBUTE ===================== -->
     <section class="section" id="contribute">
+      <img class="decal" src="stickers/rebel_text.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:-8px;right:18px;transform:rotate(5deg);">
       <div class="paper-card">
         <div class="txt">
           <h3 data-i18n="contrib_h2">Fork it, break it, repeat</h3>
@@ -264,6 +287,7 @@
 
     <!-- ===================== INSTALL ===================== -->
     <section class="section" id="install">
+      <img class="decal sm" src="stickers/peace_hand.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="64" style="top:30px;left:-6px;transform:rotate(-8deg);">
       <div class="paper-card">
         <div class="txt">
           <h3 data-i18n="install_h3">Install in seconds</h3>
@@ -275,6 +299,7 @@
 
     <!-- ===================== FAQ ===================== -->
     <section class="section" id="faq">
+      <img class="decal" src="stickers/viva_la_punk.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:24px;right:10px;transform:rotate(-6deg);">
       <div class="zine-h2" data-i18n="faq_h2">Frequently asked questions</div>
       <p class="zine-lead" data-i18n="faq_lead">Everything people usually ask before switching their Windows email client.</p>
       <div class="faq-list">

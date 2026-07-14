@@ -24,3 +24,7 @@ Thumbs.db
 
 .vercel
 .env*
+
+# Demo generator: build + generated video assets (regenerate with `npm run demo`)
+demo/dist-demo/
+demo/output/

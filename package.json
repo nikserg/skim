@@ -15,7 +15,13 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "demo": "npm run demo:record && npm run demo:encode && npm run demo:shots",
+    "demo:dev": "vite --config demo/vite.demo.config.ts",
+    "demo:build": "vite build --config demo/vite.demo.config.ts",
+    "demo:record": "node demo/record.mjs",
+    "demo:encode": "node demo/encode.mjs",
+    "demo:shots": "node demo/screenshots.mjs"
   },
   "dependencies": {
     "@fontsource-variable/hanken-grotesk": "^5.2.0",
@@ -30,6 +36,7 @@
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "@tauri-apps/cli": "^2.9.0",
     "@tsconfig/svelte": "^5.0.5",
+    "playwright": "^1.49.0",
     "svelte": "^5.45.0",
     "svelte-check": "^4.3.3",
     "typescript": "^5.9.0",
