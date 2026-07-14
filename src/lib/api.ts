@@ -52,6 +52,8 @@ export const api = {
     invoke<string | null>("save_attachment", { attachmentId }),
   openAttachment: (attachmentId: number) => invoke<void>("open_attachment", { attachmentId }),
   syncNow: (accountId?: string) => invoke<void>("sync_now", { accountId: accountId ?? null }),
+  takePendingOpen: () =>
+    invoke<{ folderId: number; threadId: number } | null>("take_pending_open"),
   rsvpInvite: (messageId: number, response: "accepted" | "declined" | "tentative") =>
     invoke<void>("rsvp_invite", { messageId, response }),
 

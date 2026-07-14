@@ -26,10 +26,16 @@ pub fn run() {
         .ok();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            // A second launch surfaces the running instance (it may be
-            // hidden in the tray).
-            show_main_window(app);
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // A protocol-activated toast click relaunches Skim with a
+            // `skim://…` argument, forwarded here to the running instance.
+            if let Some(uri) = args.iter().find(|a| a.starts_with("skim://")) {
+                notify::handle_skim_uri(app, uri, true);
+            } else {
+                // A plain second launch surfaces the running instance (it may
+                // be hidden in the tray).
+                show_main_window(app);
+            }
         }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -103,6 +109,7 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir).ok();
             notify::register_aumid();
+            notify::register_url_scheme();
             let db = db::Db::open(&data_dir.join("skim.db"))?;
             app.manage(AppState::new(db.clone(), data_dir.clone()));
 
@@ -142,6 +149,13 @@ pub fn run() {
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
+            }
+
+            // Cold start from a toast click: stash the target so the frontend
+            // opens it once its listeners attach (via take_pending_open). The
+            // running-app case goes through the single-instance handler above.
+            if let Some(uri) = std::env::args().find(|a| a.starts_with("skim://")) {
+                notify::handle_skim_uri(app.handle(), &uri, false);
             }
 
             // Resume syncing for known accounts.
@@ -187,6 +201,7 @@ pub fn run() {
             commands::mail::save_attachment,
             commands::mail::open_attachment,
             commands::mail::sync_now,
+            commands::mail::take_pending_open,
             commands::compose::create_draft,
             commands::compose::get_draft,
             commands::compose::update_draft,

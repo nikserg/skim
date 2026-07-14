@@ -7,9 +7,12 @@ use crate::db::{queries, Db};
 use crate::state::AppState;
 use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_winrt_notification::Toast;
+use windows::core::HSTRING;
+use windows::Data::Xml::Dom::XmlDocument;
+use windows::UI::Notifications::{ToastNotification, ToastNotificationManager};
 
 const AUMID: &str = "com.skim.app";
+const URL_SCHEME: &str = "skim";
 
 /// Where the toast icon lives. The notification platform silently drops
 /// images under hidden directories — the whole AppData tree included — so
@@ -57,6 +60,32 @@ pub fn register_aumid() {
     if let Ok((key, _)) = hkcu.create_subkey(format!(r"Software\Classes\AppUserModelId\{AUMID}")) {
         let _ = key.set_raw_value("DisplayName", &expand_sz("Skim"));
         let _ = key.set_raw_value("IconUri", &expand_sz(&icon_path.to_string_lossy()));
+    }
+}
+
+/// Register the `skim:` URL scheme so protocol-activated toasts (and any
+/// `skim://…` link) launch the app with the URI as its argument. Toast body
+/// and button clicks use `activationType="protocol"`, which the shell routes
+/// here — no COM activator or in-process message pump required (the reason
+/// the previous in-process `on_activated` callback never fired).
+pub fn register_url_scheme() {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let exe = exe.to_string_lossy().replace('/', "\\");
+
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    if let Ok((key, _)) = hkcu.create_subkey(format!(r"Software\Classes\{URL_SCHEME}")) {
+        let _ = key.set_value("", &"URL:Skim Protocol");
+        let _ = key.set_value("URL Protocol", &"");
+    }
+    if let Ok((key, _)) =
+        hkcu.create_subkey(format!(r"Software\Classes\{URL_SCHEME}\shell\open\command"))
+    {
+        let _ = key.set_value("", &format!("\"{exe}\" \"%1\""));
     }
 }
 
@@ -147,56 +176,121 @@ pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
         body.push_str(&format!("  (+{})", message_pks.len() - 1));
     }
 
-    let ids_arg = format!(
-        "read:{}",
-        message_pks
-            .iter()
-            .map(|id| id.to_string())
-            .collect::<Vec<_>>()
-            .join(",")
-    );
-    let app_for_cb = app.clone();
+    let ids_csv = message_pks
+        .iter()
+        .map(|id| id.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let open_uri = match open_target {
+        Some((folder_id, thread_id)) => {
+            format!("skim://open?folder={folder_id}&thread={thread_id}")
+        }
+        None => "skim://open".to_string(),
+    };
+    let read_uri = format!("skim://read?ids={ids_csv}");
+    let mark_read = mark_read_label(&locale);
 
-    // Toast holds raw COM pointers (!Send) — build and show it entirely on
-    // the blocking thread. The app logo appears in the toast header via the
-    // AUMID (shortcut + IconUri) — no image inside the toast body.
+    // Protocol-activated toast. A body click launches `open_uri`, the button
+    // `read_uri`; Windows shell-launches these through the registered `skim:`
+    // scheme (register_url_scheme), so no COM activator or in-process message
+    // pump is needed — which is why the old in-process callback never fired.
+    // The header logo comes from the AUMID (Start Menu shortcut + IconUri),
+    // so no image goes inside the toast body.
+    let xml = format!(
+        r#"<toast activationType="protocol" launch="{launch}">
+    <visual>
+        <binding template="ToastGeneric">
+            <text>{title}</text>
+            <text>{body}</text>
+        </binding>
+    </visual>
+    <actions>
+        <action content="{mark}" activationType="protocol" arguments="{read}"/>
+    </actions>
+</toast>"#,
+        launch = xml_escape(&open_uri),
+        title = xml_escape(&title),
+        body = xml_escape(&body),
+        mark = xml_escape(mark_read),
+        read = xml_escape(&read_uri),
+    );
+
+    // WinRT toast objects are !Send — build and show on a blocking thread.
     let _ = tokio::task::spawn_blocking(move || {
-        Toast::new(AUMID)
-            .title(&title)
-            .text1(&body)
-            .add_button(mark_read_label(&locale), &ids_arg)
-            .on_activated(move |action| {
-                match action.as_deref() {
-                    Some(arg) if arg.starts_with("read:") => {
-                        let ids: Vec<i64> = arg["read:".len()..]
-                            .split(',')
-                            .filter_map(|s| s.parse().ok())
-                            .collect();
-                        let app = app_for_cb.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let state = app.state::<AppState>();
-                            let _ =
-                                crate::commands::mail::apply_read(&app, state.inner(), ids, true)
-                                    .await;
-                        });
-                    }
-                    _ => {
-                        // Body click → bring the app forward on the arrived mail.
-                        if let Some(window) = app_for_cb.get_webview_window("main") {
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
-                        }
-                        if let Some((folder_id, thread_id)) = open_target {
-                            let _ = app_for_cb.emit(
-                                "mail:open-thread",
-                                json!({ "folderId": folder_id, "threadId": thread_id }),
-                            );
-                        }
-                    }
-                }
-                Ok(())
-            })
-            .show()
+        if let Err(e) = show_toast_xml(&xml) {
+            tracing::warn!(error = %e, "failed to show toast");
+        }
     })
     .await;
+}
+
+/// Build and display a toast from a raw XML document under Skim's AUMID.
+fn show_toast_xml(xml: &str) -> windows::core::Result<()> {
+    let doc = XmlDocument::new()?;
+    doc.LoadXml(&HSTRING::from(xml))?;
+    let toast = ToastNotification::CreateToastNotification(&doc)?;
+    let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(AUMID))?;
+    notifier.Show(&toast)
+}
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+/// Route a `skim://…` activation URI into the app. Called from the
+/// single-instance handler (running app: `frontend_ready = true`) and from
+/// cold-start argv parsing (`frontend_ready = false`, no listener attached
+/// yet — the target is stashed for `take_pending_open`).
+pub fn handle_skim_uri(app: &AppHandle, uri: &str, frontend_ready: bool) {
+    let Some(rest) = uri.strip_prefix("skim://") else {
+        return;
+    };
+    let (path, query) = rest.split_once('?').unwrap_or((rest, ""));
+    match path.trim_end_matches('/') {
+        "open" => {
+            if frontend_ready {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
+            }
+            let folder = query_value(query, "folder").and_then(|v| v.parse::<i64>().ok());
+            let thread = query_value(query, "thread").and_then(|v| v.parse::<i64>().ok());
+            if let (Some(folder_id), Some(thread_id)) = (folder, thread) {
+                if frontend_ready {
+                    let _ = app.emit(
+                        "mail:open-thread",
+                        json!({ "folderId": folder_id, "threadId": thread_id }),
+                    );
+                } else if let Some(state) = app.try_state::<AppState>() {
+                    *state.pending_open.lock().unwrap() = Some((folder_id, thread_id));
+                }
+            }
+        }
+        "read" => {
+            let ids: Vec<i64> = query_value(query, "ids")
+                .map(|v| v.split(',').filter_map(|s| s.parse().ok()).collect())
+                .unwrap_or_default();
+            if !ids.is_empty() {
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let state = app.state::<AppState>();
+                    let _ = crate::commands::mail::apply_read(&app, state.inner(), ids, true).await;
+                });
+            }
+        }
+        _ => {}
+    }
+}
+
+fn query_value<'a>(query: &'a str, key: &str) -> Option<&'a str> {
+    query.split('&').find_map(|pair| {
+        let (k, v) = pair.split_once('=')?;
+        (k == key).then_some(v)
+    })
 }

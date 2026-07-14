@@ -46,6 +46,7 @@ sha2 = "0.10"
 getrandom = "0.3"
 ammonia = "4"
 tauri-winrt-notification = "0.7"
+windows = { version = "0.61", features = ["Data_Xml_Dom", "UI_Notifications", "Foundation_Collections"] }
 winreg = "0.55"
 lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "smtp-transport", "builder", "hostname", "pool"] }
 

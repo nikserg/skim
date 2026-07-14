@@ -19,7 +19,7 @@ use tokio::sync::{mpsc, oneshot};
 const INBOX_WINDOW: u32 = 500;
 const FOLDER_WINDOW: u32 = 200;
 const CHUNK: u32 = 100;
-const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(300);
+const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 const IDLE_REISSUE: std::time::Duration = std::time::Duration::from_secs(25 * 60);
 
 pub enum SyncCommand {
@@ -1214,6 +1214,12 @@ async fn idle_session(
         .await
         .map_err(|e| SkimError::other("imap", e.to_string()))?;
 
+    // Sync once on every (re)connect: mail that arrived while the IDLE
+    // connection was down (Gmail rotates them) would otherwise wait for the
+    // next push or the poll. This is what keeps new mail near-instant.
+    tracing::info!(account = %account.email, "IDLE connected; syncing inbox");
+    let _ = tx.send(SyncCommand::SyncInbox);
+
     loop {
         if tx.is_closed() {
             let _ = session.logout().await;
@@ -1226,6 +1232,7 @@ async fn idle_session(
         session = idle.done().await.map_err(imap_err)?;
         match outcome {
             Ok(async_imap::extensions::idle::IdleResponse::NewData(_)) => {
+                tracing::info!(account = %account.email, "IDLE new data; syncing inbox");
                 let _ = tx.send(SyncCommand::SyncInbox);
             }
             Ok(_) => {} // timeout → re-issue IDLE

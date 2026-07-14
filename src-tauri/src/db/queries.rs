@@ -208,7 +208,10 @@ pub fn list_threads(
     let mut stmt = conn.prepare_cached(
         "SELECT t.id,
                 m.from_name, m.from_addr, m.subject, m.snippet, t.last_date,
-                (t.unread_count = 0), t.starred,
+                (NOT EXISTS (SELECT 1 FROM messages m3
+                             WHERE m3.thread_id = t.id AND m3.folder_id = ?1
+                               AND m3.is_read = 0)),
+                t.starred,
                 max(m.has_attachments), t.message_count
          FROM threads t
          JOIN messages m ON m.thread_id = t.id

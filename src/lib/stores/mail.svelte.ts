@@ -131,6 +131,13 @@ export const mail = {
     state.account = accounts[0] ?? null;
     if (state.account) await refreshFolders();
     state.booted = true;
+    // A cold-start toast click may have queued a thread to open (the
+    // mail:open-thread event fired before listeners were attached).
+    const pending = await api.takePendingOpen();
+    if (pending) {
+      if (pending.folderId !== state.selectedFolderId) await selectFolder(pending.folderId);
+      state.selectedThreadId = pending.threadId;
+    }
   },
 
   /** Called right after onboarding adds the account. */

@@ -342,15 +342,14 @@ pub fn recap(
     };
     let user = format!(
         "These are the user's unread emails, newest first. Write a recap:\n\
-         - Start with a single TL;DR line.\n\
-         - Then one short bullet per email (merge closely related ones), naming \
+         - One short bullet per email (merge closely related ones), naming \
          the sender and the gist.\n\
          - Put things that need an action or a reply first and say what's needed; \
          call out deadlines explicitly.\n\
          - Newsletters and promos get at most a few words each, grouped together.\n\
          - Cite each email with its index like [2] after the bullet.\n\
-         Formatting: '-' bullets and **bold** only — no headings, no tables. \
-         No preamble beyond the TL;DR.\n\n{blocks}{tail}"
+         Formatting: '-' bullets and **bold** only — no headings, no tables, \
+         no preamble. Start directly with the first bullet.\n\n{blocks}{tail}"
     );
     (system, user)
 }

@@ -246,6 +246,30 @@ pub async fn apply_read(
     .await
 }
 
+/// The thread a cold-start `skim://open` toast click queued, if any.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingOpen {
+    pub folder_id: i64,
+    pub thread_id: i64,
+}
+
+/// One-shot handoff: on cold start a toast click stashes its target in
+/// `AppState` (the frontend listener isn't attached yet); the frontend calls
+/// this once after boot to pick it up.
+#[tauri::command]
+pub fn take_pending_open(state: State<'_, AppState>) -> Option<PendingOpen> {
+    state
+        .pending_open
+        .lock()
+        .unwrap()
+        .take()
+        .map(|(folder_id, thread_id)| PendingOpen {
+            folder_id,
+            thread_id,
+        })
+}
+
 /// Optimistic mutation + queued server op, shared by all flag/move actions.
 async fn queue_op(
     app: &AppHandle,
