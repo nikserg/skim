@@ -40,6 +40,25 @@
   const userTurns = $derived(convo.filter((tn) => tn.role === "user"));
   const hasDraft = $derived(convo.some((tn) => tn.role === "assistant"));
 
+  // Replies keep the client's automatic "Re:" subject — the AI drafts a subject
+  // only for new mail. `subjectAuto` stays true while the subject is AI-owned;
+  // a manual edit flips it off so the co-author stops overwriting it.
+  const isReply = $derived(draft?.replyToMessageId != null);
+  let subjectAuto = $state(true);
+
+  /** Split raw model output into { subject, body }. New-email drafts lead with
+   *  a `Subject:` header; if it's absent (or this is a reply) the whole text is
+   *  the body and the subject is left untouched. */
+  function parseDraft(raw: string): { subject: string | null; body: string } {
+    const nl = raw.indexOf("\n");
+    const firstLine = nl >= 0 ? raw.slice(0, nl) : raw;
+    const m = firstLine.match(/^\s*subject\s*:(.*)$/i);
+    if (!m) return { subject: null, body: raw };
+    const subject = m[1].trim();
+    const body = nl >= 0 ? raw.slice(nl + 1).replace(/^\n+/, "") : "";
+    return { subject, body };
+  }
+
   $effect(() => {
     void aiApi
       .keyStatus()
@@ -60,14 +79,18 @@
     const instr = text.trim();
     if (!instr) return;
 
-    // Respect manual edits: sync the current body (AI-authored part) back into
-    // the last assistant turn, so the AI revises exactly what the user sees.
+    // Respect manual edits: sync what the user currently sees back into the last
+    // assistant turn, so the AI revises exactly that. For new mail the turn
+    // carries the subject header too, so a hand-edited subject is fed back.
     const [current, tail] = splitQuote(draft.body);
     quotedTail = tail;
     if (current.trim()) {
+      const synced = isReply
+        ? current.trim()
+        : `Subject: ${draft.subject}\n\n${current.trim()}`;
       for (let i = convo.length - 1; i >= 0; i--) {
         if (convo[i].role === "assistant") {
-          convo[i] = { role: "assistant", content: current.trim() };
+          convo[i] = { role: "assistant", content: synced };
           break;
         }
       }
@@ -94,7 +117,16 @@
       {
         delta: (text) => {
           streamed += text;
-          if (draft) draft.body = quotedTail ? `${streamed}\n${quotedTail}` : streamed;
+          if (!draft) return;
+          // Replies stream straight into the body; new mail has its subject
+          // parsed off the first line so the field fills before the body does.
+          let body = streamed;
+          if (!isReply) {
+            const parsed = parseDraft(streamed);
+            body = parsed.body;
+            if (subjectAuto && parsed.subject !== null) draft.subject = parsed.subject;
+          }
+          draft.body = quotedTail ? `${body}\n${quotedTail}` : body;
         },
         done: () => {
           const text = streamed.trim();
@@ -226,10 +258,6 @@
           <AddressInput bind:value={draft.bcc} onchange={scheduleSave} />
         </label>
       {/if}
-      <label class="field">
-        <span class="microlabel">{t("compose.subject")}</span>
-        <input bind:value={draft.subject} oninput={scheduleSave} class="subject" />
-      </label>
     </div>
 
     {#if aiAvailable}
@@ -285,6 +313,20 @@
         {/if}
       </div>
     {/if}
+
+    <div class="fields subject-row">
+      <label class="field">
+        <span class="microlabel">{t("compose.subject")}</span>
+        <input
+          bind:value={draft.subject}
+          oninput={() => {
+            subjectAuto = false;
+            scheduleSave();
+          }}
+          class="subject"
+        />
+      </label>
+    </div>
 
     <textarea
       bind:value={draft.body}
@@ -356,6 +398,10 @@
 
   .fields {
     padding: 6px 20px 0;
+  }
+  /* Subject sits just under the AI bar; give it a little breathing room. */
+  .subject-row {
+    padding-top: 10px;
   }
   .field {
     display: flex;

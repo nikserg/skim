@@ -17,23 +17,42 @@
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ---- AI chat mode (screen 1g) ----
+  interface ChatStep {
+    id: string;
+    kind: string;
+    arg: string;
+    count: number | null;
+    done: boolean;
+  }
   let chat = $state<{
     question: string;
     answer: string;
     status: "streaming" | "done" | "error";
     citations: Citation[];
+    steps: ChatStep[];
   } | null>(null);
   let cancelChat: (() => void) | null = null;
 
   function startChat(question: string) {
     cancelChat?.();
-    chat = { question, answer: "", status: "streaming", citations: [] };
+    chat = { question, answer: "", status: "streaming", citations: [], steps: [] };
     cancelChat = aiStream(
       "ai_chat",
       { question, contextMessageId: null },
       {
         delta: (text) => {
           if (chat) chat = { ...chat, answer: chat.answer + text };
+        },
+        toolCall: (id, kind, arg) => {
+          if (chat)
+            chat = { ...chat, steps: [...chat.steps, { id, kind, arg, count: null, done: false }] };
+        },
+        toolDone: (id, count) => {
+          if (chat)
+            chat = {
+              ...chat,
+              steps: chat.steps.map((s) => (s.id === id ? { ...s, count, done: true } : s)),
+            };
         },
         done: (citations) => {
           if (chat) chat = { ...chat, status: "done", citations };
@@ -49,6 +68,7 @@
                   : message,
             status: "error",
             citations: [],
+            steps: chat?.steps ?? [],
           };
         },
       },
@@ -228,6 +248,29 @@
       {#if chat}
         <div class="chat">
           <div class="chat-question">{chat.question}</div>
+          {#if chat.steps.length > 0}
+            <div class="steps">
+              {#each chat.steps as step (step.id)}
+                <div class="step" class:done={step.done}>
+                  <span class="step-icon">{step.kind === "read" ? "📧" : "🔍"}</span>
+                  <span class="step-label"
+                    >{step.kind === "read"
+                      ? t("ai.step.read", { arg: step.arg })
+                      : t("ai.step.search", { arg: step.arg })}</span
+                  >
+                  {#if step.done}
+                    {#if step.count !== null}
+                      <span class="step-detail">{t("ai.step.found", { n: step.count })}</span>
+                    {:else}
+                      <span class="step-detail">✓</span>
+                    {/if}
+                  {:else}
+                    <span class="step-spin thinking">…</span>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
           <div class="chat-answer">
             <div class="microlabel chat-label">✦ {t("ai.answer")}</div>
             {#if chat.answer === "" && chat.status === "streaming"}
@@ -468,6 +511,43 @@
     font-size: 15px;
     font-weight: 700;
   }
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    padding: 3px 2px;
+  }
+  .step-icon {
+    flex-shrink: 0;
+    font-size: 12px;
+  }
+  .step-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .step.done .step-label {
+    color: var(--text);
+  }
+  .step-detail {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+  }
+  .step-spin {
+    flex-shrink: 0;
+  }
+
   .chat-answer {
     background: var(--accent-soft);
     border-radius: var(--radius-m);

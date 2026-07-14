@@ -191,13 +191,23 @@ pub fn compose_session(
          interface language, unless they are the same."
             .to_string()
     };
+    // A fresh email also gets its subject from the co-author: the reply keeps
+    // the client's automatic "Re:" subject, so only new mail needs a header.
+    let output_rule = if reply_chain.is_empty() {
+        "Begin your reply with a single line in the form `Subject: <a concise, \
+         specific subject line>`, then a blank line, then the complete, current email \
+         body. Write the subject in the same language as the body. Keep the literal \
+         `Subject:` prefix in English. Below that first line, reply with ONLY the email \
+         body — no commentary, no code fences, no placeholder signature blocks."
+    } else {
+        "Always reply with ONLY the complete, current email body — no subject line, \
+         no commentary, no code fences, no placeholder signature blocks."
+    };
     let system = format!(
         "You draft emails for {}, writing in their voice (first person). This is an \
          interactive drafting session: each user message is an instruction or a revision \
-         request. Always reply with ONLY the complete, current email body — no subject \
-         line, no commentary, no code fences, no placeholder signature blocks. Apply each \
-         new instruction to the draft so far, keeping everything the user did not ask to \
-         change. {} {language_rule} {}{}",
+         request. {output_rule} Apply each new instruction to the draft so far, keeping \
+         everything the user did not ask to change. {} {language_rule} {}{}",
         profile.name,
         now_block(now),
         style_directive(profile),
@@ -277,35 +287,23 @@ pub fn ask_session(chain: &[EmailBlock], now: &str, locale: &str) -> (String, St
     (system, preamble)
 }
 
-pub fn chat(
-    question: &str,
-    context: &[(usize, EmailBlock)],
-    now: &str,
-    locale: &str,
-) -> (String, String) {
-    let system = format!(
-        "You are Skim's mailbox assistant. Answer the user's question using ONLY the \
-         numbered emails provided. Cite sources with bracketed indices like [2] after \
-         each claim they support. If the emails don't contain the answer, say so. \
-         {} Be concise. {}",
+/// System prompt for the agentic mailbox assistant (`ai_chat`). The model
+/// drives retrieval with the `search_emails` / `read_email` tools; this only
+/// sets the behavior — no email content is injected up front.
+pub fn chat_agent(now: &str, locale: &str) -> String {
+    format!(
+        "You are Skim's mailbox assistant, helping the user with questions about their entire \
+         mailbox. You have two tools: `search_emails` (find emails by keyword, sender, subject, \
+         folder, and/or date range) and `read_email` (read a search result's full body by its \
+         [N] number). Always search before answering — never guess from memory. When a question \
+         needs figures or detail (e.g. \"how much did I spend on X\"), search for the sender, \
+         read the relevant emails, and add up the numbers yourself. For time-based questions, \
+         compute the date range from the current date and pass `after`/`before`. Each search \
+         result is tagged [N]; cite the emails you used with those bracketed numbers right after \
+         the claim they support. If nothing relevant turns up, say so plainly. Be concise. {} {}",
         now_block(now),
         locale_line(locale)
-    );
-    let blocks = context
-        .iter()
-        .map(|(i, e)| {
-            format!(
-                "<email index=\"{i}\" from=\"{}\" date=\"{}\" subject=\"{}\">\n{}\n</email>",
-                e.from,
-                e.date,
-                e.subject,
-                truncate(&e.body, MAX_CONTEXT_CHARS)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    let user = format!("{blocks}\n\nQuestion: {question}");
-    (system, user)
+    )
 }
 
 /// Catch-up digest of unread mail. `context` is numbered newest-first;

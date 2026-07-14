@@ -1,6 +1,6 @@
 use crate::ai::retrieval::Citation;
-use crate::ai::{anthropic, openrouter, prompts, retrieval, ChatMessage};
-use crate::db::{bodies, queries, Db};
+use crate::ai::{agent, anthropic, openrouter, prompts, ChatMessage};
+use crate::db::{queries, Db};
 use crate::error::{Result, SkimError};
 use crate::secrets;
 use crate::state::AppState;
@@ -11,10 +11,32 @@ use tauri::State;
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum AiEvent {
-    Delta { text: String },
-    Progress { current: usize, total: usize },
-    Done { citations: Vec<Citation> },
-    Error { code: String, message: String },
+    Delta {
+        text: String,
+    },
+    Progress {
+        current: usize,
+        total: usize,
+    },
+    /// The agent invoked a tool. `kind` is "search" or "read"; `arg` is a short
+    /// human summary for the reasoning trace.
+    ToolCall {
+        id: String,
+        kind: String,
+        arg: String,
+    },
+    /// A tool finished. `count` is the number of emails a search returned.
+    ToolDone {
+        id: String,
+        count: Option<u32>,
+    },
+    Done {
+        citations: Vec<Citation>,
+    },
+    Error {
+        code: String,
+        message: String,
+    },
 }
 
 // ---- providers -----------------------------------------------------------
@@ -217,62 +239,11 @@ pub fn ai_cancel(state: State<'_, AppState>, request_id: String) -> Result<()> {
 }
 
 /// Make sure a message's body is cached (best effort), then return its
-/// prompt block.
+/// prompt block. Snapshots the engine map and delegates to the owned-handle
+/// twin shared with the agent loop.
 async fn email_block(state: &State<'_, AppState>, message_id: i64) -> Result<prompts::EmailBlock> {
-    let needs_fetch = state
-        .db
-        .call(move |conn| bodies::body_state(conn, message_id))
-        .await?
-        == Some(0);
-    if needs_fetch {
-        let account_id: String = state
-            .db
-            .call(move |conn| {
-                conn.query_row(
-                    "SELECT account_id FROM messages WHERE id = ?1",
-                    rusqlite::params![message_id],
-                    |r| r.get(0),
-                )
-            })
-            .await?;
-        let handle = {
-            let engines = state.engines.lock().await;
-            engines.get(&account_id).cloned()
-        };
-        if let Some(handle) = handle {
-            let _ = handle.fetch_body(message_id).await;
-        }
-    }
-
-    state
-        .db
-        .call(move |conn| {
-            let (subject, from_name, from_addr, date): (
-                Option<String>,
-                Option<String>,
-                Option<String>,
-                i64,
-            ) = conn.query_row(
-                "SELECT subject, from_name, from_addr, date FROM messages WHERE id = ?1",
-                rusqlite::params![message_id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
-            )?;
-            let body = bodies::get_body(conn, message_id)?
-                .and_then(|(_, text)| text)
-                .unwrap_or_default();
-            let from = match (&from_name, &from_addr) {
-                (Some(n), Some(a)) if !n.is_empty() => format!("{n} <{a}>"),
-                (_, Some(a)) => a.clone(),
-                _ => "unknown".into(),
-            };
-            Ok(prompts::EmailBlock {
-                from,
-                date: retrieval::format_date(date),
-                subject: subject.unwrap_or_default(),
-                body,
-            })
-        })
-        .await
+    let engines = state.engines.lock().await.clone();
+    agent::email_block_owned(&state.db, &engines, message_id).await
 }
 
 // ---- features ------------------------------------------------------------
@@ -556,6 +527,9 @@ pub async fn ai_ask(
     Ok(())
 }
 
+/// Mailbox-wide assistant. The model drives retrieval through the
+/// `search_emails` / `read_email` tools (see [`crate::ai::agent`]); we stream
+/// its reasoning trace and answer, then return the cited emails.
 #[tauri::command]
 pub async fn ai_chat(
     state: State<'_, AppState>,
@@ -565,37 +539,70 @@ pub async fn ai_chat(
     channel: Channel<AiEvent>,
 ) -> Result<()> {
     let ctx = ai_context(&state.db).await?;
-    let q = question.clone();
-    let retrieved = state
-        .db
-        .call(move |conn| retrieval::retrieve(conn, &q, context_message_id))
-        .await?;
+    let provider = match ctx.provider {
+        Provider::Anthropic => agent::Provider::Anthropic,
+        Provider::OpenRouter => agent::Provider::OpenRouter,
+    };
+    let system = prompts::chat_agent(&ctx.now, &ctx.locale);
+    let deps = agent::AgentDeps {
+        db: state.db.clone(),
+        engines: state.engines.lock().await.clone(),
+    };
 
-    if retrieved.is_empty() {
-        // Nothing matched — don't burn an API call.
-        let _ = channel.send(AiEvent::Error {
-            code: "ai_no_context".into(),
-            message: String::new(),
-        });
-        return Ok(());
+    // The channel is shared by four closures across the spawned task.
+    let channel = std::sync::Arc::new(channel);
+    let ch_delta = channel.clone();
+    let ch_call = channel.clone();
+    let ch_done_tool = channel.clone();
+
+    let task = tokio::spawn(async move {
+        let mut on_delta = move |d: &str| {
+            let _ = ch_delta.send(AiEvent::Delta {
+                text: d.to_string(),
+            });
+        };
+        let on_tool_call = move |id: &str, kind: &str, arg: &str| {
+            let _ = ch_call.send(AiEvent::ToolCall {
+                id: id.to_string(),
+                kind: kind.to_string(),
+                arg: arg.to_string(),
+            });
+        };
+        let on_tool_done = move |id: &str, count: Option<u32>| {
+            let _ = ch_done_tool.send(AiEvent::ToolDone {
+                id: id.to_string(),
+                count,
+            });
+        };
+        let result = agent::run(
+            provider,
+            ctx.key,
+            ctx.model,
+            system,
+            question,
+            context_message_id,
+            deps,
+            &mut on_delta,
+            &on_tool_call,
+            &on_tool_done,
+        )
+        .await;
+        match result {
+            Ok(citations) => {
+                let _ = channel.send(AiEvent::Done { citations });
+            }
+            Err(e) => {
+                let _ = channel.send(AiEvent::Error {
+                    code: e.code().to_string(),
+                    message: e.to_string(),
+                });
+            }
+        }
+    });
+    if let Ok(mut tasks) = state.ai_tasks.lock() {
+        tasks.retain(|_, h| !h.is_finished());
+        tasks.insert(request_id, task.abort_handle());
     }
-
-    let citations: Vec<Citation> = retrieved.iter().map(|r| r.citation.clone()).collect();
-    let context: Vec<(usize, prompts::EmailBlock)> = retrieved
-        .into_iter()
-        .map(|r| (r.citation.index, r.block))
-        .collect();
-    let (system, user) = prompts::chat(&question, &context, &ctx.now, &ctx.locale);
-    spawn_stream(
-        &state,
-        request_id,
-        ctx,
-        system,
-        user_turn(user),
-        4096,
-        citations,
-        channel,
-    );
     Ok(())
 }
 

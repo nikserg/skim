@@ -104,6 +104,8 @@ export interface Citation {
 export type AiEvent =
   | { type: "delta"; text: string }
   | { type: "progress"; current: number; total: number }
+  | { type: "toolCall"; id: string; kind: string; arg: string }
+  | { type: "toolDone"; id: string; count: number | null }
   | { type: "done"; citations: Citation[] }
   | { type: "error"; code: string; message: string };
 
@@ -112,6 +114,8 @@ export interface AiHandlers {
   done: (citations: Citation[]) => void;
   error: (code: string, message: string) => void;
   progress?: (current: number, total: number) => void;
+  toolCall?: (id: string, kind: string, arg: string) => void;
+  toolDone?: (id: string, count: number | null) => void;
 }
 
 export type AiProvider = "anthropic" | "openrouter";
@@ -147,10 +151,26 @@ export function aiStream(
   const channel = new Channel<AiEvent>();
   channel.onmessage = (event) => {
     if (cancelled) return;
-    if (event.type === "delta") on.delta(event.text);
-    else if (event.type === "progress") on.progress?.(event.current, event.total);
-    else if (event.type === "done") on.done(event.citations);
-    else on.error(event.code, event.message);
+    switch (event.type) {
+      case "delta":
+        on.delta(event.text);
+        break;
+      case "progress":
+        on.progress?.(event.current, event.total);
+        break;
+      case "toolCall":
+        on.toolCall?.(event.id, event.kind, event.arg);
+        break;
+      case "toolDone":
+        on.toolDone?.(event.id, event.count);
+        break;
+      case "done":
+        on.done(event.citations);
+        break;
+      case "error":
+        on.error(event.code, event.message);
+        break;
+    }
   };
   void invoke(command, { ...args, requestId, channel }).catch((e) => {
     if (!cancelled) on.error("ai", errorMessage(e));

@@ -1,11 +1,12 @@
 //! Minimal streaming client for the Anthropic Messages API. The user's own
 //! key is used; requests go directly from this machine to api.anthropic.com.
 
-use super::ChatMessage;
+use super::{AssistantTurn, ChatMessage, ToolCall};
 use crate::error::{Result, SkimError};
 use futures::StreamExt;
 use serde::Deserialize;
 use serde_json::json;
+use std::collections::BTreeMap;
 
 const API_BASE: &str = "https://api.anthropic.com/v1";
 const API_VERSION: &str = "2023-06-01";
@@ -166,4 +167,236 @@ struct MessageDeltaBody {
 #[derive(Deserialize)]
 struct ApiError {
     message: String,
+}
+
+// ---- tool-calling ---------------------------------------------------------
+
+/// A tool-enabled request. `messages` are raw content-block turns (not
+/// `ChatMessage`) so assistant turns can carry `tool_use` blocks and user
+/// turns `tool_result` blocks.
+pub struct ToolRequest {
+    pub model: String,
+    pub system: String,
+    pub messages: Vec<serde_json::Value>,
+    pub tools: Vec<serde_json::Value>,
+    pub max_tokens: u32,
+}
+
+/// Stream one assistant round that may include tool calls. Text is streamed to
+/// `on_delta`; `tool_use` blocks are accumulated and returned. One retry on
+/// 429/529 (before any bytes stream, so no double-emit).
+pub async fn stream_tools(
+    key: &str,
+    request: &ToolRequest,
+    on_delta: &mut impl FnMut(&str),
+) -> Result<AssistantTurn> {
+    let mut attempt = 0;
+    loop {
+        match stream_tools_once(key, request, on_delta).await {
+            Err(e) if e.code() == "ai_overloaded" && attempt == 0 => {
+                attempt = 1;
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+            other => return other,
+        }
+    }
+}
+
+/// A content block being accumulated across `content_block_delta` frames.
+enum BlockAccum {
+    Text(String),
+    Tool {
+        id: String,
+        name: String,
+        json: String,
+    },
+}
+
+async fn stream_tools_once(
+    key: &str,
+    request: &ToolRequest,
+    on_delta: &mut impl FnMut(&str),
+) -> Result<AssistantTurn> {
+    let mut body = json!({
+        "model": request.model,
+        "max_tokens": request.max_tokens,
+        "system": request.system,
+        "messages": request.messages,
+        "stream": true,
+    });
+    // Omit `tools` when empty — the API rejects an empty array, and a
+    // tool-less request is just a plain completion (the force-final round).
+    if !request.tools.is_empty() {
+        body["tools"] = json!(request.tools);
+    }
+
+    let resp = reqwest::Client::new()
+        .post(format!("{API_BASE}/messages"))
+        .header("x-api-key", key)
+        .header("anthropic-version", API_VERSION)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| SkimError::other("network", e.to_string()))?;
+
+    let status = resp.status().as_u16();
+    if status == 429 || status == 529 {
+        return Err(SkimError::other("ai_overloaded", "the API is overloaded"));
+    }
+    if status == 401 || status == 403 {
+        return Err(SkimError::other("ai_key", "the API key was rejected"));
+    }
+    if status != 200 {
+        let text = resp.text().await.unwrap_or_default();
+        let message = serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|v| v["error"]["message"].as_str().map(String::from))
+            .unwrap_or(text);
+        return Err(SkimError::other("ai", message));
+    }
+
+    // Blocks are indexed and interleaved: one message can carry a text block
+    // plus one or more tool_use blocks. Accumulate each by its index.
+    let mut blocks: BTreeMap<usize, BlockAccum> = BTreeMap::new();
+    let mut stop_reason: Option<String> = None;
+    let mut buffer = String::new();
+    let mut bytes = resp.bytes_stream();
+    while let Some(chunk) = bytes.next().await {
+        let chunk = chunk.map_err(|e| SkimError::other("network", e.to_string()))?;
+        buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+        while let Some(pos) = buffer.find("\n\n") {
+            let frame = buffer[..pos].to_string();
+            buffer.drain(..pos + 2);
+            for line in frame.lines() {
+                let Some(data) = line.strip_prefix("data:") else {
+                    continue;
+                };
+                let Ok(event) = serde_json::from_str::<ToolSse>(data.trim()) else {
+                    continue;
+                };
+                match event {
+                    ToolSse::ContentBlockStart {
+                        index,
+                        content_block,
+                    } => match content_block {
+                        ToolBlockStart::Text { text } => {
+                            if !text.is_empty() {
+                                on_delta(&text);
+                            }
+                            blocks.insert(index, BlockAccum::Text(text));
+                        }
+                        ToolBlockStart::ToolUse { id, name } => {
+                            blocks.insert(
+                                index,
+                                BlockAccum::Tool {
+                                    id,
+                                    name,
+                                    json: String::new(),
+                                },
+                            );
+                        }
+                        ToolBlockStart::Other => {}
+                    },
+                    ToolSse::ContentBlockDelta { index, delta } => {
+                        match blocks.get_mut(&index) {
+                            Some(BlockAccum::Text(s)) => {
+                                if let Some(t) = delta.text {
+                                    on_delta(&t);
+                                    s.push_str(&t);
+                                }
+                            }
+                            Some(BlockAccum::Tool { json, .. }) => {
+                                if let Some(pj) = delta.partial_json {
+                                    json.push_str(&pj);
+                                }
+                            }
+                            None => {
+                                // Delta before its start frame — recover text.
+                                if let Some(t) = delta.text {
+                                    on_delta(&t);
+                                    blocks.insert(index, BlockAccum::Text(t));
+                                }
+                            }
+                        }
+                    }
+                    ToolSse::MessageDelta { delta } => {
+                        if let Some(reason) = delta.stop_reason {
+                            stop_reason = Some(reason);
+                        }
+                    }
+                    ToolSse::Error { error } => {
+                        return Err(SkimError::other("ai", error.message));
+                    }
+                    ToolSse::Other => {}
+                }
+            }
+        }
+    }
+
+    let mut text = String::new();
+    let mut tool_calls = Vec::new();
+    for (_, block) in blocks {
+        match block {
+            BlockAccum::Text(s) => text.push_str(&s),
+            BlockAccum::Tool { id, name, json } => {
+                // A no-arg tool emits zero input_json_delta frames → default {}.
+                let input = if json.trim().is_empty() {
+                    serde_json::json!({})
+                } else {
+                    serde_json::from_str(&json).unwrap_or_else(|_| serde_json::json!({}))
+                };
+                tool_calls.push(ToolCall { id, name, input });
+            }
+        }
+    }
+    Ok(AssistantTurn {
+        text,
+        tool_calls,
+        stop_reason,
+    })
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ToolSse {
+    ContentBlockStart {
+        index: usize,
+        content_block: ToolBlockStart,
+    },
+    ContentBlockDelta {
+        index: usize,
+        delta: ToolDelta,
+    },
+    MessageDelta {
+        delta: MessageDeltaBody,
+    },
+    Error {
+        error: ApiError,
+    },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ToolBlockStart {
+    Text {
+        #[serde(default)]
+        text: String,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+    },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Deserialize)]
+struct ToolDelta {
+    #[serde(default)]
+    text: Option<String>,
+    #[serde(default)]
+    partial_json: Option<String>,
 }

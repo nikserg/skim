@@ -130,12 +130,14 @@ silently:
    `Start-Process "<scratchpad>\Skim_X.Y.Z_x64-setup.exe" -ArgumentList "/S" -Wait`
 4. Confirm the on-disk version updated — check that `skim.exe` was just rewritten
    (`Get-Item "$env:LOCALAPPDATA\Skim\skim.exe" | Select-Object LastWriteTime`).
+5. Launch the freshly installed app:
+   `Start-Process "$env:LOCALAPPDATA\Skim\skim.exe"`
 
-Do not auto-launch the app or run any paid AI actions afterward — leave starting
-it to the user unless they ask.
+Just launch it — don't run any paid AI actions (generation, composer sessions)
+afterward unless the user asks; those hit the user's real API key.
 
 ## Done
 
 Report back: the new version, the commit(s) you pushed, the tag, the release URL
 (`gh release view vX.Y.Z --json url --jq .url`), CI status, and that the local
-install was silently updated to the new version.
+install was silently updated to the new version and relaunched.

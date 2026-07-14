@@ -103,45 +103,51 @@
   function onKeydown(e: KeyboardEvent) {
     if (!mail.account) return;
 
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+    // Letter shortcuts match the physical key (e.code), not the produced
+    // character (e.key): in a Cyrillic (or any non-Latin) layout the K key
+    // emits "л", not "k", so an e.key check would only work in a US layout.
+    if ((e.ctrlKey || e.metaKey) && e.code === "KeyK") {
       e.preventDefault();
       palette.toggle();
       return;
     }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") {
+    if ((e.ctrlKey || e.metaKey) && e.code === "KeyN") {
       e.preventDefault();
       void composeNew();
       return;
     }
     if (palette.open || isTyping() || e.ctrlKey || e.metaKey || e.altKey) return;
 
+    switch (e.code) {
+      case "KeyJ":
+        moveSelection(1);
+        return;
+      case "KeyK":
+        moveSelection(-1);
+        return;
+      case "KeyE":
+        void actOnSelected("archive");
+        return;
+      case "KeyS":
+        void actOnSelected("star");
+        return;
+      case "KeyU":
+        void actOnSelected("unread");
+        return;
+      case "KeyR":
+        void replyToSelected();
+        return;
+    }
+
+    // Symbol / navigation keys are layout-independent enough to match on e.key.
     switch (e.key) {
       case "/":
         e.preventDefault();
         palette.show();
         break;
-      case "j":
-      case "ArrowDown":
-        if (e.key === "j") moveSelection(1);
-        break;
-      case "k":
-        moveSelection(-1);
-        break;
-      case "e":
-        void actOnSelected("archive");
-        break;
       case "#":
       case "Delete":
         void actOnSelected("delete");
-        break;
-      case "s":
-        void actOnSelected("star");
-        break;
-      case "u":
-        void actOnSelected("unread");
-        break;
-      case "r":
-        void replyToSelected();
         break;
       case "Escape":
         if (ui.recapOpen) ui.closeRecap();
