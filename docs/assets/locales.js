@@ -82,7 +82,11 @@ window.I18N = {
     "pal_answer": "Two are still open — Acme #1042 and Globex #88.",
     "pal_sources": "Sources",
     "tip_byok": "BYOK — Bring Your Own Key. You bring your own Anthropic or OpenRouter API key. Requests go directly to the provider — you pay them at cost, with no markup, proxy or accounts of ours. The key is stored in Windows Credential Manager. No key? Skim is still a great email client.",
-    "tip_thu": "Not Thursday today? Sorry. This is static text — it has no idea what day it actually is. I was too lazy to code that."
+    "tip_thu": "Not Thursday today? Sorry. This is static text — it has no idea what day it actually is. I was too lazy to code that.",
+    "contrib_h2": "Fork it, break it, fix it",
+    "contrib_lead": "Skim lives on GitHub under the MIT license — the whole codebase is out in the open, and it shows. Found a bug or annoyed by some little thing? Open an issue. Write Rust or Svelte, want a feature, or speak a language better than our translator? Send a pull request. This is the moment where “you can help” from the section above stops being a figure of speech.",
+    "contrib_btn_dev": "How to contribute",
+    "contrib_btn_issue": "Open an issue on GitHub"
   },
   "ru": {
     "lang_label": "Язык",
@@ -162,7 +166,11 @@ window.I18N = {
     "pal_answer": "Два ещё открыты — Acme №1042 и Globex №88.",
     "pal_sources": "Источники",
     "tip_byok": "BYOK — Bring Your Own Key. Приносите собственный API-ключ Anthropic или OpenRouter. Запросы идут напрямую к провайдеру — вы платите ему по себестоимости, без нашей наценки, прокси и аккаунтов. Ключ хранится в Windows Credential Manager. Нет ключа — Skim остаётся отличным почтовым клиентом.",
-    "tip_thu": "Сегодня не четверг? Извините. Это статический текст, он не знает реального дня недели. Мне было лень это кодить."
+    "tip_thu": "Сегодня не четверг? Извините. Это статический текст, он не знает реального дня недели. Мне было лень это кодить.",
+    "contrib_h2": "Форкайте, ломайте, чините",
+    "contrib_lead": "Skim живёт на GitHub под лицензией MIT — весь код на виду, и это заметно. Нашли баг или взбесила какая-то мелочь — заведите тикет. Пишете на Rust или Svelte, хотите новую фичу или перевод лучше нашего — присылайте pull request. Это тот самый момент, когда «вы можете помочь» из блока выше перестаёт быть фигурой речи.",
+    "contrib_btn_dev": "Как внести вклад",
+    "contrib_btn_issue": "Открыть тикет на GitHub"
   },
   "sr": {
     "lang_label": "Jezik",
@@ -242,7 +250,11 @@ window.I18N = {
     "pal_answer": "Dva su još otvorena — Acme #1042 i Globex #88.",
     "pal_sources": "Izvori",
     "tip_byok": "BYOK — Bring Your Own Key. Donosite sopstveni Anthropic ili OpenRouter API ključ. Zahtevi idu direktno ka provajderu — plaćate mu po ceni koštanja, bez naše marže, proksija i naloga. Ključ se čuva u Windows Credential Manager-u. Nema ključa? Skim je i dalje odličan mejl klijent.",
-    "tip_thu": "Danas nije četvrtak? Izvinite. Ovo je statičan tekst — nema pojma koji je zapravo dan. Bilo me je mrzelo da to kodiram."
+    "tip_thu": "Danas nije četvrtak? Izvinite. Ovo je statičan tekst — nema pojma koji je zapravo dan. Bilo me je mrzelo da to kodiram.",
+    "contrib_h2": "Forkuj, slomi, popravi",
+    "contrib_lead": "Skim živi na GitHub-u pod MIT licencom — ceo kod je na videlu, i to se primeti. Našli ste bag ili vas nervira neka sitnica? Otvorite tiket. Pišete Rust ili Svelte, želite novu funkciju ili bolji prevod od našeg? Pošaljite pull request. Ovo je trenutak kada „možete pomoći“ iz gornjeg odeljka prestaje da bude fraza.",
+    "contrib_btn_dev": "Kako doprineti",
+    "contrib_btn_issue": "Otvori tiket na GitHub-u"
   },
   "fr": {
     "lang_label": "Langue",
@@ -322,7 +334,11 @@ window.I18N = {
     "pal_answer": "Deux sont encore ouvertes — Acme n°1042 et Globex n°88.",
     "pal_sources": "Sources",
     "tip_byok": "BYOK — Bring Your Own Key. Vous apportez votre propre clé API Anthropic ou OpenRouter. Les requêtes vont directement au fournisseur — vous le payez au prix coûtant, sans notre marge, proxy ni compte. La clé est stockée dans le Windows Credential Manager. Pas de clé ? Skim reste un excellent client mail.",
-    "tip_thu": "On n'est pas jeudi ? Désolé. C'est un texte statique — il ignore quel jour on est vraiment. J'ai eu la flemme de coder ça."
+    "tip_thu": "On n'est pas jeudi ? Désolé. C'est un texte statique — il ignore quel jour on est vraiment. J'ai eu la flemme de coder ça.",
+    "contrib_h2": "Forkez, cassez, réparez",
+    "contrib_lead": "Skim vit sur GitHub sous licence MIT — tout le code est à ciel ouvert, et ça se voit. Un bug ou un petit détail qui vous agace ? Ouvrez un ticket. Vous écrivez du Rust ou du Svelte, vous voulez une fonction ou une meilleure traduction que la nôtre ? Envoyez une pull request. C'est le moment où « vous pouvez aider », de la section plus haut, cesse d'être une figure de style.",
+    "contrib_btn_dev": "Comment contribuer",
+    "contrib_btn_issue": "Ouvrir un ticket sur GitHub"
   },
   "de": {
     "lang_label": "Sprache",
@@ -402,7 +418,11 @@ window.I18N = {
     "pal_answer": "Zwei sind noch offen — Acme #1042 und Globex #88.",
     "pal_sources": "Quellen",
     "tip_byok": "BYOK — Bring Your Own Key. Du bringst deinen eigenen Anthropic- oder OpenRouter-API-Schlüssel mit. Anfragen gehen direkt zum Anbieter — du zahlst ihn zum Selbstkostenpreis, ohne unseren Aufschlag, Proxy oder Konten. Der Schlüssel wird im Windows Credential Manager gespeichert. Kein Schlüssel? Skim ist trotzdem ein großartiger Mailclient.",
-    "tip_thu": "Heute ist nicht Donnerstag? Sorry. Das ist statischer Text — er hat keine Ahnung, welcher Tag wirklich ist. Ich war zu faul, das zu programmieren."
+    "tip_thu": "Heute ist nicht Donnerstag? Sorry. Das ist statischer Text — er hat keine Ahnung, welcher Tag wirklich ist. Ich war zu faul, das zu programmieren.",
+    "contrib_h2": "Forken, kaputt machen, reparieren",
+    "contrib_lead": "Skim lebt auf GitHub unter der MIT-Lizenz — der ganze Code liegt offen, und das merkt man. Einen Bug gefunden oder nervt dich eine Kleinigkeit? Mach ein Issue auf. Du schreibst Rust oder Svelte, willst ein Feature oder eine bessere Übersetzung als unsere? Schick einen Pull Request. Das ist der Moment, in dem „du kannst helfen“ aus dem Abschnitt oben keine Floskel mehr ist.",
+    "contrib_btn_dev": "So trägst du bei",
+    "contrib_btn_issue": "Issue auf GitHub öffnen"
   },
   "es": {
     "lang_label": "Idioma",
@@ -482,7 +502,11 @@ window.I18N = {
     "pal_answer": "Dos siguen abiertas — Acme n.º 1042 y Globex n.º 88.",
     "pal_sources": "Fuentes",
     "tip_byok": "BYOK — Bring Your Own Key. Traes tu propia clave de API de Anthropic u OpenRouter. Las solicitudes van directas al proveedor — le pagas a precio de coste, sin nuestro recargo, proxy ni cuentas. La clave se guarda en el Windows Credential Manager. ¿Sin clave? Skim sigue siendo un cliente de correo estupendo.",
-    "tip_thu": "¿Hoy no es jueves? Perdón. Esto es texto estático — no tiene ni idea de qué día es en realidad. Me dio pereza programarlo."
+    "tip_thu": "¿Hoy no es jueves? Perdón. Esto es texto estático — no tiene ni idea de qué día es en realidad. Me dio pereza programarlo.",
+    "contrib_h2": "Bifúrcalo, rómpelo, arréglalo",
+    "contrib_lead": "Skim vive en GitHub bajo licencia MIT — todo el código está a la vista, y se nota. ¿Encontraste un fallo o te irrita algún detalle? Abre una incidencia. ¿Escribes Rust o Svelte, quieres una función o una traducción mejor que la nuestra? Envía un pull request. Este es el momento en que «puedes ayudar», de la sección de arriba, deja de ser una forma de hablar.",
+    "contrib_btn_dev": "Cómo contribuir",
+    "contrib_btn_issue": "Abrir una incidencia en GitHub"
   },
   "it": {
     "lang_label": "Lingua",
@@ -562,7 +586,11 @@ window.I18N = {
     "pal_answer": "Due sono ancora aperte — Acme n. 1042 e Globex n. 88.",
     "pal_sources": "Fonti",
     "tip_byok": "BYOK — Bring Your Own Key. Porti la tua chiave API Anthropic o OpenRouter. Le richieste vanno dritte al provider — lo paghi a prezzo di costo, senza il nostro ricarico, proxy o account. La chiave è salvata nel Windows Credential Manager. Nessuna chiave? Skim resta comunque un ottimo client email.",
-    "tip_thu": "Oggi non è giovedì? Scusa. Questo è testo statico — non ha idea di che giorno sia davvero. Ero troppo pigro per programmarlo."
+    "tip_thu": "Oggi non è giovedì? Scusa. Questo è testo statico — non ha idea di che giorno sia davvero. Ero troppo pigro per programmarlo.",
+    "contrib_h2": "Forkalo, rompilo, sistemalo",
+    "contrib_lead": "Skim vive su GitHub sotto licenza MIT — tutto il codice è alla luce del sole, e si vede. Trovato un bug o ti dà fastidio qualche dettaglio? Apri una issue. Scrivi Rust o Svelte, vuoi una funzione o una traduzione migliore della nostra? Manda una pull request. È il momento in cui «puoi dare una mano», dalla sezione qui sopra, smette di essere un modo di dire.",
+    "contrib_btn_dev": "Come contribuire",
+    "contrib_btn_issue": "Apri una issue su GitHub"
   },
   "pl": {
     "lang_label": "Język",
@@ -642,7 +670,11 @@ window.I18N = {
     "pal_answer": "Dwie wciąż otwarte — Acme #1042 i Globex #88.",
     "pal_sources": "Źródła",
     "tip_byok": "BYOK — Bring Your Own Key. Przynosisz własny klucz API Anthropic lub OpenRouter. Żądania idą prosto do dostawcy — płacisz mu po kosztach, bez naszej marży, proxy i kont. Klucz jest przechowywany w Windows Credential Manager. Brak klucza? Skim wciąż jest świetnym klientem poczty.",
-    "tip_thu": "Dziś nie czwartek? Przepraszam. To statyczny tekst — nie ma pojęcia, jaki jest naprawdę dzień. Było mi się nie chciało tego kodować."
+    "tip_thu": "Dziś nie czwartek? Przepraszam. To statyczny tekst — nie ma pojęcia, jaki jest naprawdę dzień. Było mi się nie chciało tego kodować.",
+    "contrib_h2": "Forkuj, psuj, naprawiaj",
+    "contrib_lead": "Skim żyje na GitHubie na licencji MIT — cały kod jest na widoku, i to widać. Znalazłeś błąd albo irytuje cię jakiś drobiazg? Załóż zgłoszenie. Piszesz w Rust lub Svelte, chcesz nową funkcję albo lepsze tłumaczenie niż nasze? Wyślij pull request. To ten moment, w którym „możesz pomóc” z sekcji wyżej przestaje być figurą retoryczną.",
+    "contrib_btn_dev": "Jak współtworzyć",
+    "contrib_btn_issue": "Otwórz zgłoszenie na GitHubie"
   },
   "zh": {
     "lang_label": "语言",
@@ -722,7 +754,11 @@ window.I18N = {
     "pal_answer": "还有两笔未结——Acme #1042 和 Globex #88。",
     "pal_sources": "来源",
     "tip_byok": "BYOK——Bring Your Own Key。你自带 Anthropic 或 OpenRouter 的 API 密钥。请求直接发往服务商——你按成本价付款，没有我们的加价、代理或账户。密钥存放在 Windows 凭据管理器里。没有密钥？Skim 依然是个很棒的邮件客户端。",
-    "tip_thu": "今天不是星期四？抱歉。这是静态文字——它并不知道今天到底星期几。我懒得写那段代码。"
+    "tip_thu": "今天不是星期四？抱歉。这是静态文字——它并不知道今天到底星期几。我懒得写那段代码。",
+    "contrib_h2": "尽管 fork、弄坏、修好",
+    "contrib_lead": "Skim 在 GitHub 上以 MIT 许可证开放，全部代码一览无余——而且看得出来。发现了 bug，或者被某个小细节惹毛了？提个 issue。你会写 Rust 或 Svelte，想要新功能，或翻译得比我们的更好？发个 pull request。此刻，上面那句「你可以帮忙」不再只是客套。",
+    "contrib_btn_dev": "如何参与贡献",
+    "contrib_btn_issue": "在 GitHub 上提 issue"
   },
   "ja": {
     "lang_label": "言語",
@@ -802,7 +838,11 @@ window.I18N = {
     "pal_answer": "未払いが 2 件——Acme #1042 と Globex #88。",
     "pal_sources": "出典",
     "tip_byok": "BYOK——Bring Your Own Key。Anthropic または OpenRouter の API 鍵をあなたが持ち込みます。リクエストはプロバイダーへ直行——原価で支払い、こちらの上乗せ・プロキシ・アカウントはありません。鍵は Windows 資格情報マネージャーに保管されます。鍵がない？ それでも Skim は優れたメールクライアントです。",
-    "tip_thu": "今日は木曜じゃない？ ごめんなさい。これは静的なテキストで、本当の曜日は分かりません。コードを書くのが面倒だったんです。"
+    "tip_thu": "今日は木曜じゃない？ ごめんなさい。これは静的なテキストで、本当の曜日は分かりません。コードを書くのが面倒だったんです。",
+    "contrib_h2": "フォークして、壊して、直す",
+    "contrib_lead": "Skim は GitHub 上で MIT ライセンスのもとに公開されています——コードはすべて丸見えで、それが伝わってきます。バグを見つけた、あるいは些細な点にイラッとした？ Issue を立ててください。Rust や Svelte を書ける、機能が欲しい、うちの翻訳より上手い？ プルリクエストを送ってください。上のセクションの「あなたが手伝えます」が、ただの言い回しでなくなる瞬間です。",
+    "contrib_btn_dev": "貢献のしかた",
+    "contrib_btn_issue": "GitHub で Issue を立てる"
   },
   "ko": {
     "lang_label": "언어",
@@ -882,6 +922,10 @@ window.I18N = {
     "pal_answer": "두 건이 아직 미결제 — Acme #1042, Globex #88.",
     "pal_sources": "출처",
     "tip_byok": "BYOK — Bring Your Own Key. Anthropic 또는 OpenRouter API 키를 직접 가져옵니다. 요청은 제공업체로 곧장 갑니다 — 우리 마진, 프록시, 계정 없이 원가로 지불합니다. 키는 Windows 자격 증명 관리자에 저장됩니다. 키가 없다고요? 그래도 Skim은 훌륭한 이메일 클라이언트입니다.",
-    "tip_thu": "오늘 목요일 아니라고요? 죄송합니다. 이건 정적 텍스트라 실제 요일을 모릅니다. 그걸 코딩하기 귀찮았어요."
+    "tip_thu": "오늘 목요일 아니라고요? 죄송합니다. 이건 정적 텍스트라 실제 요일을 모릅니다. 그걸 코딩하기 귀찮았어요.",
+    "contrib_h2": "포크하고, 부수고, 고치세요",
+    "contrib_lead": "Skim은 GitHub에서 MIT 라이선스로 공개되어 있습니다 — 모든 코드가 훤히 드러나 있고, 티가 납니다. 버그를 찾았거나 사소한 게 거슬리나요? 이슈를 여세요. Rust나 Svelte를 쓰고, 기능을 원하거나, 우리 번역보다 잘하시나요? 풀 리퀘스트를 보내세요. 위 섹션의 「당신이 도울 수 있습니다」가 그저 하는 말이 아니게 되는 순간입니다.",
+    "contrib_btn_dev": "기여하는 방법",
+    "contrib_btn_issue": "GitHub에 이슈 열기"
   }
 };

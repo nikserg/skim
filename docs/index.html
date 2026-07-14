@@ -249,6 +249,7 @@
     .install-box .txt { max-width: 560px; }
     .install-box h3 { margin: 0 0 6px; font-size: 20px; }
     .install-box p { margin: 0; color: var(--muted); font-size: 14.5px; }
+    .cta-buttons { display: flex; flex-wrap: wrap; gap: 12px; }
 
     /* ---- FAQ ---- */
     .faq-list { display: grid; gap: 12px; max-width: 760px; }
@@ -550,6 +551,22 @@
           <summary data-i18n="faq_6_q">Is my email stored locally?</summary>
           <p data-i18n="faq_6_a">Yes. Mail syncs over IMAP straight into a local SQLite cache on your device, so Skim works offline and search is instant. There are no Skim servers and zero telemetry.</p>
         </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contribute -->
+  <section id="contribute">
+    <div class="wrap">
+      <div class="install-box">
+        <div class="txt">
+          <h3 data-i18n="contrib_h2">Fork it, break it, fix it</h3>
+          <p data-i18n="contrib_lead">Skim lives on GitHub under the MIT license — the whole codebase is out in the open, and it shows. Found a bug or annoyed by some little thing? Open an issue. Write Rust or Svelte, want a feature, or speak a language better than our translator? Send a pull request. This is the moment where “you can help” from the section above stops being a figure of speech.</p>
+        </div>
+        <div class="cta-buttons">
+          <a class="btn" href="https://github.com/nikserg/skim/blob/main/CONTRIBUTING.md" data-i18n="contrib_btn_dev">How to contribute</a>
+          <a class="btn ghost" href="https://github.com/nikserg/skim/issues" data-i18n="contrib_btn_issue">Open an issue on GitHub</a>
+        </div>
       </div>
     </div>
   </section>
