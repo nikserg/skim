@@ -237,7 +237,7 @@
   .glyph {
     display: grid;
     place-items: center;
-    color: var(--accent);
+    color: var(--text-dim);
     flex-shrink: 0;
   }
   .cancelled .glyph {
@@ -256,8 +256,8 @@
   .pill {
     padding: 3px 10px;
     border-radius: 999px;
-    border: 1px solid var(--accent-dim);
-    color: var(--accent);
+    border: 1px solid var(--hairline-strong);
+    color: var(--text);
     font-size: 11.5px;
     font-weight: 600;
     white-space: nowrap;
@@ -288,7 +288,7 @@
     text-decoration: line-through;
   }
   .location-link {
-    color: var(--accent);
+    color: var(--text);
     text-decoration: underline;
     text-underline-offset: 3px;
     font-size: 13px;
@@ -327,9 +327,9 @@
     opacity: 0.6;
   }
   .rsvp-btn.active {
-    border-color: var(--accent-dim);
-    color: var(--accent);
-    background: var(--accent-soft);
+    border-color: var(--text-faint);
+    color: var(--text);
+    background: var(--selected);
   }
   .rsvp-error {
     color: var(--text-dim);

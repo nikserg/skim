@@ -38,6 +38,8 @@ export const api = {
   listFolders: (accountId: string) => invoke<Folder[]>("list_folders", { accountId }),
   listThreads: (folderId: number, offset = 0, limit = 100) =>
     invoke<ThreadRow[]>("list_threads", { folderId, offset, limit }),
+  listMessages: (folderId: number, offset = 0, limit = 100) =>
+    invoke<ThreadRow[]>("list_messages", { folderId, offset, limit }),
   getThread: (threadId: number) => invoke<ThreadDetail>("get_thread", { threadId }),
   getMessageBody: (messageId: number, showImages?: boolean) =>
     invoke<RenderedBody>("get_message_body", { messageId, showImages: showImages ?? null }),

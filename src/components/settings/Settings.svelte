@@ -21,6 +21,7 @@
   let orCustom = $state("");
   let imagesPolicy = $state("block");
   let notifications = $state("on");
+  let groupThreads = $state("on");
   let autostart = $state(true);
   let confirmingRemove = $state(false);
   let appVersion = $state("");
@@ -46,6 +47,7 @@
       if (s.openrouter_model) orModel = s.openrouter_model;
       if (s.images_policy) imagesPolicy = s.images_policy;
       if (s.notifications) notifications = s.notifications;
+      if (s.group_threads) groupThreads = s.group_threads;
       if (s.ai_user_name) aiName = s.ai_user_name;
       if (s.ai_style) aiStyle = s.ai_style;
       if (s.ai_instructions) aiInstructions = s.ai_instructions;
@@ -192,6 +194,13 @@
     await api.setSetting("notifications", value);
   }
 
+  async function setGroupThreads(value: string) {
+    groupThreads = value;
+    await api.setSetting("group_threads", value);
+    // Re-render the folder list in the new mode immediately.
+    await mail.setGroupThreads(value === "on");
+  }
+
   async function saveAiKey() {
     aiBusy = true;
     aiError = "";
@@ -303,6 +312,18 @@
             {t("settings.notifications_on")}
           </button>
           <button class="chip" class:active={notifications === "off"} onclick={() => setNotifications("off")}>
+            {t("settings.notifications_off")}
+          </button>
+        </div>
+      </section>
+
+      <section>
+        <div class="microlabel">{t("settings.group_threads")}</div>
+        <div class="chips">
+          <button class="chip" class:active={groupThreads === "on"} onclick={() => setGroupThreads("on")}>
+            {t("settings.notifications_on")}
+          </button>
+          <button class="chip" class:active={groupThreads === "off"} onclick={() => setGroupThreads("off")}>
             {t("settings.notifications_off")}
           </button>
         </div>
@@ -851,7 +872,7 @@
   }
 
   .gh-link:hover {
-    color: var(--accent);
+    color: var(--text);
     opacity: 1;
   }
 </style>

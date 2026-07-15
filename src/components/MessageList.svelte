@@ -53,6 +53,15 @@
       {#if unread > 0}
         <span class="microlabel">{t("list.unread", { n: unread })}</span>
       {/if}
+      {#if mail.threads.length > 0}
+        <span class="nav-hint" title="{t('shortcuts.next')} · {t('shortcuts.prev')}">
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3">
+            <path d="M3.5 5L6 2.5 8.5 5" />
+            <path d="M3.5 7L6 9.5 8.5 7" />
+          </svg>
+          <kbd>J</kbd><kbd>K</kbd>
+        </span>
+      {/if}
     </div>
   </header>
   <div class="rows" bind:this={rowsEl} onscroll={onScroll}>
@@ -61,11 +70,16 @@
         {mail.syncState === "syncing" ? t("sync.syncing") : t("list.empty")}
       </div>
     {:else}
-      {#each mail.threads as thread (thread.id)}
+      {#each mail.threads as thread (thread.messageId ?? thread.id)}
         <MessageRow
           {thread}
-          selected={mail.selectedThreadId === thread.id}
-          onselect={(id) => (mail.selectedThreadId = id)}
+          selected={mail.groupThreads
+            ? mail.selectedThreadId === thread.id
+            : mail.selectedMessageId === thread.messageId}
+          onselect={() => {
+            mail.selectedThreadId = thread.id;
+            mail.selectedMessageId = thread.messageId ?? null;
+          }}
         />
       {/each}
     {/if}
@@ -94,6 +108,18 @@
     align-items: center;
     gap: 10px;
     min-width: 0;
+  }
+  .nav-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--text-faint);
+    flex-shrink: 0;
+  }
+  .nav-hint kbd {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-faint);
   }
   /* Violet — an AI moment */
   .recap-chip {

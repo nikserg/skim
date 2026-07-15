@@ -57,9 +57,15 @@
   function moveSelection(delta: number) {
     const threads = mail.threads;
     if (threads.length === 0) return;
-    const index = threads.findIndex((t) => t.id === mail.selectedThreadId);
+    // Rows are keyed by thread in grouped mode, by message in flat mode (where
+    // several rows can share a thread id).
+    const index = mail.groupThreads
+      ? threads.findIndex((t) => t.id === mail.selectedThreadId)
+      : threads.findIndex((t) => t.messageId === mail.selectedMessageId);
     const next = index === -1 ? 0 : Math.max(0, Math.min(threads.length - 1, index + delta));
-    mail.selectedThreadId = threads[next].id;
+    const row = threads[next];
+    mail.selectedThreadId = row.id;
+    mail.selectedMessageId = row.messageId ?? null;
   }
 
   async function actOnSelected(action: "archive" | "delete" | "star" | "unread") {

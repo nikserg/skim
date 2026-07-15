@@ -96,6 +96,20 @@ pub async fn list_threads(
         .await
 }
 
+/// Flat (ungrouped) folder view: one row per message, newest first.
+#[tauri::command]
+pub async fn list_messages(
+    state: State<'_, AppState>,
+    folder_id: i64,
+    offset: i64,
+    limit: i64,
+) -> Result<Vec<ThreadRow>> {
+    state
+        .db
+        .call(move |conn| queries::list_messages(conn, folder_id, offset, limit.clamp(1, 200)))
+        .await
+}
+
 #[tauri::command]
 pub async fn get_thread(state: State<'_, AppState>, thread_id: i64) -> Result<ThreadDetail> {
     state

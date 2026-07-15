@@ -10,6 +10,7 @@ const ALLOWED: &[&str] = &[
     "theme",
     "images_policy",
     "notifications",
+    "group_threads",
     "autostart",
     "ai_model",
     "ai_provider",

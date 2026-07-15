@@ -306,17 +306,17 @@
   <header class="titlebar" data-tauri-drag-region>
     <span class="title" data-tauri-drag-region>{title}</span>
     <div class="controls">
-      <button class="ctl" onclick={async () => (await win()).minimize()} aria-label="Minimize">
+      <button class="ctl" onclick={async () => (await win()).minimize()} aria-label={t("a11y.minimize")}>
         <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1" /></svg>
       </button>
-      <button class="ctl" onclick={toggleMaximize} aria-label="Maximize">
+      <button class="ctl" onclick={toggleMaximize} aria-label={t("a11y.maximize")}>
         {#if maximized}
           <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="2.5" width="7" height="7" fill="none" stroke="currentColor" /><path d="M2.5 2.5V0.5H9.5V7.5H7.5" fill="none" stroke="currentColor" /></svg>
         {:else}
           <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" /></svg>
         {/if}
       </button>
-      <button class="ctl ctl-close" onclick={close} aria-label="Close">
+      <button class="ctl ctl-close" onclick={close} aria-label={t("a11y.close")}>
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0L10 10M10 0L0 10" stroke="currentColor" stroke-width="1" /></svg>
       </button>
     </div>
@@ -765,9 +765,9 @@
   }
   .drop-hint {
     padding: 14px 26px;
-    border: 1.5px dashed var(--accent);
+    border: 1.5px dashed var(--text-faint);
     border-radius: var(--radius-m);
-    color: var(--accent);
+    color: var(--text);
     font-size: 13.5px;
     font-weight: 600;
     background: var(--surface);

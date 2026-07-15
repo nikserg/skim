@@ -191,6 +191,7 @@ pub fn run() {
             commands::accounts::remove_account,
             commands::mail::list_folders,
             commands::mail::list_threads,
+            commands::mail::list_messages,
             commands::mail::get_thread,
             commands::mail::get_message_body,
             commands::mail::allow_remote_images,

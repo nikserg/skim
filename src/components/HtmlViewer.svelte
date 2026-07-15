@@ -3,6 +3,7 @@
   // a strict CSP. Links open in the system browser; height tracks content.
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { ui } from "../lib/stores/ui.svelte";
+  import { t } from "../lib/i18n/index.svelte";
 
   let { html }: { html: string } = $props();
 
@@ -105,7 +106,7 @@
 
 <iframe
   bind:this={iframe}
-  title="Message"
+  title={t("a11y.message")}
   sandbox="allow-same-origin"
   srcdoc={srcdoc}
   onload={onLoad}

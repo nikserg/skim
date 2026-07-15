@@ -13,6 +13,8 @@ const state = $state({
   threads: [] as ThreadRow[],
   selectedFolderId: null as number | null,
   selectedThreadId: null as number | null,
+  selectedMessageId: null as number | null,
+  groupThreads: true,
   syncState: "idle" as SyncState,
   syncMessage: null as string | null,
   syncProgress: null as { done: number; total: number } | null,
@@ -61,17 +63,25 @@ async function refreshFolders() {
   }
 }
 
+/** One page of rows for a folder — threads when grouping is on, else messages. */
+function fetchPage(folderId: number, offset: number) {
+  return state.groupThreads
+    ? api.listThreads(folderId, offset, PAGE)
+    : api.listMessages(folderId, offset, PAGE);
+}
+
 async function refreshThreads() {
   if (state.selectedFolderId === null) return;
-  state.threads = await api.listThreads(state.selectedFolderId, 0, PAGE);
+  state.threads = await fetchPage(state.selectedFolderId, 0);
 }
 
 async function selectFolder(id: number) {
   state.selectedFolderId = id;
   state.selectedThreadId = null;
+  state.selectedMessageId = null;
   state.threadsLoading = true;
   try {
-    state.threads = await api.listThreads(id, 0, PAGE);
+    state.threads = await fetchPage(id, 0);
   } finally {
     state.threadsLoading = false;
   }
@@ -79,8 +89,24 @@ async function selectFolder(id: number) {
 
 async function loadMoreThreads() {
   if (state.selectedFolderId === null) return;
-  const more = await api.listThreads(state.selectedFolderId, state.threads.length, PAGE);
+  const more = await fetchPage(state.selectedFolderId, state.threads.length);
   state.threads = [...state.threads, ...more];
+}
+
+/** Toggle thread grouping and reload the current folder in the new mode. */
+async function setGroupThreads(on: boolean) {
+  if (state.groupThreads === on) return;
+  state.groupThreads = on;
+  state.selectedThreadId = null;
+  state.selectedMessageId = null;
+  if (state.selectedFolderId !== null) {
+    state.threadsLoading = true;
+    try {
+      state.threads = await fetchPage(state.selectedFolderId, 0);
+    } finally {
+      state.threadsLoading = false;
+    }
+  }
 }
 
 export const mail = {
@@ -105,6 +131,15 @@ export const mail = {
   set selectedThreadId(id: number | null) {
     state.selectedThreadId = id;
   },
+  get selectedMessageId() {
+    return state.selectedMessageId;
+  },
+  set selectedMessageId(id: number | null) {
+    state.selectedMessageId = id;
+  },
+  get groupThreads() {
+    return state.groupThreads;
+  },
   get selectedFolder() {
     return state.folders.find((f) => f.id === state.selectedFolderId) ?? null;
   },
@@ -127,6 +162,9 @@ export const mail = {
   /** App start: find the account and begin listening. */
   async boot() {
     await attachListeners();
+    // Thread grouping preference (default on when the key is absent).
+    const settings = await api.getSettings();
+    state.groupThreads = settings.group_threads !== "off";
     const accounts = await api.listAccounts();
     state.account = accounts[0] ?? null;
     if (state.account) await refreshFolders();
@@ -149,6 +187,7 @@ export const mail = {
   selectFolder,
   loadMoreThreads,
   refreshThreads,
+  setGroupThreads,
   syncNow: () => api.syncNow(state.account?.id),
 
   /** Optimistically drop a thread from the visible list (archive/delete). */

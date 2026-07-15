@@ -228,6 +228,7 @@ pub fn list_threads(
             let from_addr: Option<String> = r.get(2)?;
             Ok(ThreadRow {
                 id: r.get(0)?,
+                message_id: None,
                 from_name: from_name
                     .filter(|s| !s.is_empty())
                     .or_else(|| from_addr.clone())
@@ -240,6 +241,50 @@ pub fn list_threads(
                 is_starred: r.get(7)?,
                 has_attachments: r.get::<_, i64>(8)? != 0,
                 message_count: r.get(9)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Individual messages in a folder, newest first — the flat (ungrouped) view.
+/// One row per message; no thread aggregation. Each row keeps `id = thread_id`
+/// (so open/patch/archive still work by thread) and carries `message_id` for
+/// the specific message to open.
+pub fn list_messages(
+    conn: &Connection,
+    folder_id: i64,
+    offset: i64,
+    limit: i64,
+) -> rusqlite::Result<Vec<ThreadRow>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT m.thread_id, m.id,
+                m.from_name, m.from_addr, m.subject, m.snippet, m.date,
+                m.is_read, m.is_starred, m.has_attachments
+         FROM messages m
+         WHERE m.folder_id = ?1
+         ORDER BY m.date DESC, m.id DESC
+         LIMIT ?2 OFFSET ?3",
+    )?;
+    let rows = stmt
+        .query_map(params![folder_id, limit, offset], |r| {
+            let from_name: Option<String> = r.get(2)?;
+            let from_addr: Option<String> = r.get(3)?;
+            Ok(ThreadRow {
+                id: r.get(0)?,
+                message_id: Some(r.get(1)?),
+                from_name: from_name
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| from_addr.clone())
+                    .unwrap_or_default(),
+                from_addr: from_addr.unwrap_or_default(),
+                subject: r.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                snippet: r.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                date: r.get(6)?,
+                is_read: r.get(7)?,
+                is_starred: r.get(8)?,
+                has_attachments: r.get::<_, i64>(9)? != 0,
+                message_count: 1,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;

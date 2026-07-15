@@ -36,6 +36,8 @@ export interface Folder {
 
 export interface ThreadRow {
   id: number;
+  /** Set only in flat (ungrouped) mode: the specific message this row is. */
+  messageId?: number | null;
   fromName: string;
   fromAddr: string;
   subject: string;
