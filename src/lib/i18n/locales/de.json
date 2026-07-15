@@ -112,6 +112,7 @@
   "ai.warmer": "Wärmer",
   "ai.formal": "Formeller",
   "ai.stop": "Stopp",
+  "ai.empty_response": "Die KI hat keinen Entwurf geliefert — formuliere die Anweisung neu.",
   "ai.needs_key": "Füge deinen Anthropic API-Schlüssel im Onboarding oder in den Einstellungen hinzu, um KI zu nutzen.",
   "onb.ai_title": "Bring deine eigene KI",
   "onb.ai_subtitle": "Füge einen Anthropic API-Schlüssel ein, um KI-Funktionen freizuschalten. Anfragen gehen direkt von deinem Rechner an Claude — Skim speichert den Schlüssel im Windows-Anmeldeinformationsspeicher und sendet ihn nirgendwo sonst hin.",

@@ -112,6 +112,7 @@
   "ai.warmer": "Più cordiale",
   "ai.formal": "Più formale",
   "ai.stop": "Stop",
+  "ai.empty_response": "L'IA non ha restituito nulla — prova a riformulare l'istruzione.",
   "ai.needs_key": "Aggiungi la tua chiave API Anthropic nell'onboarding o nelle impostazioni per usare l'IA.",
   "onb.ai_title": "Porta la tua IA",
   "onb.ai_subtitle": "Incolla una chiave API Anthropic per sbloccare le funzioni IA. Le richieste vanno direttamente dal tuo computer a Claude — Skim conserva la chiave nel Gestore credenziali di Windows e non la invia altrove.",

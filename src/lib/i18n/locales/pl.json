@@ -120,6 +120,7 @@
   "ai.warmer": "Cieplej",
   "ai.formal": "Formalniej",
   "ai.stop": "Stop",
+  "ai.empty_response": "AI nie zwróciło treści — spróbuj przeformułować polecenie.",
   "ai.needs_key": "Dodaj klucz API Anthropic w onboardingu lub ustawieniach, aby korzystać z AI.",
   "onb.ai_title": "Podłącz własną AI",
   "onb.ai_subtitle": "Wklej klucz API Anthropic, aby odblokować funkcje AI. Zapytania idą prosto z twojego komputera do Claude — Skim trzyma klucz w Menedżerze poświadczeń Windows i nigdzie indziej go nie wysyła.",

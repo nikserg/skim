@@ -111,6 +111,7 @@
   "ai.warmer": "Warmer",
   "ai.formal": "Formal",
   "ai.stop": "Stop",
+  "ai.empty_response": "AI returned an empty draft — try rephrasing your prompt.",
   "ai.needs_key": "Add your Anthropic API key in onboarding or settings to use AI.",
   "onb.ai_title": "Bring your own AI",
   "onb.ai_subtitle": "Paste an Anthropic API key to unlock AI features. Requests go straight from your machine to Claude — Skim stores the key in Windows Credential Manager and sends it nowhere else.",

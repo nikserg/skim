@@ -71,20 +71,51 @@
     void attachFiles(e.dataTransfer?.files ?? null);
   }
 
+  /** Pasted screenshots and copied images arrive as unnamed blobs — give them a
+   *  sensible filename so the attachment chip and the sent MIME part aren't blank. */
+  let pasteSeq = 0;
+  function named(file: File): File {
+    if (file.name) return file;
+    const ext = (file.type.split("/")[1] || "bin").split("+")[0];
+    return new File([file], `pasted-${++pasteSeq}.${ext}`, { type: file.type });
+  }
+
+  /** Ctrl/Cmd+V inside the compose window: if the clipboard carries files or an
+   *  image (e.g. a screenshot), attach them; otherwise let the paste fall
+   *  through so text lands in the field as usual. */
+  function onPaste(e: ClipboardEvent) {
+    const data = e.clipboardData;
+    if (!data) return;
+    // Prefer explicit files; fall back to image/file items (screenshots have no
+    // entry in `.files` on some platforms, only in `.items`).
+    let files = Array.from(data.files);
+    if (files.length === 0) {
+      files = Array.from(data.items)
+        .filter((it) => it.kind === "file")
+        .map((it) => it.getAsFile())
+        .filter((f): f is File => f !== null);
+    }
+    if (files.length === 0) return; // plain text — leave the paste alone
+    e.preventDefault();
+    void attachFiles(files.map(named));
+  }
+
   // ---- AI drafting ----
   let aiAvailable = $state(false);
   let instruction = $state("");
+  let instrEl = $state<HTMLTextAreaElement | null>(null);
 
-  /** Grow a textarea to fit its content (used by the AI instruction box). */
-  function autogrow(node: HTMLTextAreaElement) {
-    const resize = () => {
-      node.style.height = "auto";
-      node.style.height = `${node.scrollHeight}px`;
-    };
-    resize();
-    node.addEventListener("input", resize);
-    return { destroy: () => node.removeEventListener("input", resize) };
-  }
+  // Keep the AI instruction box fitted to its content on every value change —
+  // typing, the send-time clear, an error restore. An $effect (not a `use:`
+  // action) so it runs *after* bind:value has written the new text into the
+  // DOM; measuring scrollHeight before that write leaves the box stuck tall.
+  $effect(() => {
+    const el = instrEl;
+    void instruction; // track typed + programmatic changes
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  });
   let aiBusy = $state(false);
   let cancelAi: (() => void) | null = null;
   /** Quoted original (reply/forward), preserved below AI-generated text. */
@@ -131,8 +162,10 @@
     return [body, ""];
   }
 
-  /** Push an instruction into the session and stream the revised draft. */
-  function sendInstruction(text: string) {
+  /** Push an instruction into the session and stream the revised draft.
+   *  `fromInput` marks instructions typed into the box (as opposed to the tone
+   *  chips) so we can clear that box — but only once a draft actually lands. */
+  function sendInstruction(text: string, fromInput = false) {
     if (!draft || aiBusy) return;
     const instr = text.trim();
     if (!instr) return;
@@ -154,22 +187,28 @@
       }
     }
 
-    convo.push({ role: "user", content: instr });
-    instruction = "";
-    runCompose();
+    runCompose(instr, fromInput);
   }
 
-  function runCompose() {
+  function runCompose(instr: string, fromInput: boolean) {
     if (!draft) return;
     cancelAi?.();
     aiBusy = true;
     error = "";
     draft.body = quotedTail;
     let streamed = "";
+    // The pending instruction rides along with the settled history for the
+    // request, but it isn't committed to `convo` until it succeeds — so a
+    // failed or empty round leaves the user's text untouched in the (disabled)
+    // input, ready to retry or edit.
+    const turns = [
+      ...convo.map((tn) => ({ role: tn.role, content: tn.content })),
+      { role: "user" as const, content: instr },
+    ];
     cancelAi = aiStream(
       "ai_compose",
       {
-        turns: convo.map((tn) => ({ role: tn.role, content: tn.content })),
+        turns,
         replyToMessageId: draft.replyToMessageId,
       },
       {
@@ -189,12 +228,16 @@
         done: () => {
           const text = streamed.trim();
           if (text) {
+            // Success — commit the exchange to the session and (only now) clear
+            // the box if this instruction came from it.
+            convo.push({ role: "user", content: instr });
             convo.push({ role: "assistant", content: text });
+            if (fromInput) instruction = "";
           } else {
-            // Nothing usable came back — drop the user turn so the next round
-            // doesn't carry a dangling instruction with no reply.
-            const last = convo[convo.length - 1];
-            if (last?.role === "user") convo.pop();
+            // Nothing usable came back — leave the instruction sitting in the
+            // input (never committed, never cleared) and just say so.
+            error = t("ai.empty_response");
+            if (draft && quotedTail && !draft.body) draft.body = quotedTail;
           }
           aiBusy = false;
           scheduleSave();
@@ -202,12 +245,8 @@
         error: (_code, message) => {
           aiBusy = false;
           error = message;
-          // Roll the failed instruction back into the input so it isn't lost.
-          const last = convo[convo.length - 1];
-          if (last?.role === "user") {
-            instruction = last.content;
-            convo.pop();
-          }
+          // The instruction was never committed or cleared, so it's still in
+          // the input for the user to retry or fix — nothing to roll back.
           if (draft && quotedTail && !draft.body) draft.body = quotedTail;
         },
       },
@@ -223,9 +262,8 @@
   function stopAi() {
     cancelAi?.();
     aiBusy = false;
-    // Drop the unanswered instruction so the session stays consistent.
-    const last = convo[convo.length - 1];
-    if (last?.role === "user") convo.pop();
+    // The pending instruction was never committed to the session, so it stays
+    // put in the input — nothing to roll back.
   }
 
   $effect(() => {
@@ -302,6 +340,7 @@
     if (e.currentTarget === e.target) dragActive = false;
   }}
   ondrop={onDrop}
+  onpaste={onPaste}
 >
   <header class="titlebar" data-tauri-drag-region>
     <span class="title" data-tauri-drag-region>{title}</span>
@@ -366,21 +405,22 @@
           class="ai-input"
           onsubmit={(e) => {
             e.preventDefault();
-            sendInstruction(instruction);
+            sendInstruction(instruction, true);
           }}
         >
           <span class="spark">✦</span>
           <textarea
             class="instruction"
-            use:autogrow
+            bind:this={instrEl}
             bind:value={instruction}
             placeholder={hasDraft ? t("ai.refine_placeholder") : t("ai.instruction_placeholder")}
             rows="1"
             spellcheck="false"
+            disabled={aiBusy}
             onkeydown={(e) => {
               if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault();
-                sendInstruction(instruction);
+                sendInstruction(instruction, true);
               }
             }}
           ></textarea>
@@ -614,6 +654,10 @@
     overflow-y: auto;
     padding: 0;
     font-family: inherit;
+  }
+  .ai-input .instruction:disabled {
+    opacity: 0.55;
+    cursor: default;
   }
   .ai-input .ai-chip {
     align-self: center;

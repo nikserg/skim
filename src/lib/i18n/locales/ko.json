@@ -108,6 +108,7 @@
   "ai.warmer": "따뜻하게",
   "ai.formal": "격식 있게",
   "ai.stop": "중지",
+  "ai.empty_response": "AI가 빈 응답을 반환했습니다 — 지시를 다시 작성해 보세요.",
   "ai.needs_key": "AI를 사용하려면 온보딩 또는 설정에서 Anthropic API 키를 추가하세요.",
   "onb.ai_title": "나만의 AI 연결",
   "onb.ai_subtitle": "Anthropic API 키를 붙여넣으면 AI 기능이 열립니다. 요청은 내 컴퓨터에서 Claude로 직접 전송됩니다. Skim은 키를 Windows 자격 증명 관리자에 저장하며 다른 어디에도 보내지 않습니다.",

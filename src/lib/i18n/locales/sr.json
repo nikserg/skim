@@ -116,6 +116,7 @@
   "ai.warmer": "Toplije",
   "ai.formal": "Formalnije",
   "ai.stop": "Stop",
+  "ai.empty_response": "AI nije vratio ništa — pokušajte da preformulišete uputstvo.",
   "ai.needs_key": "Dodaj svoj Anthropic API ključ u onboardingu ili podešavanjima da bi koristio AI.",
   "onb.ai_title": "Poveži svoju AI",
   "onb.ai_subtitle": "Nalepi Anthropic API ključ da otključaš AI funkcije. Zahtevi idu direktno sa tvog računara ka Claude-u — Skim čuva ključ u Windows Credential Manager-u i nigde ga drugde ne šalje.",

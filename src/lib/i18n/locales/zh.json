@@ -108,6 +108,7 @@
   "ai.warmer": "更亲切",
   "ai.formal": "更正式",
   "ai.stop": "停止",
+  "ai.empty_response": "AI 未返回任何内容——请尝试重新表述指令。",
   "ai.needs_key": "请在引导流程或设置中添加 Anthropic API 密钥以使用 AI。",
   "onb.ai_title": "接入你自己的 AI",
   "onb.ai_subtitle": "粘贴 Anthropic API 密钥即可解锁 AI 功能。请求直接从你的电脑发往 Claude——Skim 将密钥保存在 Windows 凭据管理器中，不会发送到其他任何地方。",
