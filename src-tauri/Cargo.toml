@@ -52,6 +52,7 @@ winreg = "0.55"
 lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "smtp-transport", "builder", "hostname", "pool"] }
 
 [profile.release]
+opt-level = "s"
 lto = true
 codegen-units = 1
 strip = true

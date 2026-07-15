@@ -11,6 +11,8 @@
   let text = $state("");
   let citations = $state<Citation[]>([]);
   let progress = $state<{ current: number; total: number } | null>(null);
+  /** How many unread messages were scanned — for the digest eyebrow count. */
+  let scannedTotal = $state(0);
   let markedCount = $state(0);
   let cancel: (() => void) | null = null;
 
@@ -21,7 +23,10 @@
       "ai_recap",
       { folderId },
       {
-        progress: (current, total) => (progress = { current, total }),
+        progress: (current, total) => {
+          progress = { current, total };
+          if (total > scannedTotal) scannedTotal = total;
+        },
         delta: (chunk) => {
           status = "streaming";
           progress = null;
@@ -78,7 +83,16 @@
     {:else if status === "error"}
       <div class="error">{text}</div>
     {:else}
-      <div class="text md-body">{@html mdLite(text)}</div>
+      {#if ui.temperature === "warm"}
+        <div class="eyebrow">
+          // {t("ai.recap_eyebrow", { n: citations.length || scannedTotal })} //
+        </div>
+      {/if}
+      <div class="clip">
+        <div class="clip-paper">
+          <div class="text md-body">{@html mdLite(text)}</div>
+        </div>
+      </div>
       {#if status === "done"}
         {#if markedCount > 0}
           <div class="marked microlabel">✓ {t("ai.recap_marked", { n: markedCount })}</div>
@@ -166,6 +180,70 @@
     font-size: 14px;
     line-height: 1.65;
     max-width: 640px;
+  }
+  /* Warm-only "paper clipping" treatment: eyebrow + torn card + tape strip.
+     In cold themes .clip is an inert wrapper and .eyebrow isn't rendered. */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    transform: rotate(-1deg);
+  }
+  .clip {
+    max-width: 640px;
+  }
+  /* .clip is the unclipped wrapper (rotation + tape); .clip-paper carries the
+     torn-edge clip-path, so the tape (::before on .clip) isn't cut off. */
+  :global(:root[data-theme="warm-light"]) .clip,
+  :global(:root[data-theme="warm-dark"]) .clip {
+    position: relative;
+    transform: rotate(-0.6deg);
+  }
+  :global(:root[data-theme="warm-light"]) .clip-paper,
+  :global(:root[data-theme="warm-dark"]) .clip-paper {
+    background: var(--surface-raised);
+    border: 1px solid var(--hairline-strong);
+    box-shadow: 4px 6px 0 rgba(28, 23, 18, 0.1);
+    padding: 24px 22px;
+    clip-path: polygon(
+      0 2%,
+      4% 0,
+      45% 2%,
+      72% 0,
+      100% 2%,
+      99% 45%,
+      100% 74%,
+      98% 100%,
+      58% 98%,
+      26% 100%,
+      2% 99%,
+      0 55%
+    );
+  }
+  /* translucent tape strip sitting on the top edge (on the unclipped .clip) */
+  :global(:root[data-theme="warm-light"]) .clip::before,
+  :global(:root[data-theme="warm-dark"]) .clip::before {
+    content: "";
+    position: absolute;
+    top: -13px;
+    left: 38px;
+    width: 96px;
+    height: 26px;
+    background: rgba(216, 190, 120, 0.5);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.16);
+    transform: rotate(-4deg);
+    z-index: 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(:root[data-theme="warm-light"]) .clip,
+    :global(:root[data-theme="warm-dark"]) .clip {
+      transform: none;
+    }
+    .eyebrow {
+      transform: none;
+    }
   }
   .marked {
     color: var(--success);

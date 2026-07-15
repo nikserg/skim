@@ -112,3 +112,27 @@ a {
   padding: 1px 4px;
   border-radius: 4px;
 }
+
+/* Highlighter = bold — a quiet-zine signature, warm themes only. Bold runs
+   carry a cycling hl1..hl3 class (lib/md.ts); we paint a partial ~42% bar under
+   otherwise-unchanged text. Cold themes leave bold as plain weight. */
+:root[data-theme="warm-light"] .md-body strong.hl1 {
+  background: linear-gradient(transparent 58%, var(--hl-1) 58%);
+}
+:root[data-theme="warm-light"] .md-body strong.hl2 {
+  background: linear-gradient(transparent 58%, var(--hl-2) 58%);
+}
+:root[data-theme="warm-light"] .md-body strong.hl3 {
+  background: linear-gradient(transparent 58%, var(--hl-3) 58%);
+}
+/* Dark: deep jewel inks, text stays light — do not switch to a solid fill or
+   darken the text. Slightly lower bar so the light glyph reads cleanly. */
+:root[data-theme="warm-dark"] .md-body strong.hl1 {
+  background: linear-gradient(transparent 59%, var(--hl-1) 59%);
+}
+:root[data-theme="warm-dark"] .md-body strong.hl2 {
+  background: linear-gradient(transparent 59%, var(--hl-2) 59%);
+}
+:root[data-theme="warm-dark"] .md-body strong.hl3 {
+  background: linear-gradient(transparent 59%, var(--hl-3) 59%);
+}

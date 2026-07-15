@@ -11,6 +11,7 @@ const ALLOWED: &[&str] = &[
     "images_policy",
     "notifications",
     "group_threads",
+    "sidebar_collapsed",
     "autostart",
     "ai_model",
     "ai_provider",

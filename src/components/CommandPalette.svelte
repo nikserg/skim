@@ -122,6 +122,12 @@
         run: () => mail.syncNow(),
       },
       {
+        id: "toggle-sidebar",
+        label: t("palette.toggle_sidebar"),
+        hint: ".",
+        run: () => ui.toggleSidebar(),
+      },
+      {
         id: "shortcuts",
         label: t("palette.shortcuts"),
         hint: "?",

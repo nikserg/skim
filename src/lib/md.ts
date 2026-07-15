@@ -8,9 +8,14 @@ export function mdLite(text: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+  // Each bold run gets a cycling highlighter class (hl1..hl3). Warm ("quiet
+  // zine") themes render these as a highlighter mark via CSS; cold themes leave
+  // them as plain bold. The counter is call-local so identical text always
+  // numbers the same, and it continues across lines within one render.
+  let hl = 0;
   const inline = (s: string) =>
     s
-      .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*\*([^*\n]+)\*\*/g, (_m, b) => `<strong class="hl${(hl++ % 3) + 1}">${b}</strong>`)
       .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>")
       .replace(/`([^`\n]+)`/g, "<code>$1</code>");
   return escaped

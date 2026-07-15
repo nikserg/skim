@@ -48,6 +48,7 @@
       rows: [
         { label: t("nav.search"), keys: ["Ctrl K", "/"] },
         { label: t("nav.compose"), keys: ["Ctrl N"] },
+        { label: t("palette.toggle_sidebar"), keys: ["."] },
         { label: t("shortcuts.title"), keys: ["?"] },
       ],
     },

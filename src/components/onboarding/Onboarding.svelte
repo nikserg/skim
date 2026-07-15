@@ -23,8 +23,15 @@
     aiError = "";
   }
 
-  function accountConnected(account: Account) {
+  async function accountConnected(account: Account) {
     connectedAccount = account;
+    // The AI key lives in Credential Manager, not per-account — if one was set
+    // during an earlier onboarding it's still there. Don't ask for it again.
+    const status = await aiApi.keyStatus().catch(() => null);
+    if (status && (status.anthropic || status.openrouter)) {
+      finish();
+      return;
+    }
     step = "ai";
   }
 
@@ -102,7 +109,7 @@
     error = "";
     try {
       const account = await api.startGoogleOauth();
-      accountConnected(account);
+      await accountConnected(account);
     } catch (e) {
       error = errorMessage(e);
     } finally {
@@ -125,7 +132,7 @@
         smtpSecurity,
       };
       const account = await api.addAccount(input, password);
-      accountConnected(account);
+      await accountConnected(account);
     } catch (e) {
       error = errorMessage(e);
     } finally {
@@ -153,9 +160,9 @@
     <div class="card welcome">
       <div class="wordmark">
         <svg class="mark" width="22" height="22" viewBox="0 0 96 96" aria-hidden="true">
-          <circle cx="48" cy="48" r="48" fill="#6b46f2" />
-          <rect x="28" y="41" width="40" height="6.5" rx="3.25" fill="#fff" />
-          <rect x="28" y="54" width="26" height="6.5" rx="3.25" fill="#fff" fill-opacity="0.62" />
+          <rect width="96" height="96" rx="22" fill="#eadfc2" />
+          <rect x="25" y="39" width="46" height="8.5" rx="4.25" fill="#0d0d10" />
+          <rect x="25" y="55" width="29" height="8.5" rx="4.25" fill="#0d0d10" fill-opacity="0.55" />
         </svg>
         Skim
       </div>

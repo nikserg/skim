@@ -359,10 +359,40 @@
 
 <section class="pane">
   {#if !detail}
-    <div class="placeholder">
-      <div class="ghost">✉</div>
-      {mail.selectedThreadId === null ? t("reading.no_selection") : t("reading.loading")}
-    </div>
+    {#if ui.temperature === "warm" && mail.selectedThreadId === null}
+      <!-- Quiet-zine empty state: a taped paper note. Warm themes only. -->
+      <div class="placeholder">
+        <div class="note">
+          <div class="note-paper">
+            <svg class="note-icon" width="52" height="52" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+              <defs>
+                <filter id="note-marker" x="-30%" y="-30%" width="160%" height="160%">
+                  <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="4" result="n" />
+                  <feDisplacementMap in="SourceGraphic" in2="n" scale="1.8" />
+                </filter>
+              </defs>
+              <g filter="url(#note-marker)">
+                <rect x="6" y="12" width="36" height="24" rx="2.5" />
+                <path d="M6.5 15l17.5 12.5L41.5 15" />
+              </g>
+            </svg>
+            <div class="note-line">{t("reading.no_selection")}</div>
+            <div class="note-hint">
+              <kbd>J</kbd><kbd>K</kbd><span>{t("reading.hint_browse")}</span>
+            </div>
+            <div class="note-hint">
+              <kbd>Ctrl</kbd><kbd>K</kbd><span>— {t("reading.hint_command")}</span>
+            </div>
+          </div>
+          <span class="tape"></span>
+        </div>
+      </div>
+    {:else}
+      <div class="placeholder">
+        <div class="ghost">✉</div>
+        {mail.selectedThreadId === null ? t("reading.no_selection") : t("reading.loading")}
+      </div>
+    {/if}
   {:else}
     <header class="toolbar">
       <div class="spacer"></div>
@@ -662,6 +692,101 @@
   .ghost {
     font-size: 28px;
     opacity: 0.4;
+  }
+  /* Quiet-zine empty state — a paper note pinned with tape. Only mounts in warm
+     themes, so it can use theme tokens directly without gating.
+     .note is an unclipped wrapper: it carries the rotation and hosts the tape as
+     a sibling of .note-paper, so the paper's clip-path (torn edge) doesn't cut
+     the tape off. */
+  .note {
+    position: relative;
+    width: 340px;
+    max-width: 80%;
+    transform: rotate(-1.4deg);
+  }
+  .note-paper {
+    background: var(--surface-raised);
+    border: 1px solid var(--hairline);
+    box-shadow: 4px 7px 18px rgba(0, 0, 0, 0.22);
+    padding: 36px 28px 28px;
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+    clip-path: polygon(
+      0 2%,
+      4% 0,
+      46% 2%,
+      73% 0,
+      100% 2%,
+      99% 46%,
+      100% 75%,
+      98% 100%,
+      57% 98%,
+      25% 100%,
+      2% 99%,
+      0 55%
+    );
+  }
+  .note .tape {
+    position: absolute;
+    top: -13px;
+    left: 50%;
+    transform: translateX(-50%) rotate(-4deg);
+    width: 112px;
+    height: 28px;
+    background: rgba(216, 190, 120, 0.5);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.16);
+    z-index: 1;
+  }
+  .note-icon {
+    color: var(--text);
+    opacity: 0.5;
+  }
+  .note-line {
+    font-size: 20px;
+    font-weight: 600;
+    font-style: italic;
+    line-height: 1.15;
+    color: var(--text);
+  }
+  .note-hint {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+    justify-content: center;
+    font-style: italic;
+    font-size: 14px;
+    color: var(--text-dim);
+  }
+  .note-hint kbd {
+    font-family: var(--font-mono);
+    font-style: normal;
+    font-size: 11px;
+    color: var(--text);
+    border: 1.4px solid var(--text);
+    box-shadow: 1.5px 1.5px 0 var(--text);
+    border-radius: 3px;
+    padding: 1px 6px;
+  }
+  .note-hint:first-of-type kbd:first-child {
+    transform: rotate(-2deg);
+  }
+  .note-hint:first-of-type kbd:nth-child(2) {
+    transform: rotate(2deg);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .note,
+    .note .tape,
+    .note-hint kbd {
+      transform: none;
+    }
+    .note .tape {
+      transform: translateX(-50%);
+    }
   }
 
   .toolbar {

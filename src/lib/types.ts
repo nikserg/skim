@@ -152,6 +152,10 @@ export interface SkimError {
   message: string;
 }
 
-export type Theme = "light" | "dark" | "system";
+/** Theme is two independent axes: temperature × lightness. */
+export type Temperature = "cold" | "warm";
+export type Lightness = "light" | "dark";
+/** Persisted theme value, e.g. "warm-light". */
+export type Theme = `${Temperature}-${Lightness}`;
 
 export type SyncState = "syncing" | "idle" | "error" | "offline";

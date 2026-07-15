@@ -13,7 +13,7 @@
   import { mail } from "./lib/stores/mail.svelte";
   import { palette } from "./lib/stores/palette.svelte";
   import { ui } from "./lib/stores/ui.svelte";
-  import type { Account, Theme } from "./lib/types";
+  import type { Account } from "./lib/types";
 
   let ready = $state(false);
 
@@ -29,7 +29,11 @@
         try {
           const settings = await api.getSettings();
           if (settings.locale) await setLocale(settings.locale as never);
-          if (settings.theme) ui.setTheme(settings.theme as Theme);
+          // Apply the stored theme (migrating legacy values); persist the
+          // normalized string back once if migration changed it.
+          const normalized = ui.hydrate(settings.theme);
+          if (settings.theme !== normalized) void api.setSetting("theme", normalized).catch(() => {});
+          if (settings.sidebar_collapsed) ui.setSidebarCollapsed(settings.sidebar_collapsed === "on");
         } catch {
           // settings are best-effort at boot
         }
@@ -173,6 +177,10 @@
       case "?":
         e.preventDefault();
         ui.openShortcuts();
+        break;
+      case ".":
+        e.preventDefault();
+        ui.toggleSidebar();
         break;
       case "#":
       case "Delete":

@@ -8,9 +8,67 @@
   import { ai } from "../../lib/stores/ai.svelte";
   import { mail } from "../../lib/stores/mail.svelte";
   import { ui } from "../../lib/stores/ui.svelte";
-  import type { Theme } from "../../lib/types";
+  import type { Lightness, Temperature } from "../../lib/types";
 
   let { onclose }: { onclose: () => void } = $props();
+
+  // Each matrix cell previews a *different* theme than the active one, so the
+  // colors can't come from CSS variables — they're literals mirroring tokens.css
+  // (and the Skim Theme Matrix design mock).
+  const THEME_PREVIEWS: Record<
+    string,
+    {
+      bg: string;
+      surface: string;
+      text: string;
+      accent: string;
+      accentSoft: string;
+      accentBorder: string;
+      line: string;
+      line2: string;
+    }
+  > = {
+    "cold-light": {
+      bg: "#f7f7f6",
+      surface: "#ffffff",
+      text: "#17171b",
+      accent: "#6b46f2",
+      accentSoft: "#eae7fd",
+      accentBorder: "rgba(107,70,242,0.55)",
+      line: "rgba(17,17,20,0.16)",
+      line2: "rgba(17,17,20,0.12)",
+    },
+    "warm-light": {
+      bg: "#f1eee6",
+      surface: "#fbfaf5",
+      text: "#1c1712",
+      accent: "#6d5296",
+      accentSoft: "#ece5f2",
+      accentBorder: "rgba(109,82,150,0.55)",
+      line: "rgba(28,23,18,0.16)",
+      line2: "rgba(28,23,18,0.12)",
+    },
+    "cold-dark": {
+      bg: "#0d0d10",
+      surface: "#141418",
+      text: "#ececef",
+      accent: "#8b6cf7",
+      accentSoft: "rgba(139,108,247,0.22)",
+      accentBorder: "rgba(139,108,247,0.6)",
+      line: "rgba(236,236,239,0.2)",
+      line2: "rgba(236,236,239,0.14)",
+    },
+    "warm-dark": {
+      bg: "#14110d",
+      surface: "#1a1712",
+      text: "#ece7dd",
+      accent: "#a58fca",
+      accentSoft: "rgba(165,143,202,0.2)",
+      accentBorder: "rgba(165,143,202,0.6)",
+      line: "rgba(236,231,221,0.2)",
+      line2: "rgba(236,231,221,0.14)",
+    },
+  };
 
   let aiKeyInput = $state("");
   let aiBusy = $state(false);
@@ -174,9 +232,9 @@
     void api.setSetting("locale", code).catch(() => {});
   }
 
-  function setTheme(theme: Theme) {
-    ui.setTheme(theme);
-    void api.setSetting("theme", theme).catch(() => {});
+  function setTheme(temperature: Temperature, lightness: Lightness) {
+    ui.setTheme(temperature, lightness);
+    void api.setSetting("theme", `${temperature}-${lightness}`).catch(() => {});
   }
 
   async function setModel(id: string) {
@@ -280,15 +338,51 @@
 
       <section>
         <div class="microlabel">{t("settings.theme")}</div>
-        <div class="chips">
-          {#each ["light", "dark", "system"] as themeOption (themeOption)}
-            <button
-              class="chip"
-              class:active={ui.theme === themeOption}
-              onclick={() => setTheme(themeOption as Theme)}
-            >
-              {t(`theme.${themeOption}`)}
-            </button>
+        <div class="theme-matrix">
+          <!-- header row: temperature axis -->
+          <div></div>
+          <div class="axis">{t("theme.cold")}</div>
+          <div class="axis">{t("theme.warm")}</div>
+
+          {#each [{ light: "light" as Lightness }, { light: "dark" as Lightness }] as row (row.light)}
+            <div class="axis right">{t(`theme.${row.light}`)}</div>
+            {#each ["cold" as Temperature, "warm" as Temperature] as temp (temp)}
+              {@const p = THEME_PREVIEWS[`${temp}-${row.light}`]}
+              <button
+                class="cell"
+                class:selected={ui.temperature === temp && ui.lightness === row.light}
+                style:--p-bg={p.bg}
+                style:--p-surface={p.surface}
+                style:--p-text={p.text}
+                style:--p-accent={p.accent}
+                style:--p-accent-soft={p.accentSoft}
+                style:--p-accent-border={p.accentBorder}
+                style:--p-line={p.line}
+                style:--p-line-2={p.line2}
+                onclick={() => setTheme(temp, row.light)}
+                aria-label={`${t(`theme.${temp}`)} · ${t(`theme.${row.light}`)}`}
+                aria-pressed={ui.temperature === temp && ui.lightness === row.light}
+              >
+                <span class="preview">
+                  <span class="p-sidebar">
+                    <span class="p-dot"></span>
+                    <span class="p-bar"></span>
+                    <span class="p-bar short"></span>
+                  </span>
+                  <span class="p-main">
+                    <span class="p-title"></span>
+                    <span class="p-line"></span>
+                    <span class="p-line short"></span>
+                    <span class="p-pill"></span>
+                  </span>
+                </span>
+                {#if ui.temperature === temp && ui.lightness === row.light}
+                  <span class="check" aria-hidden="true">
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.5L5 9l4.5-5.5" /></svg>
+                  </span>
+                {/if}
+              </button>
+            {/each}
           {/each}
         </div>
       </section>
@@ -641,6 +735,115 @@
     background: var(--text);
     color: var(--bg);
     font-weight: 600;
+  }
+
+  /* Theme matrix: temperature (columns) × lightness (rows), live mini-previews. */
+  .theme-matrix {
+    display: grid;
+    grid-template-columns: 64px 1fr 1fr;
+    gap: 10px 12px;
+    align-items: center;
+  }
+  .theme-matrix .axis {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    text-align: center;
+  }
+  .theme-matrix .axis.right {
+    text-align: right;
+  }
+  .cell {
+    position: relative;
+    padding: 0;
+    border: none;
+    background: none;
+    border-radius: 9px;
+    cursor: pointer;
+  }
+  .cell .preview {
+    display: flex;
+    height: 84px;
+    border-radius: 9px;
+    overflow: hidden;
+    border: 1px solid var(--hairline-strong);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+  }
+  .cell.selected .preview {
+    border-color: var(--text);
+    box-shadow:
+      0 0 0 2px var(--text),
+      0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+  .p-sidebar {
+    width: 36px;
+    background: var(--p-bg);
+    padding: 9px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .p-dot {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--p-accent);
+  }
+  .p-sidebar .p-bar {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--p-line);
+  }
+  .p-sidebar .p-bar.short {
+    width: 70%;
+    background: var(--p-line-2);
+  }
+  .p-main {
+    flex: 1;
+    background: var(--p-surface);
+    padding: 10px 9px;
+    display: flex;
+    flex-direction: column;
+  }
+  .p-title {
+    height: 6px;
+    width: 64%;
+    border-radius: 2px;
+    background: var(--p-text);
+  }
+  .p-main .p-line {
+    height: 4px;
+    width: 92%;
+    border-radius: 2px;
+    background: var(--p-line);
+    margin-top: 8px;
+  }
+  .p-main .p-line.short {
+    width: 78%;
+    background: var(--p-line-2);
+    margin-top: 5px;
+  }
+  .p-pill {
+    height: 11px;
+    width: 40px;
+    border-radius: 6px;
+    background: var(--p-accent-soft);
+    border: 1px solid var(--p-accent-border);
+    margin-top: 10px;
+  }
+  .check {
+    position: absolute;
+    top: -7px;
+    right: -7px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--text);
+    color: var(--bg);
+    display: grid;
+    place-items: center;
   }
 
   .ghost {

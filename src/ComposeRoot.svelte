@@ -5,7 +5,6 @@
   import { api } from "./lib/api";
   import { setLocale } from "./lib/i18n/index.svelte";
   import { ui } from "./lib/stores/ui.svelte";
-  import type { Theme } from "./lib/types";
 
   let { draftId }: { draftId: number } = $props();
   let ready = $state(false);
@@ -15,7 +14,8 @@
       try {
         const settings = await api.getSettings();
         if (settings.locale) await setLocale(settings.locale as never);
-        if (settings.theme) ui.setTheme(settings.theme as Theme);
+        // Match the stored theme (the main window owns migration write-back).
+        ui.hydrate(settings.theme);
       } catch {
         // best effort
       }

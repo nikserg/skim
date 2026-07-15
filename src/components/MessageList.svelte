@@ -134,6 +134,19 @@
   .recap-chip:hover {
     background: var(--accent-soft);
   }
+  /* Quiet-zine character moment: the chip sits slightly askew, like a stamp. */
+  :global(:root[data-theme="warm-light"]) .recap-chip,
+  :global(:root[data-theme="warm-dark"]) .recap-chip {
+    border-radius: 3px;
+    background: var(--surface);
+    transform: rotate(-1.5deg);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(:root[data-theme="warm-light"]) .recap-chip,
+    :global(:root[data-theme="warm-dark"]) .recap-chip {
+      transform: none;
+    }
+  }
   h1 {
     font-size: 17px;
     font-weight: 800;

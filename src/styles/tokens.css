@@ -1,12 +1,25 @@
-/* Skim design tokens — single source of truth for both themes.
-   Violet is reserved exclusively for AI moments. */
+/* Skim design tokens — single source of truth for the theme matrix.
+   Themes are two axes: temperature (cold | warm) × lightness (light | dark),
+   carried by a single `data-theme="{temp}-{lightness}"` attribute on <html>.
+   Exactly one of the four blocks matches at a time.
+   Violet/plum (--accent) is reserved exclusively for AI moments.
+   --hl-* (highlighter inks) are defined only in the warm blocks — the
+   highlighter-on-bold treatment is a quiet-zine signature and absent in cold. */
 
 :root {
-  /* type */
+  /* type — shared across all themes */
   --font-ui: "Hanken Grotesk Variable", "Hanken Grotesk", "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
 
-  /* light theme (default) */
+  /* shape & rhythm — shared across all themes */
+  --radius-s: 6px;
+  --radius-m: 10px;
+  --radius-l: 14px;
+  --titlebar-h: 40px;
+  --sidebar-w: 224px;
+  --list-w: 372px;
+
+  /* cold · light (classic) — also the fallback when no data-theme is set yet */
   --bg: #f7f7f6;
   --surface: #ffffff;
   --surface-raised: #ffffff;
@@ -19,7 +32,6 @@
   --active: rgba(17, 17, 20, 0.06);
   --selected: #eeeeec;
 
-  /* the one violet — AI only */
   --accent: #6b46f2;
   --accent-soft: #eae7fd;
   --accent-dim: rgba(107, 70, 242, 0.55);
@@ -28,20 +40,12 @@
   --danger: #d64545;
   --success: #2f9e63;
 
-  /* shape & rhythm */
-  --radius-s: 6px;
-  --radius-m: 10px;
-  --radius-l: 14px;
-  --titlebar-h: 40px;
-  --sidebar-w: 224px;
-  --list-w: 372px;
-
   --shadow-pop: 0 8px 32px rgba(17, 17, 20, 0.14), 0 1px 4px rgba(17, 17, 20, 0.08);
 
   color-scheme: light;
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="cold-dark"] {
   --bg: #0d0d10;
   --surface: #141418;
   --surface-raised: #1a1a20;
@@ -61,6 +65,70 @@
 
   --danger: #e06c6c;
   --success: #4dbd82;
+
+  --shadow-pop: 0 8px 32px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.4);
+
+  color-scheme: dark;
+}
+
+/* warm · light — the flagship "quiet zine": paper neutral + riso-plum AI accent */
+:root[data-theme="warm-light"] {
+  --bg: #f1eee6;
+  --surface: #fbfaf5;
+  --surface-raised: #fbf8ef;
+  --text: #1c1712;
+  --text-dim: #6d665b;
+  --text-faint: #a79d8d;
+  --hairline: rgba(28, 23, 18, 0.08);
+  --hairline-strong: rgba(28, 23, 18, 0.14);
+  --hover: rgba(28, 23, 18, 0.04);
+  --active: rgba(28, 23, 18, 0.06);
+  --selected: #e8e2d4;
+
+  --accent: #6d5296;
+  --accent-soft: #ece5f2;
+  --accent-dim: rgba(109, 82, 150, 0.55);
+  --on-accent: #ffffff;
+
+  --danger: #d64545;
+  --success: #2f9e63;
+
+  /* highlighter inks — bright on paper */
+  --hl-1: #ffe14d;
+  --hl-2: #7ee7e0;
+  --hl-3: #ffb3d6;
+
+  --shadow-pop: 0 8px 32px rgba(60, 45, 20, 0.16), 0 1px 4px rgba(60, 45, 20, 0.1);
+
+  color-scheme: light;
+}
+
+/* warm · dark — warm ink instead of cold near-black */
+:root[data-theme="warm-dark"] {
+  --bg: #14110d;
+  --surface: #1a1712;
+  --surface-raised: #241f17;
+  --text: #ece7dd;
+  --text-dim: #a49a88;
+  --text-faint: #6b6353;
+  --hairline: rgba(236, 231, 221, 0.09);
+  --hairline-strong: rgba(236, 231, 221, 0.15);
+  --hover: rgba(236, 231, 221, 0.05);
+  --active: rgba(236, 231, 221, 0.08);
+  --selected: #2a241b;
+
+  --accent: #a58fca;
+  --accent-soft: rgba(165, 143, 202, 0.2);
+  --accent-dim: rgba(165, 143, 202, 0.6);
+  --on-accent: #ffffff;
+
+  --danger: #e06c6c;
+  --success: #4dbd82;
+
+  /* highlighter inks — deep jewel tones so light text stays readable over the bar */
+  --hl-1: #8a6a1f;
+  --hl-2: #1f7268;
+  --hl-3: #83386a;
 
   --shadow-pop: 0 8px 32px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.4);
 
