@@ -75,6 +75,28 @@ DEMO_READ=1600 DEMO_AI_TYPING=18 npm run demo:record
 (keystroke delay), `DEMO_AI_TYPING` / `DEMO_AI_THINK` / `DEMO_AI_STEP` (AI stream
 cadence).
 
+### Blank-video guard
+
+`record.mjs` samples a frame mid-recording and fails if it compresses to near
+nothing — i.e. the video came out blank. This failure is otherwise silent: the tour
+passes, the exit code is 0, and a blank MP4 gets published. Failing here means
+`demo:encode` never runs and `docs/` keeps the last good video.
+
+If it trips, the usual culprit is screencast capture with a scaled browser context.
+The recording context uses `deviceScaleFactor: 1` for that reason; `DEMO_DSF=2` opts
+back into 2x if your platform handles it. `DEMO_SKIP_BLANK_CHECK=1` bypasses the guard.
+
+### Themes
+
+Themes are two-axis: `"<cold|warm>-<light|dark>"`. The demo pins **`warm-light`** (the app
+default) for the video — override with `DEMO_THEME=cold-dark`. Screenshots render
+`warm-light` → `skim-light.jpg` and `warm-dark` → `skim-dark.jpg`; see the `SHOTS` array in
+`screenshots.mjs`.
+
+Both scripts set `localStorage.skimdemo.theme`, which the mock returns from `get_settings`.
+Note the legacy values `"light"`/`"dark"` still parse but map onto the **cold** palette — so
+they render the wrong temperature instead of erroring.
+
 ### Fast / CI mode
 
 `DEMO_PREBUILT=1` serves a static build (`demo/dist-demo`) instead of the dev

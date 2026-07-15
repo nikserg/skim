@@ -102,8 +102,18 @@ Defaults are tuned for a readable landing video. Override per run with env vars 
 and `DEMO_AI_TYPING` / `DEMO_AI_THINK` / `DEMO_AI_STEP` (AI stream cadence). Useful when a
 scene feels rushed after you add content to it.
 
-The screenshot script forces the theme through `localStorage` (`skimdemo.theme`), which the
-mock reads in `get_settings`. `DEMO_PREBUILT=1` serves a static build from `demo/dist-demo`
-instead of the dev server — handy in constrained or headless environments.
+Themes are two-axis — `"<cold|warm>-<light|dark>"`, e.g. `warm-light` (the app default).
+Both scripts force the theme through `localStorage` (`skimdemo.theme`), which the mock
+returns from `get_settings`:
+
+- The video is pinned to `warm-light`; override with `DEMO_THEME=cold-dark npm run demo:record`.
+- Screenshots render `warm-light` → `docs/skim-light.jpg` and `warm-dark` → `docs/skim-dark.jpg`
+  (the `SHOTS` array in `demo/screenshots.mjs` maps theme → filename).
+
+Watch out for legacy single-axis values: `"light"` and `"dark"` still parse, but map onto the
+**cold** palette, so passing them silently renders the wrong temperature rather than failing.
+
+`DEMO_PREBUILT=1` serves a static build from `demo/dist-demo` instead of the dev server —
+handy in constrained or headless environments.
 
 More detail lives in `demo/README.md`.

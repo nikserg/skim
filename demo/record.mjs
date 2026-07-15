@@ -8,12 +8,12 @@
 //   DEMO_PREBUILT=1 node demo/record.mjs # serve demo/dist-demo statically
 //
 import { chromium } from "playwright";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { mkdir, rm, readdir } from "node:fs/promises";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, statSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 
 const DIR = dirname(fileURLToPath(import.meta.url));
@@ -32,6 +32,9 @@ const AI_TUNABLES = {
   "skimdemo.typingMs": envNum("DEMO_AI_TYPING", 24),
   "skimdemo.thinkMs": envNum("DEMO_AI_THINK", 420),
   "skimdemo.stepMs": envNum("DEMO_AI_STEP", 650),
+  // Two-axis theme ("<cold|warm>-<light|dark>"). Pinned rather than left to the
+  // app default so the video's look only changes when we decide it should.
+  "skimdemo.theme": process.env.DEMO_THEME || "warm-light",
 };
 
 const MIME = {
@@ -58,9 +61,25 @@ async function startServer() {
     await new Promise((r) => server.listen(PORT, r));
     return { kill: () => server.close() };
   }
-  const bin = process.platform === "win32" ? "npx.cmd" : "npx";
-  const proc = spawn(bin, ["vite", "--config", "demo/vite.demo.config.ts"], {
-    cwd: ROOT, stdio: "inherit", shell: process.platform === "win32",
+  // Fail fast on a stale server: it would answer our fetch and we'd silently
+  // record against whatever it happens to be serving.
+  try {
+    await fetch(BASE);
+    throw new Error(
+      `Something is already listening on ${BASE}. Kill it before recording ` +
+        `(a previous run may have leaked a dev server).`,
+    );
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("already listening")) throw e;
+  }
+
+  // Spawn Vite as a direct node child (not via npx + shell): with `shell: true`
+  // we'd only ever kill the intermediate cmd.exe and leak the real server,
+  // which then wedges port 1421 for the next script.
+  const viteBin = resolve(ROOT, "node_modules", "vite", "bin", "vite.js");
+  if (!existsSync(viteBin)) throw new Error("Vite not found at " + viteBin + " — run `npm install`.");
+  const proc = spawn(process.execPath, [viteBin, "--config", "demo/vite.demo.config.ts"], {
+    cwd: ROOT, stdio: "inherit",
   });
   for (let i = 0; i < 120; i++) {
     try { const r = await fetch(BASE); if (r.ok) return proc; } catch {}
@@ -156,13 +175,50 @@ function makeDriver(page) {
 const T0 = Date.now();
 function mark(s) { try { appendFileSync(resolve(OUT, "progress.log"), `+${Date.now() - T0}ms ${s}\n`); } catch {} }
 
+// Note: the blank lead-in before the app paints is trimmed by encode.mjs, which
+// measures it from the video itself. Don't try to time it from here — recording
+// doesn't start exactly when the page is created, so wall-clock overshoots and
+// cuts into the demo.
+
+/** Guard against the silent failure mode: the tour passes, the video is blank.
+ *  A frame of flat colour compresses to almost nothing, while a frame of real UI
+ *  (text, panes, borders) never does — so PNG size is a cheap, reliable tell.
+ *  Throwing here means encode never runs, so docs/ keeps the last good video. */
+function assertNotBlank(file) {
+  if (process.env.DEMO_SKIP_BLANK_CHECK) return;
+  const probe = spawnSync("ffprobe",
+    ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], { encoding: "utf8" });
+  const duration = parseFloat((probe.stdout || "").trim()) || 0;
+  const at = Math.max(1, duration * 0.4); // mid-tour: panes populated by now
+  const png = resolve(OUT, "_blankcheck.png");
+  const r = spawnSync("ffmpeg",
+    ["-y", "-hide_banner", "-loglevel", "error", "-ss", String(at), "-i", file, "-frames:v", "1", png]);
+  if (r.status !== 0 || !existsSync(png)) {
+    console.warn("! Could not sample a frame to sanity-check the recording — inspect it yourself.");
+    return;
+  }
+  const bytes = statSync(png).size;
+  rmSync(png, { force: true });
+  if (bytes < 15000) {
+    throw new Error(
+      `The recording looks blank: the frame at ${at.toFixed(1)}s compresses to ${bytes} B ` +
+        `(a real UI frame is well over 50 KB).\n` +
+        `Nothing was published — docs/ still holds the previous video.\n` +
+        `Most likely cause is screencast capture with a scaled context; try DEMO_DSF=1 (the default).\n` +
+        `Inspect ${file} to see for yourself. Bypass with DEMO_SKIP_BLANK_CHECK=1.`,
+    );
+  }
+}
+
 async function tour(d) {
   const { page } = d;
 
   // Scene 0 — land on the inbox.
   mark("tour-start");
   await page.goto(BASE + "/");
-  await page.locator(".row", { hasText: "Q3 launch" }).first().waitFor({ timeout: 15000 });
+  // Generous: the server is warm by now, but a cold machine shouldn't fail the
+  // run just because the first paint was slow.
+  await page.locator(".row", { hasText: "Q3 launch" }).first().waitFor({ timeout: 60000 });
   mark("inbox-loaded");
   await sleep(READ);
 
@@ -223,8 +279,22 @@ async function main() {
   await mkdir(resolve(OUT, "video"), { recursive: true });
   const server = await startServer();
   const browser = await chromium.launch();
+  // Warm the server before the camera rolls. Video recording starts the moment
+  // the page is created, and a dev server compiles the whole module graph on the
+  // first request — that compile would be recorded as a long blank screen, and
+  // it also eats most of the tour's first timeout. Loading once in a throwaway
+  // context leaves the transform cache warm, so the recorded load is quick.
+  {
+    const warm = await browser.newContext();
+    const wp = await warm.newPage();
+    await wp.goto(BASE + "/").catch(() => {});
+    await wp.locator(".row").first().waitFor({ timeout: 120000 }).catch(() => {});
+    await warm.close();
+  }
+
   const context = await browser.newContext({
-    viewport: SIZE, deviceScaleFactor: 2,
+    viewport: SIZE,
+    deviceScaleFactor: envNum("DEMO_DSF", 2),
     recordVideo: { dir: resolve(OUT, "video"), size: SIZE },
   });
   await context.addInitScript(CURSOR_INIT);
@@ -243,8 +313,9 @@ async function main() {
   server.kill("SIGTERM");
   await sleep(300);
   if (failed) process.exit(1);
+  assertNotBlank(resolve(OUT, "raw.webm"));
   console.log("\n✓ Recorded:", resolve(OUT, "raw.webm"));
-  console.log("  Next: node demo/encode.mjs");
+  console.log("  Next: node demo/encode.mjs  (it trims the blank lead-in)");
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

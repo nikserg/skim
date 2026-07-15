@@ -15,11 +15,24 @@
 
   // Emails that carry their own colors (inline color/background, bgcolor,
   // <font color>) assume a light page background they never declare. Honor
-  // that by rendering them on the light canvas even in dark theme — forcing
-  // the dark canvas produced dark-on-dark, invisible text. Plain-text and
-  // colorless emails still follow the app theme.
+  // that by rendering them on an explicit white canvas even in dark theme —
+  // forcing the dark canvas produced dark-on-dark, invisible text. Plain-text
+  // and colorless emails still follow the app theme.
+  const ownColors = $derived(hasOwnColors(html));
+  // The iframe document can't see the app's CSS variables, so resolve --surface
+  // here and paint it in. Transparency looks like the obvious answer but isn't:
+  // under `color-scheme: dark` the UA paints its own opaque canvas and ignores a
+  // transparent root, so dark themes would keep the mismatched block.
+  const surface = $derived.by(() => {
+    void ui.temperature; // re-resolve when the palette changes
+    void ui.lightness;
+    return (
+      getComputedStyle(document.documentElement).getPropertyValue("--surface").trim() ||
+      "#ffffff"
+    );
+  });
   const srcdoc = $derived(
-    buildDoc(html, ui.effective === "dark" && !hasOwnColors(html)),
+    buildDoc(html, ui.effective === "dark" && !ownColors, ownColors, surface),
   );
 
   function hasOwnColors(body: string): boolean {
@@ -30,14 +43,20 @@
     );
   }
 
-  function buildDoc(body: string, dark: boolean): string {
-    // The default canvas follows the app theme; emails that bring their own
-    // (inline) colors keep them — the sanitizer already limits what CSS
-    // survives.
+  function buildDoc(body: string, dark: boolean, ownColors: boolean, surface: string): string {
+    // The default canvas follows the app theme: it's painted with the live
+    // --surface, so the message blends into the pane in every palette. It used
+    // to be hardcoded (#ffffff / #141418) — those happened to equal cold-light
+    // and cold-dark's surface, so the drift only became visible once the warm
+    // palette landed and every email turned into a mismatched block.
+    //
+    // Emails that bring their own (inline) colors still get an explicit white
+    // page, since that's the background they were written against — the
+    // sanitizer already limits what CSS survives.
     const colors = dark
       ? {
           scheme: "dark",
-          bg: "#141418",
+          bg: surface,
           text: "#ececef",
           link: "#8ab4f8",
           quoteBorder: "#3a3a42",
@@ -45,7 +64,7 @@
         }
       : {
           scheme: "light",
-          bg: "#ffffff",
+          bg: ownColors ? "#ffffff" : surface,
           text: "#17171b",
           link: "#1a56c4",
           quoteBorder: "#dddddd",
@@ -55,10 +74,13 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src http://skim-cid.localhost data: https: http:; style-src 'unsafe-inline'">
 <style>
   :root { color-scheme: ${colors.scheme}; }
-  html, body { margin: 0; padding: 0; }
+  /* The background goes on the root too, not just body: the canvas takes its
+     colour from html first, and color-scheme makes the UA paint an opaque
+     default there — which would defeat a transparent body. */
+  html, body { margin: 0; padding: 0; background: ${colors.bg}; }
   body {
     font-family: 'Hanken Grotesk', 'Segoe UI', sans-serif;
-    font-size: 14px; line-height: 1.6; color: ${colors.text}; background: ${colors.bg};
+    font-size: 14px; line-height: 1.6; color: ${colors.text};
     word-wrap: break-word; overflow-wrap: break-word;
   }
   img { max-width: 100%; height: auto; }

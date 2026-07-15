@@ -132,12 +132,13 @@ export function invoke<T = any>(cmd: string, args: any = {}): Promise<T> {
       return ok(null);
 
     // settings — the recorder/screenshotter can force a theme via localStorage.
+    // Theme is two-axis ("<cold|warm>-<light|dark>"); warm-light is the app default.
     case "get_settings": {
-      let theme = "light";
+      let theme = "warm-light";
       try {
-        theme = (globalThis as any).localStorage?.getItem("skimdemo.theme") || "light";
+        theme = (globalThis as any).localStorage?.getItem("skimdemo.theme") || "warm-light";
       } catch {}
-      return ok({ locale: "en", theme, images_policy: "ask" });
+      return ok({ locale: "en", theme, images_policy: "ask", group_threads: "on" });
     }
     case "set_setting":
       return ok(undefined);
@@ -145,7 +146,10 @@ export function invoke<T = any>(cmd: string, args: any = {}): Promise<T> {
     // mail
     case "list_folders":
       return ok(db.FOLDERS);
-    case "list_threads": {
+    // Threads vs. flat messages: the app picks one based on the group_threads
+    // setting. The fixtures serve for both.
+    case "list_threads":
+    case "list_messages": {
       const list = db.THREADS_BY_FOLDER[args.folderId] ?? [];
       return ok(args.offset > 0 ? [] : list);
     }

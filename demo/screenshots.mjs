@@ -26,6 +26,14 @@ const BASE = `http://localhost:${PORT}`;
 const SIZE = { width: 1600, height: 1068 };
 const OUT_W = 800;
 
+// Themes are two-axis ("<cold|warm>-<light|dark>"). The landing shows a light and a
+// dark shot; both use the warm palette, which is the app's default temperature.
+// `name` is the published filename, `theme` is what the app renders.
+const SHOTS = [
+  { name: "light", theme: "warm-light" },
+  { name: "dark", theme: "warm-dark" },
+];
+
 const MIME = {
   ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript",
   ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml",
@@ -50,9 +58,22 @@ async function startServer() {
     await new Promise((r) => server.listen(PORT, r));
     return { kill: () => server.close() };
   }
-  const bin = process.platform === "win32" ? "npx.cmd" : "npx";
-  const proc = spawn(bin, ["vite", "--config", "demo/vite.demo.config.ts"], {
-    cwd: ROOT, stdio: "inherit", shell: process.platform === "win32",
+  // Reuse a server that's already up (e.g. `npm run demo:dev` in another
+  // terminal) rather than fighting it for the port.
+  try {
+    const r = await fetch(BASE);
+    if (r.ok) {
+      console.log("Using the dev server already running on " + BASE);
+      return { kill: () => {} };
+    }
+  } catch {}
+
+  // Direct node child, no shell — otherwise kill() only reaps cmd.exe and the
+  // real Vite process leaks, wedging port 1421 for the next run.
+  const viteBin = resolve(ROOT, "node_modules", "vite", "bin", "vite.js");
+  if (!existsSync(viteBin)) throw new Error("Vite not found at " + viteBin + " — run `npm install`.");
+  const proc = spawn(process.execPath, [viteBin, "--config", "demo/vite.demo.config.ts"], {
+    cwd: ROOT, stdio: "inherit",
   });
   for (let i = 0; i < 120; i++) {
     try { const r = await fetch(BASE); if (r.ok) return proc; } catch {}
@@ -61,7 +82,7 @@ async function startServer() {
   throw new Error("Demo server did not start on " + BASE);
 }
 
-async function shoot(browser, theme) {
+async function shoot(browser, { name, theme }) {
   const context = await browser.newContext({ viewport: SIZE, deviceScaleFactor: 2 });
   await context.addInitScript((t) => { try { localStorage.setItem("skimdemo.theme", t); } catch {} }, theme);
   const page = await context.newPage();
@@ -72,15 +93,15 @@ async function shoot(browser, theme) {
   await page.locator(".subject", { hasText: "Q3 launch" }).first().waitFor();
   await sleep(700); // let fonts + layout settle
 
-  const rawPng = resolve(TMP, `_shot-${theme}.png`);
+  const rawPng = resolve(TMP, `_shot-${name}.png`);
   await page.screenshot({ path: rawPng }); // 2x → 3200×2136
   await context.close();
 
   // Downscale to the marketing size and write JPEG.
-  const jpg = resolve(DOCS, `skim-${theme}.jpg`);
+  const jpg = resolve(DOCS, `skim-${name}.jpg`);
   const r = spawnSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
     "-i", rawPng, "-vf", `scale=${OUT_W}:-2:flags=lanczos`, "-q:v", "3", jpg], { stdio: "inherit" });
-  if (r.status !== 0) throw new Error("ffmpeg failed for " + theme);
+  if (r.status !== 0) throw new Error("ffmpeg failed for " + name);
   rmSync(rawPng, { force: true });
   return jpg;
 }
@@ -92,7 +113,7 @@ async function main() {
   const browser = await chromium.launch();
   const written = [];
   try {
-    for (const theme of ["light", "dark"]) written.push(await shoot(browser, theme));
+    for (const shot of SHOTS) written.push(await shoot(browser, shot));
   } finally {
     await browser.close();
     server.kill("SIGTERM");
