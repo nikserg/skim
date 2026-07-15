@@ -29,7 +29,7 @@ Grab <code>Skim_x.y.z_x64-setup.exe</code> from the latest release</sub>
 
 <br><br>
 
-<img src="docs/skim-light.png" alt="Skim — light theme" width="800">
+<img src="docs/skim-light.jpg" alt="Skim — light theme" width="800">
 
 </div>
 
