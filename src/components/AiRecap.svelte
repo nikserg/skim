@@ -2,6 +2,7 @@
   // AI Recap: a catch-up digest of the folder's unread mail. Occupies the
   // reading pane while open; covered messages are marked read on success.
   import { aiStream, api, type Citation } from "../lib/api";
+  import { aiLinks } from "../lib/ai-links";
   import { t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
   import { mail } from "../lib/stores/mail.svelte";
@@ -90,7 +91,7 @@
       {/if}
       <div class="clip">
         <div class="clip-paper">
-          <div class="text md-body">{@html mdLite(text)}</div>
+          <div class="text md-body" use:aiLinks>{@html mdLite(text)}</div>
         </div>
       </div>
       {#if status === "done"}

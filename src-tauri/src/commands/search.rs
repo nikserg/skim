@@ -16,19 +16,35 @@ pub struct SearchHit {
     pub snippet: String,
 }
 
-/// Turn free text into an FTS5 prefix query: each term quoted + starred,
-/// terms ANDed. Returns None for input with no searchable terms.
-pub fn build_fts_query(input: &str) -> Option<String> {
-    let terms: Vec<String> = input
+/// Free text → quoted, prefix-starred FTS5 terms. Empty for no searchable terms.
+fn fts_terms(input: &str) -> Vec<String> {
+    input
         .split_whitespace()
         .map(|t| t.replace('"', ""))
         .filter(|t| !t.is_empty())
         .map(|t| format!("\"{t}\"*"))
-        .collect();
+        .collect()
+}
+
+/// Turn free text into an FTS5 prefix query: each term quoted + starred,
+/// terms ANDed. Returns None for input with no searchable terms.
+pub fn build_fts_query(input: &str) -> Option<String> {
+    let terms = fts_terms(input);
     if terms.is_empty() {
         None
     } else {
         Some(terms.join(" "))
+    }
+}
+
+/// Like [`build_fts_query`], but terms are OR-joined — matches ANY word.
+/// Returns None when the input has fewer than two terms (OR ≡ AND there).
+pub fn build_fts_query_any(input: &str) -> Option<String> {
+    let terms = fts_terms(input);
+    if terms.len() < 2 {
+        None
+    } else {
+        Some(terms.join(" OR "))
     }
 }
 
@@ -96,7 +112,7 @@ pub async fn thread_message_ids(state: State<'_, AppState>, thread_id: i64) -> R
 
 #[cfg(test)]
 mod tests {
-    use super::build_fts_query;
+    use super::{build_fts_query, build_fts_query_any};
 
     #[test]
     fn builds_prefix_queries() {
@@ -107,5 +123,16 @@ mod tests {
         assert_eq!(build_fts_query("  "), None);
         // embedded quotes can't break out of the term
         assert_eq!(build_fts_query("a\"b"), Some("\"ab\"*".into()));
+    }
+
+    #[test]
+    fn builds_any_queries() {
+        assert_eq!(
+            build_fts_query_any("hello world"),
+            Some("\"hello\"* OR \"world\"*".into())
+        );
+        // fewer than two terms: OR would equal AND, so no fallback query
+        assert_eq!(build_fts_query_any("hello"), None);
+        assert_eq!(build_fts_query_any("  "), None);
     }
 }

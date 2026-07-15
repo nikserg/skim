@@ -199,6 +199,7 @@ pub fn run() {
             commands::mail::set_starred,
             commands::mail::archive_messages,
             commands::mail::delete_messages,
+            commands::mail::report_spam,
             commands::mail::save_attachment,
             commands::mail::open_attachment,
             commands::mail::sync_now,

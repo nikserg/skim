@@ -570,21 +570,32 @@ pub async fn ai_ask(
 
 /// Mailbox-wide assistant. The model drives retrieval through the
 /// `search_emails` / `read_email` tools (see [`crate::ai::agent`]); we stream
-/// its reasoning trace and answer, then return the cited emails.
+/// its reasoning trace and answer, then return the cited emails. Carries the
+/// whole conversation so the user can ask follow-ups against a shared context;
+/// the newest turn is the current user question.
 #[tauri::command]
 pub async fn ai_chat(
     state: State<'_, AppState>,
     request_id: String,
-    question: String,
+    turns: Vec<AiTurn>,
+    prior_citations: Vec<Citation>,
     context_message_id: Option<i64>,
     channel: Channel<AiEvent>,
 ) -> Result<()> {
+    let history: Vec<(String, String)> = turns
+        .into_iter()
+        .map(|t| (t.role, t.content))
+        .filter(|(_, content)| !content.trim().is_empty())
+        .collect();
+    if history.is_empty() {
+        return Err(SkimError::other("ai", "no question provided"));
+    }
     let ctx = ai_context(&state.db).await?;
     let provider = match ctx.provider {
         Provider::Anthropic => agent::Provider::Anthropic,
         Provider::OpenRouter => agent::Provider::OpenRouter,
     };
-    let system = prompts::chat_agent(&ctx.now, &ctx.locale);
+    let system = prompts::chat_agent(&ctx.now, &ctx.locale, context_message_id.is_some());
     let deps = agent::AgentDeps {
         db: state.db.clone(),
         engines: state.engines.lock().await.clone(),
@@ -620,7 +631,8 @@ pub async fn ai_chat(
             ctx.key,
             ctx.model,
             system,
-            question,
+            history,
+            prior_citations,
             context_message_id,
             deps,
             &mut on_delta,

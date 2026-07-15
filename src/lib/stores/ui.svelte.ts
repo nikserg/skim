@@ -7,6 +7,10 @@ const media = window.matchMedia("(prefers-color-scheme: dark)");
 type ReadingAiActions = { draftReply: () => void; summarize: () => void; ask: () => void };
 let readingAi: ReadingAiActions | null = null;
 
+/** Message currently open in the reading pane, for AI context. Non-reactive —
+ * the palette chat reads it once when a session starts. */
+let openMessageId: number | null = null;
+
 const state = $state({
   /** Warm (quiet-zine) vs cold (classic) neutrals. */
   temperature: "warm" as Temperature,
@@ -135,5 +139,11 @@ export const ui = {
   },
   setReadingAi(actions: ReadingAiActions | null) {
     readingAi = actions;
+  },
+  get openMessageId() {
+    return openMessageId;
+  },
+  setOpenMessage(id: number | null) {
+    openMessageId = id;
   },
 };

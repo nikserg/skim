@@ -1,7 +1,8 @@
 <script lang="ts">
-  // Ctrl+K palette: commands + instant local search. Becomes AI chat in
-  // phase 7 (ask a question ending with "?").
+  // Ctrl+K palette: commands + instant local search, plus the mailbox-wide
+  // AI chat (the "Ask Skim AI" row on any query).
   import { aiStream, api, type Citation } from "../lib/api";
+  import { aiLinks } from "../lib/ai-links";
   import { getLocale, t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
   import { ai } from "../lib/stores/ai.svelte";
@@ -17,6 +18,9 @@
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ---- AI chat mode (screen 1g) ----
+  // A continuable conversation: `turns` holds completed user/assistant turns,
+  // while the in-flight assistant answer streams into `answer`/`steps` until
+  // "done" folds it into a turn. Follow-ups carry the whole history.
   interface ChatStep {
     id: string;
     kind: string;
@@ -24,63 +28,117 @@
     count: number | null;
     done: boolean;
   }
-  let chat = $state<{
-    question: string;
-    answer: string;
-    status: "streaming" | "done" | "error";
+  interface ChatTurn {
+    role: "user" | "assistant";
+    content: string;
     citations: Citation[];
+  }
+  let chat = $state<{
+    turns: ChatTurn[];
+    answer: string;
     steps: ChatStep[];
+    status: "streaming" | "done" | "error";
+    errorText: string;
+    /** The email open in the reading pane when the session started; the
+     * backend folds it into the first turn, so it's fixed for the session. */
+    contextMessageId: number | null;
   } | null>(null);
+  let followup = $state("");
+  let followupEl: HTMLInputElement | undefined = $state();
+  let chatThreadEl: HTMLDivElement | undefined = $state();
   let cancelChat: (() => void) | null = null;
 
-  function startChat(question: string) {
+  function askChat(question: string) {
     cancelChat?.();
-    chat = { question, answer: "", status: "streaming", citations: [], steps: [] };
+    if (!chat)
+      chat = {
+        turns: [],
+        answer: "",
+        steps: [],
+        status: "streaming",
+        errorText: "",
+        contextMessageId: ui.openMessageId,
+      };
+    chat.turns = [...chat.turns, { role: "user", content: question, citations: [] }];
+    chat.answer = "";
+    chat.steps = [];
+    chat.status = "streaming";
+    chat.errorText = "";
+    const history = chat.turns.map((tn) => ({ role: tn.role, content: tn.content }));
+    // Citations from earlier answers, deduped by their [N] number, so the agent
+    // can resolve/read those emails again on a follow-up and keep numbers stable.
+    const byIndex = new Map<number, Citation>();
+    for (const tn of chat.turns) for (const c of tn.citations) byIndex.set(c.index, c);
+    const priorCitations = [...byIndex.values()];
     cancelChat = aiStream(
       "ai_chat",
-      { question, contextMessageId: null },
+      { turns: history, priorCitations, contextMessageId: chat.contextMessageId },
       {
         delta: (text) => {
-          if (chat) chat = { ...chat, answer: chat.answer + text };
+          if (chat) chat.answer += text;
         },
         toolCall: (id, kind, arg) => {
-          if (chat)
-            chat = { ...chat, steps: [...chat.steps, { id, kind, arg, count: null, done: false }] };
+          if (chat) chat.steps = [...chat.steps, { id, kind, arg, count: null, done: false }];
         },
         toolDone: (id, count) => {
           if (chat)
-            chat = {
-              ...chat,
-              steps: chat.steps.map((s) => (s.id === id ? { ...s, count, done: true } : s)),
-            };
+            chat.steps = chat.steps.map((s) => (s.id === id ? { ...s, count, done: true } : s));
         },
         done: (citations) => {
-          if (chat) chat = { ...chat, status: "done", citations };
+          if (!chat) return;
+          chat.turns = [...chat.turns, { role: "assistant", content: chat.answer, citations }];
+          chat.answer = "";
+          chat.steps = [];
+          chat.status = "done";
+          queueMicrotask(() => followupEl?.focus());
         },
         error: (code, message) => {
-          chat = {
-            question,
-            answer:
-              code === "ai_no_context"
-                ? t("ai.no_context")
-                : code === "ai_key"
-                  ? t("ai.needs_key")
-                  : message,
-            status: "error",
-            citations: [],
-            steps: chat?.steps ?? [],
-          };
+          if (!chat) return;
+          // Drop the unanswered question back into the box so it can be retried.
+          const last = chat.turns[chat.turns.length - 1];
+          if (last?.role === "user") {
+            followup = last.content;
+            chat.turns = chat.turns.slice(0, -1);
+          }
+          chat.answer = "";
+          chat.steps = [];
+          chat.status = "error";
+          chat.errorText =
+            code === "ai_no_context"
+              ? t("ai.no_context")
+              : code === "ai_key"
+                ? t("ai.needs_key")
+                : message;
+          queueMicrotask(() => followupEl?.focus());
         },
       },
     );
+  }
+
+  function submitFollowup(e: SubmitEvent) {
+    e.preventDefault();
+    const q = followup.trim();
+    if (!q || chat?.status === "streaming") return;
+    followup = "";
+    askChat(q);
   }
 
   function exitChat() {
     cancelChat?.();
     cancelChat = null;
     chat = null;
+    followup = "";
     queueMicrotask(() => inputEl?.focus());
   }
+
+  // Keep the thread pinned to the newest turn / streaming delta.
+  $effect(() => {
+    if (!chat) return;
+    void chat.answer;
+    void chat.turns.length;
+    void chat.steps.length;
+    if (chatThreadEl) chatThreadEl.scrollTop = chatThreadEl.scrollHeight;
+  });
 
   async function openCitation(citation: Citation) {
     palette.hide();
@@ -171,6 +229,7 @@
       hits = [];
       active = 0;
       chat = null;
+      followup = "";
       queueMicrotask(() => inputEl?.focus());
     }
   });
@@ -201,7 +260,7 @@
 
   async function activate(index: number) {
     if (aiItemVisible && index === 0) {
-      startChat(input.trim());
+      askChat(input.trim());
       return;
     }
     const cmdIndex = index - (aiItemVisible ? 1 : 0);
@@ -261,54 +320,82 @@
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div class="panel" onclick={(e) => e.stopPropagation()}>
       {#if chat}
-        <div class="chat">
-          <div class="chat-question">{chat.question}</div>
-          {#if chat.steps.length > 0}
-            <div class="steps">
-              {#each chat.steps as step (step.id)}
-                <div class="step" class:done={step.done}>
-                  <span class="step-icon">{step.kind === "read" ? "📧" : "🔍"}</span>
-                  <span class="step-label"
-                    >{step.kind === "read"
-                      ? t("ai.step.read", { arg: step.arg })
-                      : t("ai.step.search", { arg: step.arg })}</span
-                  >
-                  {#if step.done}
-                    {#if step.count !== null}
-                      <span class="step-detail">{t("ai.step.found", { n: step.count })}</span>
-                    {:else}
-                      <span class="step-detail">✓</span>
-                    {/if}
-                  {:else}
-                    <span class="step-spin thinking">…</span>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          {/if}
-          <div class="chat-answer">
-            <div class="microlabel chat-label">✦ {t("ai.answer")}</div>
-            {#if chat.answer === "" && chat.status === "streaming"}
-              <span class="thinking">{t("ai.thinking")}</span>
+        <div class="chat" bind:this={chatThreadEl}>
+          {#each chat.turns as turn, ti (ti)}
+            {#if turn.role === "user"}
+              <div class="chat-question">{turn.content}</div>
             {:else}
-              <div class="chat-text md-body">{@html mdLite(chat.answer)}</div>
+              <div class="chat-answer">
+                <div class="microlabel chat-label">✦ {t("ai.answer")}</div>
+                <div class="chat-text md-body" use:aiLinks>{@html mdLite(turn.content)}</div>
+              </div>
+              {#if turn.citations.length > 0}
+                <div class="sources">
+                  <span class="microlabel">{t("ai.sources")} · {turn.citations.length}</span>
+                  <div class="source-chips">
+                    {#each turn.citations as c (c.index)}
+                      <button class="source-chip" onclick={() => openCitation(c)}>
+                        <span class="source-index">{c.index}</span>
+                        {c.subject || c.from}
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
             {/if}
-          </div>
-          {#if chat.citations.length > 0}
-            <div class="sources">
-              <span class="microlabel">{t("ai.sources")} · {chat.citations.length}</span>
-              <div class="source-chips">
-                {#each chat.citations as c (c.index)}
-                  <button class="source-chip" onclick={() => openCitation(c)}>
-                    <span class="source-index">{c.index}</span>
-                    {c.subject || c.from}
-                  </button>
+          {/each}
+
+          {#if chat.status === "streaming"}
+            {#if chat.steps.length > 0}
+              <div class="steps">
+                {#each chat.steps as step (step.id)}
+                  <div class="step" class:done={step.done}>
+                    <span class="step-icon">{step.kind === "read" ? "📧" : "🔍"}</span>
+                    <span class="step-label"
+                      >{step.kind === "read"
+                        ? t("ai.step.read", { arg: step.arg })
+                        : t("ai.step.search", { arg: step.arg })}</span
+                    >
+                    {#if step.done}
+                      {#if step.count !== null}
+                        <span class="step-detail">{t("ai.step.found", { n: step.count })}</span>
+                      {:else}
+                        <span class="step-detail">✓</span>
+                      {/if}
+                    {:else}
+                      <span class="step-spin thinking">…</span>
+                    {/if}
+                  </div>
                 {/each}
               </div>
+            {/if}
+            <div class="chat-answer">
+              <div class="microlabel chat-label">✦ {t("ai.answer")}</div>
+              {#if chat.answer === ""}
+                <span class="thinking">{t("ai.thinking")}</span>
+              {:else}
+                <div class="chat-text md-body" use:aiLinks>{@html mdLite(chat.answer)}</div>
+              {/if}
             </div>
           {/if}
-          <button class="chat-footer microlabel" onclick={exitChat}>ESC ↩</button>
+
+          {#if chat.status === "error"}
+            <div class="chat-answer error">
+              <div class="chat-text">{chat.errorText}</div>
+            </div>
+          {/if}
         </div>
+        <form class="chat-followup" onsubmit={submitFollowup}>
+          <span class="spark">✦</span>
+          <input
+            bind:this={followupEl}
+            bind:value={followup}
+            placeholder={t("ai.ask_followup")}
+            spellcheck="false"
+            disabled={chat.status === "streaming"}
+          />
+          <kbd>ESC</kbd>
+        </form>
       {:else}
       <div class="input-row">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
@@ -516,6 +603,8 @@
   }
 
   .chat {
+    flex: 1;
+    min-height: 0;
     padding: 18px;
     display: flex;
     flex-direction: column;
@@ -523,8 +612,15 @@
     overflow-y: auto;
   }
   .chat-question {
-    font-size: 15px;
-    font-weight: 700;
+    align-self: flex-end;
+    max-width: 80%;
+    padding: 8px 12px;
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--radius-m);
+    font-size: 13.5px;
+    color: var(--text-dim);
+    white-space: pre-wrap;
+    user-select: text;
   }
   .steps {
     display: flex;
@@ -620,11 +716,27 @@
     font-size: 10px;
     color: var(--accent);
   }
-  .chat-footer {
-    align-self: flex-end;
-    color: var(--text-faint);
+  .chat-answer.error {
+    background: transparent;
+    border: 1px solid var(--hairline-strong);
+    color: var(--text-dim);
   }
-  .chat-footer:hover {
+
+  .chat-followup {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-top: 1px solid var(--hairline);
+    flex-shrink: 0;
+  }
+  .chat-followup input {
+    flex: 1;
+    font-size: 14px;
     color: var(--text);
+    user-select: text;
+  }
+  .chat-followup input:disabled {
+    color: var(--text-dim);
   }
 </style>

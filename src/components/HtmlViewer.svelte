@@ -10,6 +10,33 @@
   let iframe: HTMLIFrameElement | undefined = $state();
   let height = $state(120);
   let resizeObs: ResizeObserver | null = null;
+  let observedDoc: Document | null = null;
+
+  // Attach measurement as soon as the srcdoc document's DOM exists — do NOT
+  // wait for the iframe's `load` event. `load` fires only once every remote
+  // image *and* tracking pixel has settled, so a single slow or stalled pixel
+  // (common in marketing mail) would leave the message frozen at its initial
+  // height with an inner scrollbar. The ResizeObserver set up here then tracks
+  // later reflow (images arriving, fonts settling) and grows the frame to fit.
+  $effect(() => {
+    void srcdoc; // re-run when the rendered document is replaced
+    const el = iframe;
+    if (!el) return;
+    let raf = 0;
+    let tries = 0;
+    const poll = () => {
+      const doc = el.contentDocument;
+      // contentDocument is briefly the initial empty about:blank before the
+      // srcdoc document swaps in; wait for the real, populated one.
+      if (doc && doc !== observedDoc && doc.body && doc.body.childElementCount > 0) {
+        setupDoc(doc);
+        return;
+      }
+      if (tries++ < 300) raf = requestAnimationFrame(poll);
+    };
+    poll();
+    return () => cancelAnimationFrame(raf);
+  });
 
   $effect(() => () => resizeObs?.disconnect());
 
@@ -92,18 +119,17 @@
 </style></head><body>${body}</body></html>`;
   }
 
-  function onLoad() {
-    const doc = iframe?.contentDocument;
-    if (!doc) return;
+  function setupDoc(doc: Document) {
+    observedDoc = doc;
     const measure = () => {
       const h = Math.min(Math.max(doc.documentElement.scrollHeight, 40) + 8, 20000);
       // Guard against feedback loops with percentage-height emails.
       if (Math.abs(h - height) > 1) height = h;
     };
     measure();
-    // Content reflows after load — web fonts settling, table-based layouts
-    // relaxing, async images. Track every layout change instead of measuring
-    // once, so the iframe never gets its own scrollbar.
+    // Content reflows as it settles — web fonts, table-based layouts relaxing,
+    // async images. Track every layout change instead of measuring once, so the
+    // iframe never gets its own scrollbar.
     resizeObs?.disconnect();
     const obs = new ResizeObserver(measure);
     obs.observe(doc.documentElement);
@@ -123,6 +149,14 @@
         if (href && /^https?:/i.test(href)) void openUrl(href);
       }
     });
+  }
+
+  // Backstop for the poll above: a body with no element children (an empty
+  // message) never trips the childElementCount check, but such messages carry
+  // no slow resources, so `load` fires promptly and wires things up here.
+  function onLoad() {
+    const doc = iframe?.contentDocument;
+    if (doc && doc !== observedDoc) setupDoc(doc);
   }
 </script>
 

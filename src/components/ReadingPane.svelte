@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { openUrl } from "@tauri-apps/plugin-opener";
   import { aiStream, api } from "../lib/api";
+  import { aiLinks } from "../lib/ai-links";
   import { getLocale, t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
   import { ai } from "../lib/stores/ai.svelte";
@@ -27,23 +27,6 @@
   let askInput: HTMLInputElement | undefined = $state();
   let askThreadEl: HTMLDivElement | undefined = $state();
   let cancelAi: (() => void) | null = null;
-
-  // Links in AI answers are rendered as <a class="md-link"> in the main webview
-  // (not a sandboxed iframe like mail), so a real navigation would replace the
-  // app. Intercept clicks and hand the href to the system browser instead.
-  function onAiLinkClick(ev: MouseEvent) {
-    const a = (ev.target as HTMLElement | null)?.closest("a.md-link");
-    if (!a) return;
-    ev.preventDefault();
-    const href = a.getAttribute("href");
-    if (href && /^https?:/i.test(href)) void openUrl(href);
-  }
-  // Delegated imperatively (not a template onclick) so the container div stays
-  // free of the click-needs-keyboard a11y rule — the anchors are the targets.
-  function aiLinks(node: HTMLElement) {
-    node.addEventListener("click", onAiLinkClick);
-    return { destroy: () => node.removeEventListener("click", onAiLinkClick) };
-  }
 
   function closeAiPanel() {
     cancelAi?.();
@@ -228,6 +211,12 @@
     return () => ui.setReadingAi(null);
   });
 
+  // Publish the open message so the palette AI chat can pick it up as context.
+  $effect(() => {
+    ui.setOpenMessage(replyTarget?.id ?? null);
+    return () => ui.setOpenMessage(null);
+  });
+
   // Reload when the thread changes OR when the selected thread gains a new
   // message. messageCount/date on the row advance via refreshThreads() on the
   // `mail:updated` event, so this reacts to new mail landing in the thread that
@@ -330,6 +319,14 @@
     void api.deleteMessages(ids);
   }
 
+  function reportSpam() {
+    if (!detail) return;
+    const threadId = detail.id;
+    const ids = allIds;
+    mail.removeThreadFromList(threadId);
+    void api.reportSpam(ids);
+  }
+
   function toggleStar() {
     if (!detail) return;
     const on = !anyStarred;
@@ -421,6 +418,11 @@
       <button class="tool" onclick={remove} title={t("reading.delete")}>
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 4h10M6.5 4V2.5h3V4M4.5 4l.5 9.5h6l.5-9.5M6.7 6.5v5M9.3 6.5v5" /></svg>
         <kbd>Del</kbd>
+      </button>
+      <button class="tool" onclick={reportSpam} title={t("reading.spam")}>
+        <!-- Warning octagon: junk / report spam. -->
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M5.4 1.8h5.2l3.6 3.6v5.2l-3.6 3.6H5.4L1.8 10.6V5.4L5.4 1.8z" /><path d="M8 4.6v4M8 11.1v.1" /></svg>
+        <kbd>!</kbd>
       </button>
       <button class="tool" class:starred={anyStarred} onclick={toggleStar} title={anyStarred ? t("reading.unstar") : t("reading.star")}>
         <svg width="15" height="15" viewBox="0 0 16 16" fill={anyStarred ? "currentColor" : "none"} stroke="currentColor" stroke-width="1.2"><path d="M8 1.5l2 4.1 4.5.6-3.3 3.2.8 4.5L8 11.8l-4 2.1.8-4.5L1.5 6.2 6 5.6 8 1.5z" /></svg>

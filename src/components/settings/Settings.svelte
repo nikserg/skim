@@ -285,6 +285,24 @@
   }
 </script>
 
+<!-- A binary on/off setting: label on the left, sliding switch on the right. -->
+{#snippet toggleRow(label: string, on: boolean, toggle: () => void)}
+  <div class="toggle-row">
+    <span class="microlabel">{label}</span>
+    <button
+      type="button"
+      class="switch"
+      class:on
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onclick={toggle}
+    >
+      <span class="knob"></span>
+    </button>
+  </div>
+{/snippet}
+
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="overlay" onclick={onclose}>
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -387,40 +405,14 @@
         </div>
       </section>
 
-      <section>
-        <div class="microlabel">{t("settings.autostart")}</div>
-        <div class="chips">
-          <button class="chip" class:active={autostart} onclick={() => setAutostart(true)}>
-            {t("settings.notifications_on")}
-          </button>
-          <button class="chip" class:active={!autostart} onclick={() => setAutostart(false)}>
-            {t("settings.notifications_off")}
-          </button>
-        </div>
-      </section>
-
-      <section>
-        <div class="microlabel">{t("settings.notifications")}</div>
-        <div class="chips">
-          <button class="chip" class:active={notifications === "on"} onclick={() => setNotifications("on")}>
-            {t("settings.notifications_on")}
-          </button>
-          <button class="chip" class:active={notifications === "off"} onclick={() => setNotifications("off")}>
-            {t("settings.notifications_off")}
-          </button>
-        </div>
-      </section>
-
-      <section>
-        <div class="microlabel">{t("settings.group_threads")}</div>
-        <div class="chips">
-          <button class="chip" class:active={groupThreads === "on"} onclick={() => setGroupThreads("on")}>
-            {t("settings.notifications_on")}
-          </button>
-          <button class="chip" class:active={groupThreads === "off"} onclick={() => setGroupThreads("off")}>
-            {t("settings.notifications_off")}
-          </button>
-        </div>
+      <section class="toggles">
+        {@render toggleRow(t("settings.autostart"), autostart, () => setAutostart(!autostart))}
+        {@render toggleRow(t("settings.notifications"), notifications === "on", () =>
+          setNotifications(notifications === "on" ? "off" : "on"),
+        )}
+        {@render toggleRow(t("settings.group_threads"), groupThreads === "on", () =>
+          setGroupThreads(groupThreads === "on" ? "off" : "on"),
+        )}
       </section>
 
       <section>
@@ -735,6 +727,53 @@
     background: var(--text);
     color: var(--bg);
     font-weight: 600;
+  }
+
+  /* On/off preferences: compact rows with a sliding switch, one section. */
+  .toggles {
+    gap: 2px;
+  }
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 5px 0;
+  }
+  .switch {
+    width: 34px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--selected);
+    position: relative;
+    flex-shrink: 0;
+    transition: background 0.16s ease;
+  }
+  .switch .knob {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--text-faint);
+    transition:
+      transform 0.16s ease,
+      background 0.16s ease;
+  }
+  .switch:hover .knob {
+    background: var(--text-dim);
+  }
+  .switch.on {
+    background: var(--text);
+  }
+  .switch.on .knob {
+    transform: translateX(14px);
+    background: var(--bg);
+  }
+  .switch:focus-visible {
+    outline: 2px solid var(--accent-dim);
+    outline-offset: 2px;
   }
 
   /* Theme matrix: temperature (columns) × lightness (rows), live mini-previews. */

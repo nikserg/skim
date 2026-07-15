@@ -1039,6 +1039,13 @@ impl Engine {
                     _ => self.delete_and_expunge(&uid_set).await?,
                 }
             }
+            "junk" => {
+                let dest = self.role_folder("junk", "Junk").await?;
+                // Already in the junk folder: nothing to move.
+                if !dest.eq_ignore_ascii_case(&imap_name) {
+                    self.move_uids(&uid_set, &dest).await?;
+                }
+            }
             other => {
                 return Err(SkimError::other("ops", format!("unknown op kind: {other}")));
             }

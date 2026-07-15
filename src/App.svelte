@@ -72,7 +72,7 @@
     mail.selectedMessageId = row.messageId ?? null;
   }
 
-  async function actOnSelected(action: "archive" | "delete" | "star" | "unread") {
+  async function actOnSelected(action: "archive" | "delete" | "spam" | "star" | "unread") {
     const thread = mail.selectedThread;
     if (!thread) return;
     const ids = await api.threadMessageIds(thread.id);
@@ -85,6 +85,10 @@
       case "delete":
         mail.removeThreadFromList(thread.id);
         void api.deleteMessages(ids);
+        break;
+      case "spam":
+        mail.removeThreadFromList(thread.id);
+        void api.reportSpam(ids);
         break;
       case "star":
         mail.patchThreadRow(thread.id, { isStarred: !thread.isStarred });
@@ -185,6 +189,9 @@
       case "#":
       case "Delete":
         void actOnSelected("delete");
+        break;
+      case "!":
+        void actOnSelected("spam");
         break;
       case "Escape":
         if (ui.recapOpen) ui.closeRecap();

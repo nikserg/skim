@@ -7,15 +7,15 @@
 //! serialized to each provider's wire format before every round.
 
 use crate::ai::retrieval::{format_date, Citation};
-use crate::ai::{anthropic, openrouter, prompts, AssistantTurn, ToolCall};
-use crate::commands::search::build_fts_query;
+use crate::ai::{anthropic, attachments, openrouter, prompts, AssistantTurn, ToolCall};
+use crate::commands::search::{build_fts_query, build_fts_query_any};
 use crate::db::{bodies, Db};
 use crate::error::Result;
 use crate::mail::sync::SyncHandle;
 use chrono::TimeZone;
 use rusqlite::types::Value as SqlValue;
 use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 const MAX_ROUNDS: usize = 6;
 const MAX_TOOL_CALLS: usize = 12;
@@ -24,6 +24,14 @@ const CONTEXT_EMAIL_BUDGET: usize = 2_000;
 const SNIPPET_MAX: usize = 160;
 const SEARCH_LIMIT_DEFAULT: i64 = 10;
 const SEARCH_LIMIT_MAX: i64 = 25;
+/// Beyond this many matches the total is reported as "500+".
+const SEARCH_COUNT_CAP: i64 = 500;
+/// Max messages pulled in by `read_email` with `thread: true`.
+const THREAD_READ_LIMIT: i64 = 15;
+/// Total body budget for a whole-thread read, split across its messages.
+const THREAD_READ_BUDGET: usize = 10_000;
+/// Per-message cap within a whole-thread read (the anchor gets more).
+const THREAD_MSG_BUDGET: usize = 4_000;
 
 #[derive(Clone, Copy)]
 pub enum Provider {
@@ -41,17 +49,32 @@ pub struct AgentDeps {
 // ---- citation registry ----------------------------------------------------
 
 /// Assigns a stable 1-based `[N]` to every email the model sees, deduped by
-/// message id so a re-found email keeps its number.
+/// message id so a re-found email keeps its number. Seeded with earlier turns'
+/// citations so `[N]` refs survive across follow-ups in one chat.
 struct Registry {
-    citations: Vec<Citation>,
+    by_index: BTreeMap<usize, Citation>,
     by_message: HashMap<i64, usize>,
+    next: usize,
 }
 
 impl Registry {
     fn new() -> Self {
         Self {
-            citations: Vec::new(),
+            by_index: BTreeMap::new(),
             by_message: HashMap::new(),
+            next: 1,
+        }
+    }
+
+    /// Re-seed with citations surfaced in earlier turns of the same chat, so
+    /// their `[N]` refs keep resolving (and their numbers stay stable) when the
+    /// user asks a follow-up. New emails found this turn are numbered after the
+    /// highest index seen so far.
+    fn seed(&mut self, prior: Vec<Citation>) {
+        for c in prior {
+            self.next = self.next.max(c.index + 1);
+            self.by_message.entry(c.message_id).or_insert(c.index);
+            self.by_index.entry(c.index).or_insert(c);
         }
     }
 
@@ -59,14 +82,15 @@ impl Registry {
         if let Some(&idx) = self.by_message.get(&message_id) {
             return idx;
         }
-        let idx = self.citations.len() + 1;
-        self.citations.push(make(idx));
+        let idx = self.next;
+        self.next += 1;
+        self.by_index.insert(idx, make(idx));
         self.by_message.insert(message_id, idx);
         idx
     }
 
     fn citation(&self, index: usize) -> Option<&Citation> {
-        self.citations.get(index.checked_sub(1)?)
+        self.by_index.get(&index)
     }
 }
 
@@ -175,10 +199,16 @@ fn openai_messages(turns: &[Turn]) -> Vec<Value> {
 // ---- tool definitions -----------------------------------------------------
 
 const SEARCH_DESC: &str = "Search the user's mailbox. Combine any of: keyword (matches \
-    subject/sender/body), sender substring, subject substring, folder, and a date range. \
-    Leave `query` empty to list the most recent emails by date (use this for \"last month\" / \
-    summary questions, together with `after`). Returns compact rows, each tagged [N].";
-const READ_DESC: &str = "Read the full body of a search result, identified by its [N] ref number.";
+    subject/sender/recipients/body; ALL words must match, prefix-matched — prefer 1-2 \
+    distinctive words), sender substring, subject substring, folder, attachment presence, \
+    and a date range. Leave `query` empty to list the most recent emails by date (use this \
+    for \"last month\" / summary questions, together with `after`). Trash and junk are \
+    excluded unless you pass folder=\"trash\" or folder=\"junk\". Returns compact rows, each \
+    tagged [N]; rows with attachments are marked \u{1F4CE}, and a total match count is \
+    reported when more matched than shown.";
+const READ_DESC: &str = "Read the full body of a search result, identified by its [N] ref number. \
+    Also returns the readable text of its attachments (PDFs, documents, spreadsheets) when available. \
+    Pass thread=true to read the email's whole conversation; each message gets its own [N].";
 
 fn search_schema() -> Value {
     json!({
@@ -190,6 +220,7 @@ fn search_schema() -> Value {
             "after":   { "type": "string", "description": "only emails on/after this date, YYYY-MM-DD" },
             "before":  { "type": "string", "description": "only emails on/before this date, YYYY-MM-DD" },
             "folder":  { "type": "string", "description": "restrict to a folder role: inbox, sent, archive, trash, junk, drafts, starred" },
+            "has_attachment": { "type": "boolean", "description": "only emails with attachments" },
             "limit":   { "type": "integer", "description": "max results, 1-25 (default 10)" }
         }
     })
@@ -199,7 +230,8 @@ fn read_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "ref": { "type": "integer", "description": "the [N] number of a search result" }
+            "ref": { "type": "integer", "description": "the [N] number of a search result" },
+            "thread": { "type": "boolean", "description": "read the whole conversation this email belongs to, not just this message" }
         },
         "required": ["ref"]
     })
@@ -224,13 +256,16 @@ fn tools_for(provider: Provider) -> Vec<Value> {
 /// `on_tool_call` (id, kind `"search"`/`"read"`, human arg) and `on_tool_done`
 /// (id, email count for searches). Returns the emails actually cited in the
 /// answer.
+/// The conversation so far, oldest first. `role` is "user" or "assistant";
+/// the last turn is the question this run answers, earlier ones are history.
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     provider: Provider,
     key: String,
     model: String,
     system: String,
-    question: String,
+    history: Vec<(String, String)>,
+    prior_citations: Vec<Citation>,
     context_message_id: Option<i64>,
     deps: AgentDeps,
     on_delta: &mut impl FnMut(&str),
@@ -238,24 +273,43 @@ pub async fn run(
     on_tool_done: &impl Fn(&str, Option<u32>),
 ) -> Result<Vec<Citation>> {
     let mut reg = Registry::new();
+    reg.seed(prior_citations);
     let mut turns: Vec<Turn> = Vec::new();
 
-    // Fold the currently-open email (if any) into the first user turn as context.
-    let first = match context_message_id {
-        Some(id) => match email_block_owned(&deps.db, &deps.engines, id).await {
-            Ok(b) => format!(
-                "The user is looking at this email:\n--- From: {} | Date: {} | Subject: {} ---\n{}\n\nTheir question: {}",
-                b.from,
-                b.date,
-                b.subject,
-                prompts::truncate(&b.body, CONTEXT_EMAIL_BUDGET),
-                question
-            ),
-            Err(_) => question.clone(),
-        },
-        None => question.clone(),
+    // The currently-open email (if any) is folded into the first user turn so
+    // the whole session shares it as context.
+    let context_block = match context_message_id {
+        Some(id) => email_block_owned(&deps.db, &deps.engines, id).await.ok(),
+        None => None,
     };
-    turns.push(Turn::User(first));
+    // Replay the conversation. Earlier assistant answers come back as plain
+    // text — their tool transcript isn't retained across runs — and the newest
+    // user turn is the question this round answers.
+    let mut context_used = false;
+    for (role, content) in history {
+        if role == "assistant" {
+            turns.push(Turn::Assistant {
+                text: content,
+                tool_calls: Vec::new(),
+            });
+        } else {
+            let text = match (&context_block, context_used) {
+                (Some(b), false) => {
+                    context_used = true;
+                    format!(
+                        "The user is looking at this email:\n--- From: {} | Date: {} | Subject: {} ---\n{}\n\nTheir question: {}",
+                        b.from,
+                        b.date,
+                        b.subject,
+                        prompts::truncate(&b.body, CONTEXT_EMAIL_BUDGET),
+                        content
+                    )
+                }
+                _ => content,
+            };
+            turns.push(Turn::User(text));
+        }
+    }
 
     let mut full_text = String::new();
     let mut tool_calls_used = 0usize;
@@ -311,8 +365,8 @@ pub async fn run(
 
     let cited = cited_indices(&full_text);
     let out = reg
-        .citations
-        .into_iter()
+        .by_index
+        .into_values()
         .filter(|c| cited.contains(&c.index))
         .collect();
     Ok(out)
@@ -361,10 +415,8 @@ async fn call_provider(
 fn describe(reg: &Registry, tc: &ToolCall) -> (&'static str, String) {
     match tc.name.as_str() {
         "read_email" => {
-            let arg = tc
-                .input
-                .get("ref")
-                .and_then(Value::as_i64)
+            let r = tc.input.get("ref").and_then(Value::as_i64);
+            let arg = r
                 .and_then(|r| reg.citation(r as usize))
                 .map(|c| {
                     if c.subject.is_empty() {
@@ -373,6 +425,9 @@ fn describe(reg: &Registry, tc: &ToolCall) -> (&'static str, String) {
                         c.subject.clone()
                     }
                 })
+                // An unresolved ref (e.g. hallucinated) still gets a label, so
+                // the trace never shows empty quotes.
+                .or_else(|| r.map(|r| format!("#{r}")))
                 .unwrap_or_default();
             ("read", arg)
         }
@@ -434,6 +489,25 @@ struct RowData {
     from_addr: Option<String>,
     date: i64,
     snippet: String,
+    has_attachments: bool,
+}
+
+/// Header line(s) above the result rows: the OR-fallback notice and/or the
+/// total match count when more matched than shown. Empty when neither applies.
+fn search_header(shown: usize, total: i64, capped: bool, broad: bool) -> String {
+    let mut lines = Vec::new();
+    if broad {
+        lines.push("No emails match all keywords — showing emails matching ANY keyword:".into());
+    }
+    if total > shown as i64 {
+        let total = if capped {
+            format!("{SEARCH_COUNT_CAP}+")
+        } else {
+            total.to_string()
+        };
+        lines.push(format!("Showing {shown} of {total} matches."));
+    }
+    lines.join("\n")
 }
 
 async fn search_emails(
@@ -450,6 +524,10 @@ async fn search_emails(
     let from = str_opt(input, "from");
     let subject = str_opt(input, "subject");
     let folder = str_opt(input, "folder");
+    let has_attachment = input
+        .get("has_attachment")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let after = str_opt(input, "after").and_then(|s| parse_day_start(&s));
     let before = str_opt(input, "before").and_then(|s| parse_day_end(&s));
     let limit = input
@@ -457,12 +535,6 @@ async fn search_emails(
         .and_then(Value::as_i64)
         .unwrap_or(SEARCH_LIMIT_DEFAULT)
         .clamp(1, SEARCH_LIMIT_MAX);
-
-    let fts = if query.is_empty() {
-        None
-    } else {
-        build_fts_query(&query)
-    };
 
     // Shared filter clauses + params, in `?`-order.
     let mut clauses: Vec<&str> = Vec::new();
@@ -488,6 +560,12 @@ async fn search_emails(
     if let Some(fr) = &folder {
         clauses.push("m.folder_id IN (SELECT id FROM folders WHERE role = ?)");
         params.push(SqlValue::Text(fr.clone()));
+    } else {
+        // Deleted and junk mail is out unless the model asks for it explicitly.
+        clauses.push("m.folder_id NOT IN (SELECT id FROM folders WHERE role IN ('trash','junk'))");
+    }
+    if has_attachment {
+        clauses.push("m.has_attachments = 1");
     }
     let filter_sql = if clauses.is_empty() {
         String::new()
@@ -495,56 +573,236 @@ async fn search_emails(
         format!(" AND {}", clauses.join(" AND "))
     };
 
-    const COLS: &str = "m.id, m.thread_id, m.folder_id, COALESCE(m.subject,''), \
-        m.from_name, m.from_addr, m.date, COALESCE(m.snippet,'')";
-
-    let (sql, ordered): (String, Vec<SqlValue>) = if let Some(fts) = fts {
-        let sql = format!(
-            "SELECT {COLS} FROM messages_fts JOIN messages m ON m.id = messages_fts.rowid \
-             WHERE messages_fts MATCH ?{filter_sql} ORDER BY bm25(messages_fts) LIMIT ?"
-        );
-        let mut p = vec![SqlValue::Text(fts)];
-        p.extend(params);
-        p.push(SqlValue::Integer(limit));
-        (sql, p)
+    // The AND query first; if it matches nothing, silently retry matching ANY
+    // keyword so the model doesn't burn a round reformulating.
+    let mut attempts: Vec<(Option<String>, bool)> = Vec::new();
+    if query.is_empty() {
+        attempts.push((None, false));
     } else {
-        let sql = format!(
-            "SELECT {COLS} FROM messages m WHERE 1=1{filter_sql} ORDER BY m.date DESC LIMIT ?"
-        );
-        let mut p = params;
-        p.push(SqlValue::Integer(limit));
-        (sql, p)
-    };
+        if let Some(fts) = build_fts_query(&query) {
+            attempts.push((Some(fts), false));
+        }
+        if let Some(fts) = build_fts_query_any(&query) {
+            attempts.push((Some(fts), true));
+        }
+    }
 
-    let rows: Vec<RowData> = deps
+    const COLS: &str = "m.id, m.thread_id, m.folder_id, COALESCE(m.subject,''), \
+        m.from_name, m.from_addr, m.date, COALESCE(m.snippet,''), m.has_attachments";
+
+    for (fts, broad) in attempts {
+        let count_limit = SEARCH_COUNT_CAP + 1;
+        let (rows_sql, count_sql, base): (String, String, Vec<SqlValue>) = match fts {
+            Some(fts) => {
+                let rows_sql = format!(
+                    "SELECT {COLS} FROM messages_fts JOIN messages m ON m.id = messages_fts.rowid \
+                     WHERE messages_fts MATCH ?{filter_sql} ORDER BY bm25(messages_fts) LIMIT ?"
+                );
+                let count_sql = format!(
+                    "SELECT COUNT(*) FROM (SELECT m.id FROM messages_fts \
+                     JOIN messages m ON m.id = messages_fts.rowid \
+                     WHERE messages_fts MATCH ?{filter_sql} LIMIT {count_limit})"
+                );
+                let mut base = vec![SqlValue::Text(fts)];
+                base.extend(params.iter().cloned());
+                (rows_sql, count_sql, base)
+            }
+            None => {
+                let rows_sql = format!(
+                    "SELECT {COLS} FROM messages m WHERE 1=1{filter_sql} \
+                     ORDER BY m.date DESC LIMIT ?"
+                );
+                let count_sql = format!(
+                    "SELECT COUNT(*) FROM (SELECT m.id FROM messages m \
+                     WHERE 1=1{filter_sql} LIMIT {count_limit})"
+                );
+                (rows_sql, count_sql, params.clone())
+            }
+        };
+
+        let (rows, total): (Vec<RowData>, i64) = deps
+            .db
+            .call(move |conn| {
+                let mut stmt = conn.prepare(&rows_sql)?;
+                let mut with_limit = base.clone();
+                with_limit.push(SqlValue::Integer(limit));
+                let rows = stmt
+                    .query_map(rusqlite::params_from_iter(with_limit.iter()), |r| {
+                        Ok(RowData {
+                            id: r.get(0)?,
+                            thread_id: r.get(1)?,
+                            folder_id: r.get(2)?,
+                            subject: r.get(3)?,
+                            from_name: r.get(4)?,
+                            from_addr: r.get(5)?,
+                            date: r.get(6)?,
+                            snippet: r.get(7)?,
+                            has_attachments: r.get(8)?,
+                        })
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                // Count only when the page might be truncated.
+                let total = if rows.len() as i64 == limit {
+                    conn.query_row(&count_sql, rusqlite::params_from_iter(base.iter()), |r| {
+                        r.get(0)
+                    })?
+                } else {
+                    rows.len() as i64
+                };
+                Ok((rows, total))
+            })
+            .await?;
+
+        if rows.is_empty() {
+            continue;
+        }
+
+        let mut lines = Vec::with_capacity(rows.len() + 1);
+        let header = search_header(rows.len(), total, total > SEARCH_COUNT_CAP, broad);
+        if !header.is_empty() {
+            lines.push(header);
+        }
+        let count = rows.len() as u32;
+        for row in &rows {
+            let from = display_from(&row.from_name, &row.from_addr);
+            let subject = row.subject.clone();
+            let idx = reg.assign(row.id, |index| Citation {
+                index,
+                message_id: row.id,
+                thread_id: row.thread_id,
+                folder_id: row.folder_id,
+                subject: subject.clone(),
+                from: from.clone(),
+            });
+            let snippet = prompts::truncate(&row.snippet, SNIPPET_MAX).replace('\n', " ");
+            let clip = if row.has_attachments {
+                " \u{1F4CE}"
+            } else {
+                ""
+            };
+            lines.push(format!(
+                "[{idx}] {} | {} | {}{clip} — {}",
+                format_date(row.date),
+                from,
+                row.subject,
+                snippet
+            ));
+        }
+        return Ok((lines.join("\n"), count));
+    }
+
+    let msg = if query.is_empty() {
+        "No emails matched."
+    } else {
+        "No emails matched. Try fewer, different, or translated keywords."
+    };
+    Ok((msg.to_string(), 0))
+}
+
+async fn read_email(deps: &AgentDeps, reg: &mut Registry, input: &Value) -> Result<String> {
+    let Some(r) = input.get("ref").and_then(Value::as_i64) else {
+        return Ok("Provide a numeric `ref` from a search result.".to_string());
+    };
+    let Some(message_id) = reg.citation(r as usize).map(|c| c.message_id) else {
+        return Ok(format!(
+            "No search result with ref [{r}]. Run search_emails first."
+        ));
+    };
+    if input
+        .get("thread")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        // Falls through to the single message when there is no conversation.
+        if let Some(text) = read_thread(deps, reg, message_id).await? {
+            return Ok(text);
+        }
+    }
+    let block = email_block_owned(&deps.db, &deps.engines, message_id).await?;
+    let mut out = format!(
+        "[{r}] From: {} | Date: {} | Subject: {}\n\n{}",
+        block.from,
+        block.date,
+        block.subject,
+        prompts::truncate(&block.body, READ_EMAIL_BUDGET)
+    );
+    // Surface attachment content the same way "Ask about this email" does, so
+    // the mailbox-wide chat can read statements/PDFs and not just the body.
+    // Text extraction (never native media) keeps the tool-result wire format a
+    // plain string, which both providers accept.
+    let mut budget = attachments::Budget::default();
+    let collected =
+        attachments::collect_for_message(&deps.db, message_id, false, &mut budget).await;
+    if !collected.notes.trim().is_empty() {
+        out.push_str("\n\nAttachments:\n");
+        out.push_str(&collected.notes);
+    }
+    Ok(out)
+}
+
+/// A message row of a whole-thread read, enough to mint its [N] citation.
+struct ThreadRow {
+    id: i64,
+    thread_id: Option<i64>,
+    folder_id: i64,
+    subject: String,
+    from_name: Option<String>,
+    from_addr: Option<String>,
+}
+
+/// The whole conversation of `anchor_id`, chronological, each message tagged
+/// with its own [N]. `None` when the message has no conversation to speak of
+/// (no thread, or a single-message thread) — the caller reads it alone then.
+async fn read_thread(
+    deps: &AgentDeps,
+    reg: &mut Registry,
+    anchor_id: i64,
+) -> Result<Option<String>> {
+    const COLS: &str = "id, thread_id, folder_id, COALESCE(subject,''), from_name, from_addr";
+    let rows: Vec<ThreadRow> = deps
         .db
         .call(move |conn| {
-            let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt
-                .query_map(rusqlite::params_from_iter(ordered.iter()), |r| {
-                    Ok(RowData {
-                        id: r.get(0)?,
-                        thread_id: r.get(1)?,
-                        folder_id: r.get(2)?,
-                        subject: r.get(3)?,
-                        from_name: r.get(4)?,
-                        from_addr: r.get(5)?,
-                        date: r.get(6)?,
-                        snippet: r.get(7)?,
-                    })
-                })?
+            let map = |r: &rusqlite::Row<'_>| {
+                Ok(ThreadRow {
+                    id: r.get(0)?,
+                    thread_id: r.get(1)?,
+                    folder_id: r.get(2)?,
+                    subject: r.get(3)?,
+                    from_name: r.get(4)?,
+                    from_addr: r.get(5)?,
+                })
+            };
+            // Newest messages of the anchor's thread, flipped to chronological.
+            let mut stmt = conn.prepare_cached(&format!(
+                "SELECT {COLS} FROM messages
+                 WHERE thread_id = (SELECT thread_id FROM messages WHERE id = ?1)
+                 ORDER BY date DESC LIMIT ?2"
+            ))?;
+            let mut rows = stmt
+                .query_map(rusqlite::params![anchor_id, THREAD_READ_LIMIT], map)?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
+            rows.reverse();
+            // An anchor older than the newest N still belongs in the read.
+            if !rows.is_empty() && !rows.iter().any(|r| r.id == anchor_id) {
+                let anchor = conn.query_row(
+                    &format!("SELECT {COLS} FROM messages WHERE id = ?1"),
+                    rusqlite::params![anchor_id],
+                    map,
+                )?;
+                rows.insert(0, anchor);
+            }
             Ok(rows)
         })
         .await?;
-
-    let count = rows.len() as u32;
-    if rows.is_empty() {
-        return Ok(("No emails matched.".to_string(), 0));
+    if rows.len() <= 1 {
+        return Ok(None);
     }
 
-    let mut lines = Vec::with_capacity(rows.len());
+    let per_msg = (THREAD_READ_BUDGET / rows.len()).min(THREAD_MSG_BUDGET);
+    let mut anchor_idx = 0;
+    let mut sections = Vec::with_capacity(rows.len());
     for row in &rows {
+        let block = email_block_owned(&deps.db, &deps.engines, row.id).await?;
         let from = display_from(&row.from_name, &row.from_addr);
         let subject = row.subject.clone();
         let idx = reg.assign(row.id, |index| Citation {
@@ -555,35 +813,34 @@ async fn search_emails(
             subject: subject.clone(),
             from: from.clone(),
         });
-        let snippet = prompts::truncate(&row.snippet, SNIPPET_MAX).replace('\n', " ");
-        lines.push(format!(
-            "[{idx}] {} | {} | {} — {}",
-            format_date(row.date),
-            from,
-            row.subject,
-            snippet
+        // The asked-for message keeps its full budget; the rest share.
+        let limit = if row.id == anchor_id {
+            anchor_idx = idx;
+            READ_EMAIL_BUDGET
+        } else {
+            per_msg
+        };
+        sections.push(format!(
+            "[{idx}] From: {} | Date: {} | Subject: {}\n\n{}",
+            block.from,
+            block.date,
+            block.subject,
+            prompts::truncate(&block.body, limit)
         ));
     }
-    Ok((lines.join("\n"), count))
-}
 
-async fn read_email(deps: &AgentDeps, reg: &Registry, input: &Value) -> Result<String> {
-    let Some(r) = input.get("ref").and_then(Value::as_i64) else {
-        return Ok("Provide a numeric `ref` from a search result.".to_string());
-    };
-    let Some(message_id) = reg.citation(r as usize).map(|c| c.message_id) else {
-        return Ok(format!(
-            "No search result with ref [{r}]. Run search_emails first."
-        ));
-    };
-    let block = email_block_owned(&deps.db, &deps.engines, message_id).await?;
-    Ok(format!(
-        "[{r}] From: {} | Date: {} | Subject: {}\n\n{}",
-        block.from,
-        block.date,
-        block.subject,
-        prompts::truncate(&block.body, READ_EMAIL_BUDGET)
-    ))
+    let mut out = format!(
+        "The conversation, oldest first ({} messages):\n\n{}",
+        rows.len(),
+        sections.join("\n\n---\n\n")
+    );
+    let mut budget = attachments::Budget::default();
+    let collected = attachments::collect_for_message(&deps.db, anchor_id, false, &mut budget).await;
+    if !collected.notes.trim().is_empty() {
+        out.push_str(&format!("\n\nAttachments of [{anchor_idx}]:\n"));
+        out.push_str(&collected.notes);
+    }
+    Ok(Some(out))
 }
 
 // ---- shared helpers -------------------------------------------------------
@@ -714,6 +971,53 @@ mod tests {
         assert!(c.contains(&2));
         assert!(c.contains(&5));
         assert_eq!(c.len(), 2);
+    }
+
+    fn cite(index: usize, message_id: i64) -> Citation {
+        Citation {
+            index,
+            message_id,
+            thread_id: None,
+            folder_id: 1,
+            subject: format!("subj {message_id}"),
+            from: "sender".into(),
+        }
+    }
+
+    #[test]
+    fn registry_seed_keeps_numbers_stable_across_turns() {
+        let mut reg = Registry::new();
+        // Citations surfaced by an earlier turn (note the gap: 1 then 4).
+        reg.seed(vec![cite(1, 10), cite(4, 40)]);
+        // A prior ref still resolves on the follow-up.
+        assert_eq!(reg.citation(4).unwrap().message_id, 40);
+        // Re-finding a seeded email reuses its number.
+        assert_eq!(reg.assign(10, |i| cite(i, 10)), 1);
+        // A newly found email is numbered after the highest seeded index.
+        assert_eq!(reg.assign(99, |i| cite(i, 99)), 5);
+    }
+
+    #[test]
+    fn search_header_reports_truncation_and_fallback() {
+        // All matches shown: no header noise.
+        assert_eq!(search_header(5, 5, false, false), "");
+        assert_eq!(
+            search_header(10, 132, false, false),
+            "Showing 10 of 132 matches."
+        );
+        assert_eq!(
+            search_header(10, 501, true, false),
+            "Showing 10 of 500+ matches."
+        );
+        assert_eq!(
+            search_header(3, 3, false, true),
+            "No emails match all keywords — showing emails matching ANY keyword:"
+        );
+        assert_eq!(
+            search_header(10, 40, false, true),
+            "No emails match all keywords — showing emails matching ANY keyword:\n\
+             Showing 10 of 40 matches."
+        );
     }
 
     #[test]

@@ -27,6 +27,7 @@
       rows: [
         { label: t("reading.archive"), keys: ["E"] },
         { label: t("reading.delete"), keys: ["Del"] },
+        { label: t("reading.spam"), keys: ["!"] },
         { label: t("reading.star"), keys: ["S"] },
         { label: t("reading.toggle_read"), keys: ["U"] },
         { label: t("reading.reply"), keys: ["R"] },

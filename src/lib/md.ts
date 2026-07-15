@@ -3,8 +3,8 @@
  *  and bare/linked URLs. The input is HTML-escaped before any tags are added,
  *  so the output is safe for `{@html}`. Links open in the system browser — the
  *  container must intercept clicks on `a.md-link` and route the href through
- *  the opener (see ReadingPane), never letting the webview navigate. Style the
- *  container with the global `md-body` class. */
+ *  the opener (use the `aiLinks` action from lib/ai-links), never letting the
+ *  webview navigate. Style the container with the global `md-body` class. */
 export function mdLite(text: string): string {
   const escaped = text
     .replace(/&/g, "&amp;")

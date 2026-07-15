@@ -2,9 +2,9 @@
 //! (The old keyword-retrieval chat pipeline was replaced by the tool-calling
 //! agent in [`crate::ai::agent`].)
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Citation {
     pub index: usize,

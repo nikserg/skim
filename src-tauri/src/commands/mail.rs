@@ -402,6 +402,23 @@ pub async fn delete_messages(
 }
 
 #[tauri::command]
+pub async fn report_spam(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    message_ids: Vec<i64>,
+) -> Result<()> {
+    queue_op(
+        &app,
+        state.inner(),
+        message_ids,
+        "junk",
+        json!({}),
+        bodies::remove_messages_local,
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn save_attachment(
     app: AppHandle,
     state: State<'_, AppState>,
