@@ -47,7 +47,7 @@ Email clients usually come in two flavors: a browser cosplaying as an app, or a 
 - 🌍 **11 languages**, light & dark themes, keyboard-first.
 
 <div align="center">
-<img src="docs/skim-dark.png" alt="Skim — dark theme" width="800">
+<img src="docs/skim-dark.jpg" alt="Skim — dark theme" width="800">
 </div>
 
 ## Features
