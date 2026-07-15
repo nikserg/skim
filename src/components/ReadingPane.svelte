@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { aiStream, api } from "../lib/api";
   import { getLocale, t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
@@ -26,6 +27,23 @@
   let askInput: HTMLInputElement | undefined = $state();
   let askThreadEl: HTMLDivElement | undefined = $state();
   let cancelAi: (() => void) | null = null;
+
+  // Links in AI answers are rendered as <a class="md-link"> in the main webview
+  // (not a sandboxed iframe like mail), so a real navigation would replace the
+  // app. Intercept clicks and hand the href to the system browser instead.
+  function onAiLinkClick(ev: MouseEvent) {
+    const a = (ev.target as HTMLElement | null)?.closest("a.md-link");
+    if (!a) return;
+    ev.preventDefault();
+    const href = a.getAttribute("href");
+    if (href && /^https?:/i.test(href)) void openUrl(href);
+  }
+  // Delegated imperatively (not a template onclick) so the container div stays
+  // free of the click-needs-keyboard a11y rule — the anchors are the targets.
+  function aiLinks(node: HTMLElement) {
+    node.addEventListener("click", onAiLinkClick);
+    return { destroy: () => node.removeEventListener("click", onAiLinkClick) };
+  }
 
   function closeAiPanel() {
     cancelAi?.();
@@ -504,7 +522,7 @@
                 {:else}
                   <div class="ai-card">
                     <div class="ai-label microlabel">{t("ai.answer")}</div>
-                    <div class="ai-text md-body">{@html mdLite(turn.content)}</div>
+                    <div class="ai-text md-body" use:aiLinks>{@html mdLite(turn.content)}</div>
                   </div>
                 {/if}
               {/each}
@@ -514,7 +532,7 @@
                   {#if aiPanel.text === "" && aiPanel.status === "streaming"}
                     <span class="thinking">{t("ai.thinking")}</span>
                   {:else}
-                    <div class="ai-text md-body">{@html mdLite(aiPanel.text)}</div>
+                    <div class="ai-text md-body" use:aiLinks>{@html mdLite(aiPanel.text)}</div>
                   {/if}
                 </div>
               {/if}
@@ -537,7 +555,7 @@
             {#if aiPanel.text === "" && aiPanel.status === "streaming"}
               <span class="thinking">{t("ai.thinking")}</span>
             {:else}
-              <div class="ai-text md-body">{@html mdLite(aiPanel.text)}</div>
+              <div class="ai-text md-body" use:aiLinks>{@html mdLite(aiPanel.text)}</div>
             {/if}
           </div>
         {/if}

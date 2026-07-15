@@ -64,7 +64,10 @@ pub fn summarize(emails: &[EmailBlock], now: &str, locale: &str) -> (String, Str
         "Summarize this email conversation in 2–4 short bullet points. \
          Account for any attached files (their extracted text, or documents/images \
          provided to you directly). Call out action items, deadlines, and any asks \
-         directed at the user. No preamble.\n\n{}",
+         directed at the user. No preamble.\n\
+         Formatting: '-' bullets and **bold** for the key terms (names, figures, \
+         deadlines); no headings. A markdown '|' table is fine only when the data is \
+         genuinely tabular.\n\n{}",
         render_emails(emails, MAX_BODY_CHARS / emails.len().max(1))
     );
     (system, user)
@@ -273,7 +276,9 @@ pub fn ask_session(chain: &[EmailBlock], now: &str, locale: &str) -> (String, St
             "You answer the user's questions about a specific email. Answer from the \
              email's content and any attached files — their extracted text, or the \
              documents/images provided to you directly. If the answer isn't there, say \
-             so plainly. Be brief. {} {}",
+             so plainly. Be brief. Use **bold** for the key terms, names, and figures; \
+             '-' bullets only when listing several points; no headings. A markdown '|' \
+             table is fine only when the data is genuinely tabular. {} {}",
             now_block(now),
             locale_line(locale)
         );
@@ -285,7 +290,9 @@ pub fn ask_session(chain: &[EmailBlock], now: &str, locale: &str) -> (String, St
          emails' content and any attached files — their extracted text, or the \
          documents/images provided to you directly. If the answer isn't there, say so \
          plainly. Questions are usually about the LAST (most recent) message — use the \
-         earlier messages as context. Be brief. {} {}",
+         earlier messages as context. Be brief. Use **bold** for the key terms, names, \
+         and figures; '-' bullets only when listing several points; no headings. A markdown \
+         '|' table is fine only when the data is genuinely tabular. {} {}",
         now_block(now),
         locale_line(locale)
     );

@@ -112,6 +112,44 @@ a {
   padding: 1px 4px;
   border-radius: 4px;
 }
+.md-body a.md-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.md-body a.md-link:hover {
+  text-decoration-thickness: 2px;
+}
+/* Pipe tables (lib/md.ts) — hairline grid, scrolls horizontally rather than
+   forcing the card wider on narrow content. */
+.md-body .md-table {
+  border-collapse: collapse;
+  width: auto;
+  max-width: 100%;
+  margin: 8px 0;
+  display: block;
+  overflow-x: auto;
+  font-size: 0.95em;
+}
+.md-body .md-table th,
+.md-body .md-table td {
+  border: 1px solid var(--hairline-strong);
+  padding: 4px 9px;
+  text-align: left;
+  vertical-align: top;
+}
+.md-body .md-table th {
+  font-weight: 600;
+  background: var(--hover);
+}
+/* The default ::selection tint is --accent-soft, which is exactly the AI
+   card's own background — a highlight there would be invisible. Use the
+   stronger accent so selecting (and knowing text is selected) actually reads. */
+.md-body ::selection,
+.ask-q ::selection {
+  background: var(--accent-dim);
+}
 
 /* Highlighter = bold — a quiet-zine signature, warm themes only. Bold runs
    carry a cycling hl1..hl3 class (lib/md.ts); we paint a partial ~42% bar under
