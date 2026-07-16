@@ -1,7 +1,7 @@
 //! Conversion of fetched IMAP data into database rows via `mail-parser`.
 
 use crate::db::models::{Address, NewMessage};
-use mail_parser::{Addr, HeaderValue, MessageParser, MimeHeaders};
+use mail_parser::{Addr, HeaderName, HeaderValue, MessageParser, MimeHeaders};
 
 fn convert_addr(a: &Addr) -> Option<Address> {
     a.address.as_ref().map(|addr| Address {
@@ -89,6 +89,20 @@ pub fn parse_headers(
                 .into_iter()
                 .map(|s| format!("<{s}>"))
                 .collect();
+        }
+    }
+
+    // mail-parser types List-Unsubscribe as an address (the `<...>` brackets),
+    // which drops the mailto:/https: scheme. Read the RAW header instead so the
+    // full `<uri>, <uri>` list survives for the unsubscribe command to parse.
+    msg.list_unsubscribe = parsed
+        .header_raw(HeaderName::ListUnsubscribe)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    if let Some(post) = parsed.header_raw("List-Unsubscribe-Post") {
+        // Presence of "One-Click" opts the list into RFC 8058 one-click POST.
+        if post.to_ascii_lowercase().contains("one-click") {
+            msg.list_unsubscribe_one_click = true;
         }
     }
 
@@ -214,4 +228,56 @@ pub fn make_snippet(text: &str) -> String {
         snippet.push('…');
     }
     snippet
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn headers(raw: &str) -> NewMessage {
+        parse_headers(
+            "acct",
+            1,
+            42,
+            raw.as_bytes(),
+            None,
+            None,
+            false,
+            false,
+            false,
+        )
+    }
+
+    #[test]
+    fn extracts_list_unsubscribe_with_one_click() {
+        let msg = headers(
+            "From: News <news@example.com>\r\n\
+             Subject: Weekly\r\n\
+             List-Unsubscribe: <mailto:unsub@example.com?subject=stop>, <https://example.com/u?t=abc>\r\n\
+             List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n\
+             \r\n",
+        );
+        let raw = msg.list_unsubscribe.expect("header should be captured");
+        assert!(raw.contains("mailto:unsub@example.com"));
+        assert!(raw.contains("https://example.com/u?t=abc"));
+        assert!(msg.list_unsubscribe_one_click);
+    }
+
+    #[test]
+    fn list_unsubscribe_without_post_is_not_one_click() {
+        let msg = headers(
+            "From: News <news@example.com>\r\n\
+             List-Unsubscribe: <https://example.com/u>\r\n\
+             \r\n",
+        );
+        assert!(msg.list_unsubscribe.is_some());
+        assert!(!msg.list_unsubscribe_one_click);
+    }
+
+    #[test]
+    fn no_list_header_means_no_unsubscribe() {
+        let msg = headers("From: A Friend <friend@example.com>\r\nSubject: Hi\r\n\r\n");
+        assert!(msg.list_unsubscribe.is_none());
+        assert!(!msg.list_unsubscribe_one_click);
+    }
 }

@@ -5,14 +5,18 @@ app UI** driven by **mocked data and AI responses**. No real account, mailbox, o
 model is ever touched, and the whole thing regenerates from a script — so it stays
 current as the app evolves and never leaks personal mail.
 
-The tour covers four features:
+The tour covers four features, in one storyline — catch up, dig in, ask around, reply:
 
-1. **Ask about the open email** (`✦ Ask` → the `Summarize` quick prompt → a
+1. **AI Recap** — a digest of everything unread, which marks the covered mail read
+2. **Ask about the open email** (`✦ Ask` → the `Summarize` quick prompt → a
    follow-up in the same chat)
-2. **Search + Ask** across the mailbox (command palette → AI answer with citations
+3. **Search + Ask** across the mailbox (command palette → AI answer with citations
    → a follow-up that sends the agent back to the mailbox)
-3. **Draft a reply with AI** (compose window)
-4. **Compose a new email with AI** (from a one-line instruction)
+4. **Draft a reply with AI** (compose window)
+
+Composing a brand-new message isn't in the tour — it's the same AI writing surface
+as the reply, and the reply carries the story. The fixtures still cover it
+(`AI_COMPOSE_NEW`, draft `7002`) for `npm run demo:dev`.
 
 ## How it works
 
@@ -43,13 +47,20 @@ renamed, update `mock/data.ts` / `record.mjs` accordingly.
 ## Run it
 
 ```bash
-# one-time
 npm install
-npx playwright install chromium
-
-# generate everything (record → encode → screenshots)
-npm run demo
+npm run demo   # browser check → record → encode → screenshots
 ```
+
+`npm run demo` starts with `demo:browser` (`playwright install chromium`), which is a
+no-op when the browser is already there. That step isn't ceremony: Playwright pins each
+browser build to the library version, so any bump — and `^` in `package.json` allows one
+on any install — orphans the previously downloaded browser and launching dies with
+"Executable doesn't exist". Chromium's headless shell is also a separate download from
+Chromium itself, so a half-finished install fails the same way. Re-running the installer
+before each session keeps the two in sync instead of relying on someone remembering.
+
+Pin the version (`npm i -D playwright@<version> --save-exact`) if you'd rather not have
+npm move it under you and re-download ~150 MB.
 
 Outputs (all published into `docs/`, ready for the landing page):
 

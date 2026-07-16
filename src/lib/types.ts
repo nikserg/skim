@@ -68,6 +68,8 @@ export interface MessageMeta {
   isStarred: boolean;
   hasAttachments: boolean;
   bodyState: number;
+  /** True when the message has a List-Unsubscribe header (mailing list). */
+  canUnsubscribe: boolean;
 }
 
 export interface ThreadDetail {

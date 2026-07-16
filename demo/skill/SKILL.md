@@ -42,8 +42,15 @@ assets byte-identical:
 - `npm run demo:shots` — screenshots only (static UI, colors, layout changes)
 - `npm run demo:record && npm run demo:encode` — video only (flows, AI behavior)
 
-Prerequisites on a fresh machine: `npm install`, `npx playwright install chromium`, and
-ffmpeg on PATH. The whole run takes a couple of minutes; the recording step is the slow part.
+Prerequisites: `npm install` and ffmpeg on PATH. The whole run takes a couple of minutes;
+recording is the slow part.
+
+`npm run demo` begins with `demo:browser` (`playwright install chromium`) — a no-op when
+the browser is present. If a run dies with "Executable doesn't exist at ...chromium_headless_shell-NNNN",
+that's Playwright's browser build being out of step with the library version (a `^` bump
+re-points it, and the headless shell is a separate download from Chromium). Running
+`npm run demo:browser`, or the full `npm run demo`, resolves it — no need to debug it as a
+demo problem. The individual `demo:record` / `demo:shots` scripts skip that check.
 
 ## Verify before reporting success
 

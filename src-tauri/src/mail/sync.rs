@@ -976,6 +976,9 @@ impl Engine {
         if kind == "rsvp" {
             return self.execute_rsvp(payload).await;
         }
+        if kind == "unsubscribe" {
+            return self.execute_unsubscribe(payload).await;
+        }
         let imap_name = payload["imapName"].as_str().unwrap_or_default().to_string();
         let folder_id = payload["folderId"].as_i64();
         let uids: Vec<u32> = payload["uids"]
@@ -1145,6 +1148,50 @@ impl Engine {
         smtp::send(&self.account, &creds, &raw).await?;
 
         Ok(self.mirror_to_sent(&raw).await)
+    }
+
+    /// Run a queued unsubscribe op. Either POSTs `List-Unsubscribe=One-Click`
+    /// to the list's https endpoint (RFC 8058) or sends a small unsubscribe
+    /// email over SMTP. The payload is self-contained, so it survives the
+    /// original message being archived or deleted.
+    async fn execute_unsubscribe(&mut self, payload: &serde_json::Value) -> Result<Option<i64>> {
+        match payload["method"].as_str() {
+            Some("post") => {
+                let url = payload["url"].as_str().unwrap_or_default();
+                if url.is_empty() {
+                    return Ok(None);
+                }
+                let resp = reqwest::Client::new()
+                    .post(url)
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .body("List-Unsubscribe=One-Click")
+                    .send()
+                    .await
+                    .map_err(|e| SkimError::other("unsubscribe", e.to_string()))?;
+                if !resp.status().is_success() {
+                    return Err(SkimError::other(
+                        "unsubscribe",
+                        format!("list server returned {}", resp.status()),
+                    ));
+                }
+                Ok(None)
+            }
+            Some("mail") => {
+                let to = payload["to"].as_str().unwrap_or_default();
+                let subject = payload["subject"].as_str().unwrap_or("unsubscribe");
+                if to.is_empty() {
+                    return Ok(None);
+                }
+                let raw = smtp::build_unsubscribe_mail(&self.account, to, subject)?;
+
+                let mut cache = self.oauth_token.take();
+                let creds = resolve_credentials(&self.db, &self.account, &mut cache).await?;
+                self.oauth_token = cache;
+                smtp::send(&self.account, &creds, &raw).await?;
+                Ok(None)
+            }
+            _ => Ok(None),
+        }
     }
 
     /// Mirror an outgoing message to the Sent folder and return that

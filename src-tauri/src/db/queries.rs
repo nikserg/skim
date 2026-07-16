@@ -48,8 +48,10 @@ pub fn insert_message(
     tx.prepare_cached(
         "INSERT INTO messages (account_id, folder_id, uid, thread_id, message_id, in_reply_to,
                                references_ids, subject, from_name, from_addr, to_addrs, cc_addrs,
-                               date, snippet, size, is_read, is_starred, has_attachments, body_state)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, 0)",
+                               date, snippet, size, is_read, is_starred, has_attachments, body_state,
+                               list_unsubscribe, list_unsubscribe_one_click)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, 0,
+                 ?19, ?20)",
     )?
     .execute(params![
         msg.account_id,
@@ -70,6 +72,8 @@ pub fn insert_message(
         msg.is_read,
         msg.is_starred,
         msg.has_attachments,
+        msg.list_unsubscribe,
+        msg.list_unsubscribe_one_click,
     ])?;
     let message_pk = tx.last_insert_rowid();
 

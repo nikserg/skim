@@ -331,9 +331,10 @@ export function updateDraft(d: any) {
   DRAFTS[d.id] = d;
 }
 
-// Fixed-id drafts the recorder opens directly via #/compose/{id}.
-// 7001 = a reply to Anna's Q3 thread (streams AI_REPLY);
-// 7002 = a blank new message (streams AI_COMPOSE_NEW).
+// Fixed-id drafts opened directly via #/compose/{id}.
+// 7001 = a reply to Anna's Q3 thread (streams AI_REPLY) — the recorder uses this one.
+// 7002 = a blank new message (streams AI_COMPOSE_NEW). Not in the scripted tour;
+// kept so composing from scratch works when poking at `npm run demo:dev`.
 DRAFTS[7001] = {
   id: 7001,
   accountId: "acc-1",
@@ -372,6 +373,24 @@ export const AI_SUMMARY = `**Anna is closing out the Q3 launch (Thursday)** and 
 - Confirm the Acme contract is countersigned before naming them in the press note.
 
 She's attached the checklist and draft press note, and proposes a 30-min sync Thursday morning.`;
+
+// AI Recap: the inbox catch-up. Unlike the other fixtures this one is a digest
+// *across* the unread mail, so it cites all three unread threads — the panel
+// marks exactly those as read when it lands, which is the point of the feature.
+export const AI_RECAP = {
+  text: `**Three things landed while you were away.**
+
+**Anna** is closing out the **Q3 launch** on Thursday. Three items still need an owner, and the **landing page copy** is on your team — final pass by **Wednesday EOD** [1].
+
+**Marcus** has the contract redline back: legal cleared everything except **section 4.2**, and he can have it countersigned by Friday once you approve his edit [2].
+
+**Priya** moved the onboarding **design review to Friday at 10:00** so the whole team can make it [3].`,
+  citations: [
+    { index: 1, messageId: 1011, threadId: 101, folderId: 1, subject: "Q3 launch — final checklist & open questions", from: "Anna Weber" },
+    { index: 2, messageId: 1021, threadId: 102, folderId: 1, subject: "Contract redline — v3 ready for your review", from: "Marcus Lee" },
+    { index: 3, messageId: 1031, threadId: 103, folderId: 1, subject: "Design review moved to Friday 10:00", from: "Priya Nair" },
+  ],
+};
 
 export const AI_ASK = `The launch is **Thursday**. Three items still need an owner: the **landing page copy** (due Wednesday), the **pricing page** toggle change, and the **launch email**. Anna is asking you specifically to take the final pass on the landing copy and to add your voice to the email before it goes out.`;
 

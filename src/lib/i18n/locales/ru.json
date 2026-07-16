@@ -66,6 +66,8 @@
   "reading.archive": "В архив",
   "reading.delete": "Удалить",
   "reading.spam": "В спам",
+  "reading.unsubscribe": "Отписаться",
+  "reading.unsubscribed": "Отписались",
   "reading.star": "Пометить",
   "reading.unstar": "Снять пометку",
   "reading.mark_unread": "Не прочитано",

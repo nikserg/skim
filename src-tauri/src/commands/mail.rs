@@ -418,6 +418,158 @@ pub async fn report_spam(
     .await
 }
 
+/// A `<uri>`-bracketed target extracted from a `List-Unsubscribe` header.
+enum UnsubTarget {
+    /// An https: endpoint (may accept an RFC 8058 one-click POST).
+    Http(String),
+    /// A mailto: address plus its optional `?subject=`.
+    Mail { to: String, subject: String },
+}
+
+/// Parse a raw `List-Unsubscribe` value (`<uri>, <uri>`) into its targets.
+fn parse_unsub_targets(raw: &str) -> Vec<UnsubTarget> {
+    let mut out = Vec::new();
+    for part in raw.split(',') {
+        let uri = part
+            .trim()
+            .trim_start_matches('<')
+            .trim_end_matches('>')
+            .trim();
+        if let Some(rest) = uri.strip_prefix("mailto:") {
+            let (addr, query) = rest.split_once('?').unwrap_or((rest, ""));
+            let addr = addr.trim();
+            if addr.is_empty() {
+                continue;
+            }
+            let subject = query
+                .split('&')
+                .find_map(|kv| kv.strip_prefix("subject="))
+                .map(percent_decode)
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "unsubscribe".to_string());
+            out.push(UnsubTarget::Mail {
+                to: addr.to_string(),
+                subject,
+            });
+        } else if uri.starts_with("https://") || uri.starts_with("http://") {
+            out.push(UnsubTarget::Http(uri.to_string()));
+        }
+    }
+    out
+}
+
+/// Minimal `application/x-www-form-urlencoded` decode for a mailto `subject`.
+fn percent_decode(s: &str) -> String {
+    let bytes = s.replace('+', " ").into_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(b) = u8::from_str_radix(&String::from_utf8_lossy(&bytes[i + 1..i + 3]), 16) {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Unsubscribe from a mailing list using the message's `List-Unsubscribe`
+/// header. Acts for the user: a one-click POST (RFC 8058) or an unsubscribe
+/// email goes through the offline op queue; a plain https link is opened in the
+/// browser (the only path that needs a manual step). Returns `"submitted"` when
+/// an op was queued, or `"opened"` when the browser was launched.
+#[tauri::command]
+pub async fn unsubscribe(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    message_id: i64,
+) -> Result<String> {
+    use rusqlite::OptionalExtension;
+
+    let row: Option<(Option<String>, bool, String)> = state
+        .db
+        .call(move |conn| {
+            conn.query_row(
+                "SELECT list_unsubscribe, list_unsubscribe_one_click, account_id
+                 FROM messages WHERE id = ?1",
+                rusqlite::params![message_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()
+        })
+        .await?;
+
+    let (raw, one_click, account_id) = match row {
+        Some((Some(raw), one_click, account_id)) => (raw, one_click, account_id),
+        _ => {
+            return Err(SkimError::other(
+                "unsubscribe",
+                "this message has no unsubscribe option",
+            ))
+        }
+    };
+
+    let targets = parse_unsub_targets(&raw);
+    let http = targets.iter().find_map(|t| match t {
+        UnsubTarget::Http(url) => Some(url.clone()),
+        _ => None,
+    });
+    let mail = targets.iter().find_map(|t| match t {
+        UnsubTarget::Mail { to, subject } => Some((to.clone(), subject.clone())),
+        _ => None,
+    });
+
+    // Priority: one-click POST → unsubscribe email → open link in the browser.
+    if one_click {
+        if let Some(url) = &http {
+            let payload = json!({ "method": "post", "url": url });
+            enqueue_unsub_op(&state, &account_id, payload).await?;
+            let _ = app.emit("mail:updated", json!({}));
+            return Ok("submitted".to_string());
+        }
+    }
+    if let Some((to, subject)) = mail {
+        let payload = json!({ "method": "mail", "to": to, "subject": subject });
+        enqueue_unsub_op(&state, &account_id, payload).await?;
+        let _ = app.emit("mail:updated", json!({}));
+        return Ok("submitted".to_string());
+    }
+    if let Some(url) = http {
+        use tauri_plugin_opener::OpenerExt;
+        app.opener()
+            .open_url(url, None::<&str>)
+            .map_err(|e| SkimError::other("io", e.to_string()))?;
+        return Ok("opened".to_string());
+    }
+
+    Err(SkimError::other(
+        "unsubscribe",
+        "no usable unsubscribe target",
+    ))
+}
+
+/// Queue a self-contained unsubscribe op and kick the sync engine.
+async fn enqueue_unsub_op(
+    state: &AppState,
+    account_id: &str,
+    payload: serde_json::Value,
+) -> Result<()> {
+    let account = account_id.to_string();
+    state
+        .db
+        .call(move |conn| bodies::enqueue_op(conn, &account, "unsubscribe", &payload))
+        .await?;
+    let engines = state.engines.lock().await;
+    if let Some(handle) = engines.get(account_id) {
+        handle.run_ops();
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn save_attachment(
     app: AppHandle,

@@ -162,7 +162,12 @@
         void replyToSelected("forward");
         return;
       case "KeyQ":
-        if (ai.keyPresent) ui.readingAi?.ask();
+        // preventDefault so the "q" that opened the dock isn't also typed into
+        // the Ask input we're about to focus.
+        if (ai.keyPresent) {
+          e.preventDefault();
+          ui.readingAi?.ask();
+        }
         return;
     }
 

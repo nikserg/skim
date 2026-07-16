@@ -52,6 +52,24 @@ function streamText(
   setTimeout(tick, startDelay);
 }
 
+// The recap panel reads the unread mail before it writes a word, and renders
+// that wait as "Reading your unread mail… 1/3". So the fixture has to emit
+// `progress` first — text alone would skip the scan and land the digest with an
+// empty "0 unread digested" eyebrow and no marked-as-read line.
+function runRecap(channel: Channel<any>, requestId: string): void {
+  const { text, citations } = db.AI_RECAP;
+  const total = citations.length;
+  let delay = 0;
+  for (let i = 1; i <= total; i++) {
+    setTimeout(() => {
+      if (cancelled.has(requestId)) return;
+      channel.onmessage({ type: "progress", current: i, total });
+    }, delay);
+    delay += STEP_MS();
+  }
+  streamText(channel, text, requestId, citations, delay + 200);
+}
+
 function runChat(channel: Channel<any>, requestId: string, turns: any[] | undefined): void {
   const { steps, answer, citations } = db.chatTurn(turns);
   let delay = 300;
@@ -93,7 +111,7 @@ function handleAi(cmd: string, args: any): void {
       streamText(channel, db.askAnswer(args?.turns), requestId);
       return;
     case "ai_recap":
-      streamText(channel, db.AI_SUMMARY, requestId);
+      runRecap(channel, requestId);
       return;
     case "ai_chat":
       runChat(channel, requestId, args?.turns);

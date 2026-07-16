@@ -52,6 +52,8 @@ export const api = {
   archiveMessages: (messageIds: number[]) => invoke<void>("archive_messages", { messageIds }),
   deleteMessages: (messageIds: number[]) => invoke<void>("delete_messages", { messageIds }),
   reportSpam: (messageIds: number[]) => invoke<void>("report_spam", { messageIds }),
+  unsubscribe: (messageId: number) =>
+    invoke<"submitted" | "opened">("unsubscribe", { messageId }),
   saveAttachment: (attachmentId: number) =>
     invoke<string | null>("save_attachment", { attachmentId }),
   openAttachment: (attachmentId: number) => invoke<void>("open_attachment", { attachmentId }),

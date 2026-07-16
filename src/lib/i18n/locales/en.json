@@ -64,6 +64,8 @@
   "reading.archive": "Archive",
   "reading.delete": "Delete",
   "reading.spam": "Mark as spam",
+  "reading.unsubscribe": "Unsubscribe",
+  "reading.unsubscribed": "Unsubscribed",
   "reading.star": "Star",
   "reading.unstar": "Unstar",
   "reading.mark_unread": "Mark unread",

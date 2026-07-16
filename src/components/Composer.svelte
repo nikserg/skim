@@ -633,7 +633,7 @@
   }
   .ai-input {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 10px;
     border: 1px solid var(--accent-dim);
     border-radius: var(--radius-m);
@@ -641,7 +641,6 @@
   }
   .spark {
     color: var(--accent);
-    padding-top: 2px;
   }
   .ai-input .instruction {
     flex: 1;
@@ -658,9 +657,6 @@
   .ai-input .instruction:disabled {
     opacity: 0.55;
     cursor: default;
-  }
-  .ai-input .ai-chip {
-    align-self: center;
   }
   .ai-chip {
     padding: 5px 12px;

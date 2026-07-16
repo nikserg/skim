@@ -95,8 +95,13 @@
     askTurns = id === null ? [] : aiChat.get(id);
   });
 
-  // Open the (empty) chat for a free-form question.
+  // Toggle the (empty) chat for a free-form question: pressing Ask again (button
+  // or the Q shortcut) closes the dock it opened.
   function openAsk() {
+    if (askOpen) {
+      closeAiPanel();
+      return;
+    }
     askOpen = true;
     askQuestion = "";
     queueMicrotask(() => askInput?.focus());
@@ -128,6 +133,8 @@
 
   let detail = $state<ThreadDetail | null>(null);
   let bodies = $state<Record<number, RenderedBody | "loading" | "error">>({});
+  // Per-message unsubscribe state: true once the user clicks the chip.
+  let unsubscribed = $state<Record<number, boolean>>({});
   let loadedFor = $state<string | null>(null);
   // The focused (fully open) message in the conversation. Reply/AI actions
   // target it; newer messages collapse above it, older ones below. Defaults to
@@ -341,6 +348,14 @@
     const ids = allIds;
     mail.removeThreadFromList(threadId);
     void api.reportSpam(ids);
+  }
+
+  function unsubscribe(id: number) {
+    if (unsubscribed[id]) return;
+    unsubscribed[id] = true; // optimistic; the backend queues the actual op
+    void api.unsubscribe(id).catch(() => {
+      unsubscribed[id] = false; // let the user try again if it never queued
+    });
   }
 
   function toggleStar() {
@@ -599,6 +614,15 @@
         </div>
         <div class="microlabel">{recipients(message)}</div>
       </div>
+      {#if message.canUnsubscribe}
+        {#if unsubscribed[message.id]}
+          <span class="unsub done">{t("reading.unsubscribed")} ✓</span>
+        {:else}
+          <button class="unsub" onclick={() => unsubscribe(message.id)}>
+            {t("reading.unsubscribe")}
+          </button>
+        {/if}
+      {/if}
       <span class="date microlabel">{formatFull(message.date)}</span>
     </div>
 
@@ -994,6 +1018,27 @@
   }
   .date {
     flex-shrink: 0;
+  }
+
+  /* Quiet, neutral chip — not the AI accent, not danger red. Shows only on
+     mailing-list mail, tied to the sender it unsubscribes from. */
+  .unsub {
+    flex-shrink: 0;
+    font-size: 12px;
+    line-height: 1.4;
+    padding: 1px 8px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-s);
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  button.unsub:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .unsub.done {
+    color: var(--success);
+    border-color: transparent;
   }
 
   .images-bar {

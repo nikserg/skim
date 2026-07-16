@@ -70,6 +70,10 @@ pub struct MessageMeta {
     pub is_starred: bool,
     pub has_attachments: bool,
     pub body_state: i64,
+    /// True when the message carries a usable `List-Unsubscribe` header, so the
+    /// reading pane can offer an unsubscribe chip. The target itself stays in
+    /// the DB — it is never sent to the frontend.
+    pub can_unsubscribe: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -152,4 +156,8 @@ pub struct NewMessage {
     pub is_read: bool,
     pub is_starred: bool,
     pub has_attachments: bool,
+    /// Raw `List-Unsubscribe` header value (comma-separated `<uri>` list), if present.
+    pub list_unsubscribe: Option<String>,
+    /// `List-Unsubscribe-Post: List-Unsubscribe=One-Click` present (RFC 8058).
+    pub list_unsubscribe_one_click: bool,
 }

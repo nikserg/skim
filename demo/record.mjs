@@ -222,9 +222,19 @@ async function tour(d) {
   mark("inbox-loaded");
   await sleep(READ);
 
-  // Scene 1 — Ask about the open email: a quick Summarize, then a follow-up.
+  // Scene 1 — AI Recap: catch up on everything unread in one pass.
+  await d.click(".recap-chip");
+  await d.waitText(".recap .text", "Priya");
+  // Source chips and the marked-as-read line render only once the digest is
+  // done — and "done" is also when the covered threads lose their unread dot.
+  await page.locator(".recap .chip").first().waitFor();
+  await sleep(READ + 1200);
+  mark("scene1-recap-done");
+
+  // Scene 2 — Ask about the open email: a quick Summarize, then a follow-up.
   // The reading pane has one AI surface: "✦ Ask" opens the dock, and the
-  // quick-prompt buttons seed the same continuable chat.
+  // quick-prompt buttons seed the same continuable chat. Opening a message
+  // dismisses the recap on its own, so there's nothing to close first.
   await d.click('.row:has-text("Q3 launch")');
   await page.locator(".subject", { hasText: "Q3 launch" }).first().waitFor();
   await sleep(READ);
@@ -243,9 +253,9 @@ async function tour(d) {
   await sleep(READ + 900);
   await d.click('.ai-dock .dock-btn[aria-label="Close"]');
   await sleep(BEAT);
-  mark("scene1-ask-done");
+  mark("scene2-ask-done");
 
-  // Scene 2 — Search + ask across the mailbox (command palette).
+  // Scene 3 — Search + ask across the mailbox (command palette).
   await d.click(".sidebar .search");
   await page.locator(".panel .input-row input").waitFor();
   await sleep(BEAT);
@@ -265,9 +275,10 @@ async function tour(d) {
   await d.click(".source-chip");
   await page.locator(".subject", { hasText: "Q3 launch" }).first().waitFor();
   await sleep(READ);
-  mark("scene2-search-done");
+  mark("scene3-search-done");
 
-  // Scene 3 — Draft a reply with AI (compose window).
+  // Scene 4 — Draft a reply with AI (compose window). The closer: it answers the
+  // thread the whole tour has been about.
   await page.goto(BASE + "/#/compose/7001");
   await page.reload();
   await page.locator(".ai-input .instruction").waitFor({ timeout: 15000 });
@@ -276,21 +287,8 @@ async function tour(d) {
   await sleep(500);
   await d.click('.ai-input button:has-text("Draft")');
   await d.waitValue(".compose-window > textarea", "Best,");
-  await sleep(READ + 1200);
-  mark("scene3-reply-done");
-
-  // Scene 4 — Compose a brand-new email with AI.
-  await page.goto(BASE + "/#/compose/7002");
-  await page.reload();
-  await page.locator(".ai-input .instruction").waitFor({ timeout: 15000 });
-  await sleep(BEAT);
-  await d.type(".ai-input .instruction", "Invite the team to a 30-minute onboarding sync on Friday at 2pm");
-  await sleep(500);
-  await d.click('.ai-input button:has-text("Draft")');
-  await page.locator(".subject-row input").waitFor();
-  await d.waitValue(".compose-window > textarea", "Thanks,");
   await sleep(READ + 1600);
-  mark("scene4-compose-done");
+  mark("scene4-reply-done");
 }
 
 async function main() {

@@ -127,6 +127,28 @@ pub fn build_calendar_reply(
     Ok(message.formatted())
 }
 
+/// Build a minimal unsubscribe email (RFC 2369 mailto: path): an empty-bodied
+/// message to the list's unsubscribe address. Subject/recipient come from the
+/// `List-Unsubscribe` header, so they are protocol values, not UI copy.
+pub fn build_unsubscribe_mail(account: &Account, to: &str, subject: &str) -> Result<Vec<u8>> {
+    let from: Mailbox = match &account.display_name {
+        Some(name) if !name.is_empty() => format!("{} <{}>", name, account.email),
+        _ => account.email.clone(),
+    }
+    .parse()
+    .map_err(|e| SkimError::other("send", format!("invalid sender: {e}")))?;
+
+    let message = Message::builder()
+        .from(from)
+        .to(to
+            .parse()
+            .map_err(|e| SkimError::other("send", format!("invalid recipient {to}: {e}")))?)
+        .subject(subject)
+        .body(String::new())
+        .map_err(|e| SkimError::other("send", format!("cannot build message: {e}")))?;
+    Ok(message.formatted())
+}
+
 /// Submit raw MIME over SMTP.
 pub async fn send(account: &Account, credentials: &Credentials, raw: &[u8]) -> Result<()> {
     let mut builder = match account.smtp_security.as_str() {
