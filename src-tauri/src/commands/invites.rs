@@ -106,6 +106,9 @@ pub async fn rsvp_invite(
             "subject": subject,
             "textBody": text_body,
             "ics": ics_body,
+            // Carried so a permanently failed send can revert the optimistic
+            // invite_rsvps row (see drain_ops in mail/sync.rs).
+            "eventUid": uid.clone(),
         });
         state
             .db
@@ -122,4 +125,25 @@ pub async fn rsvp_invite(
     }
     let _ = app.emit("mail:updated", json!({}));
     Ok(())
+}
+
+/// Hand the invitation's `.ics` to the OS so the user can add the event to
+/// whatever calendar app/browser they use. Skim has no calendar of its own;
+/// this just opens the file, mirroring `open_attachment`.
+#[tauri::command]
+pub async fn open_invite_ics(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    message_id: i64,
+) -> Result<()> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let path = state
+        .db
+        .call(move |conn| bodies::find_calendar_part(conn, message_id))
+        .await?
+        .ok_or_else(|| SkimError::other("invite", "no calendar part on this message"))?;
+    app.opener()
+        .open_path(path, None::<&str>)
+        .map_err(|e| SkimError::other("io", e.to_string()))
 }

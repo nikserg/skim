@@ -105,6 +105,16 @@
   </div>
 
   <div class="footer">
+    {#if mail.opError}
+      <button
+        class="sync error microlabel"
+        onclick={() => mail.dismissOpError()}
+        title={mail.opError}
+      >
+        <span class="warn-icon">⚠</span>
+        <span class="name">{mail.opError}</span>
+      </button>
+    {/if}
     {#if mail.syncState === "syncing"}
       <div class="sync microlabel">
         <span class="spinner"></span>

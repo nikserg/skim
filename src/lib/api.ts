@@ -64,6 +64,7 @@ export const api = {
     invoke<{ folderId: number; threadId: number } | null>("take_pending_open"),
   rsvpInvite: (messageId: number, response: "accepted" | "declined" | "tentative") =>
     invoke<void>("rsvp_invite", { messageId, response }),
+  openInviteIcs: (messageId: number) => invoke<void>("open_invite_ics", { messageId }),
 
   // search
   searchMessages: (query: string, limit = 20) =>
@@ -109,6 +110,12 @@ export interface AddressSuggestion {
 export function errorMessage(e: unknown): string {
   if (e && typeof e === "object" && "message" in e) return String(e.message);
   return String(e);
+}
+
+/** The stable `code` a backend `SkimError` carries, for branching on error kind. */
+export function errorCode(e: unknown): string {
+  if (e && typeof e === "object" && "code" in e) return String(e.code);
+  return "";
 }
 
 // ---- AI (streaming over IPC channels) ----

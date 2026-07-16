@@ -1,6 +1,6 @@
 <script lang="ts">
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { aiApi, api, errorMessage, type AddAccountInput, type AiProvider } from "../../lib/api";
+  import { aiApi, api, errorMessage, errorCode, type AddAccountInput, type AiProvider } from "../../lib/api";
   import { getLocale, LOCALES, setLocale, t, type Locale } from "../../lib/i18n/index.svelte";
   import { mail } from "../../lib/stores/mail.svelte";
   import type { Account, ServerPreset } from "../../lib/types";
@@ -67,6 +67,13 @@
   let smtpSecurity = $state("starttls");
   let busy: "none" | "google" | "microsoft" | "password" = $state("none");
   let error = $state("");
+  // Set when Microsoft sign-in works but the Outlook mailbox has IMAP disabled;
+  // shows a fix-it prompt with a link to the setting and a retry.
+  let imapSetupNeeded = $state(false);
+
+  // Deep link to Outlook.com's "Forwarding and IMAP" settings pane.
+  const OUTLOOK_IMAP_SETTINGS_URL =
+    "https://outlook.live.com/mail/0/options/mail/forwarding";
 
   async function chooseLocale(code: Locale) {
     locale = code;
@@ -99,6 +106,7 @@
   async function connectGoogle() {
     busy = "google";
     error = "";
+    imapSetupNeeded = false;
     try {
       const account = await api.startGoogleOauth();
       await accountConnected(account);
@@ -112,20 +120,32 @@
   async function connectMicrosoft() {
     busy = "microsoft";
     error = "";
+    imapSetupNeeded = false;
     try {
       const account = await api.startMicrosoftOauth();
       await accountConnected(account);
     } catch (e) {
-      error = errorMessage(e);
+      // Outlook mailbox with IMAP switched off: guide the user to the setting
+      // instead of showing a raw error, and let them retry in place.
+      if (errorCode(e) === "imap_disabled") {
+        imapSetupNeeded = true;
+      } else {
+        error = errorMessage(e);
+      }
     } finally {
       busy = "none";
     }
+  }
+
+  function openOutlookSettings() {
+    void openUrl(OUTLOOK_IMAP_SETTINGS_URL);
   }
 
   async function connectPassword(ev: SubmitEvent) {
     ev.preventDefault();
     busy = "password";
     error = "";
+    imapSetupNeeded = false;
     try {
       const input: AddAccountInput = {
         email: email.trim(),
@@ -300,6 +320,27 @@
           {/if}
         </button>
       {/if}
+
+      {#if imapSetupNeeded}
+        <div class="imap-setup">
+          <div class="imap-setup-title">{t("onb.imap_off_title")}</div>
+          <p>{t("onb.imap_off_body")}</p>
+          <div class="imap-setup-actions">
+            <button type="button" class="primary" onclick={openOutlookSettings}>
+              {t("onb.open_outlook_settings")} ↗
+            </button>
+            <button
+              type="button"
+              class="linkish"
+              onclick={connectMicrosoft}
+              disabled={busy !== "none"}
+            >
+              {busy === "microsoft" ? t("onb.connecting") : t("onb.retry")}
+            </button>
+          </div>
+        </div>
+      {/if}
+
       {#if oauthAvailable || msOauthAvailable}
         <div class="oauth-note microlabel">🔒 {t("onb.oauth_note")}</div>
       {/if}
@@ -526,6 +567,37 @@
     border-radius: var(--radius-s);
     padding: 10px 12px;
     line-height: 1.5;
+  }
+
+  .imap-setup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--hover);
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--radius-s);
+    padding: 12px 14px;
+  }
+  .imap-setup-title {
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .imap-setup p {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .imap-setup-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 4px;
+  }
+  .imap-setup-actions .primary {
+    width: auto;
+    padding: 8px 14px;
+    font-size: 13px;
   }
   .advanced-toggle {
     align-self: flex-start;

@@ -924,6 +924,27 @@ impl Engine {
                         _ => {
                             if attempts + 1 >= 5 {
                                 let _ = self.finish_op(op_id, false).await;
+                                // A permanently failed RSVP must not keep showing
+                                // the optimistic "accepted" pill: drop the stored
+                                // answer so the card reverts on the next render.
+                                let event_uid = if kind == "rsvp" {
+                                    parsed
+                                        .get("eventUid")
+                                        .and_then(|v| v.as_str())
+                                        .map(str::to_string)
+                                } else {
+                                    None
+                                };
+                                if let Some(uid) = event_uid {
+                                    let account_id = self.account.id.clone();
+                                    let _ = self
+                                        .db
+                                        .call(move |conn| {
+                                            bodies::delete_rsvp(conn, &account_id, &uid)
+                                        })
+                                        .await;
+                                    let _ = self.app.emit("mail:updated", json!({}));
+                                }
                                 let _ = self.app.emit(
                                     "ops:failed",
                                     json!({ "kind": kind, "message": e.to_string() }),

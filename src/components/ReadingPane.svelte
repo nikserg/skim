@@ -656,6 +656,7 @@
         <InviteCard
           invite={body.invite}
           onRsvp={(response) => api.rsvpInvite(message.id, response)}
+          onAddToCalendar={() => api.openInviteIcs(message.id)}
         />
       {/if}
       {#if body.invite && body.invite.method !== "reply"}

@@ -98,11 +98,51 @@ pub async fn login(
                 client
                     .authenticate("XOAUTH2", auth)
                     .await
-                    .map_err(|(e, _)| SkimError::other("auth", format!("sign-in failed: {e}")))
+                    .map_err(|(e, _)| oauth_login_error(e))
             }
         }
     };
     tokio::time::timeout(LOGIN_TIMEOUT, attempt)
         .await
         .map_err(|_| SkimError::other("auth", format!("{host} did not answer the sign-in")))?
+}
+
+/// Turn an XOAUTH2 failure into a user-facing error. Exchange Online answers a
+/// perfectly valid token with "User is authenticated but not connected." when
+/// the mailbox has IMAP switched off — Outlook.com ships it off by default and
+/// the user must enable it (Settings → Mail → Forwarding and IMAP). The token,
+/// scopes, and username are all correct, so flag this with a dedicated
+/// `imap_disabled` code the UI turns into a fix-it prompt with a retry.
+fn oauth_login_error(e: impl std::fmt::Display) -> SkimError {
+    let msg = e.to_string();
+    if msg.contains("authenticated but not connected") {
+        SkimError::other(
+            "imap_disabled",
+            "IMAP is turned off for this mailbox. Enable it in your Outlook \
+             account settings, then try again.",
+        )
+    } else {
+        SkimError::other("auth", format!("sign-in failed: {msg}"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::oauth_login_error;
+
+    #[test]
+    fn mailbox_refusal_becomes_a_hint() {
+        // The exact shape async-imap surfaces for the Exchange NO response.
+        let e = oauth_login_error(
+            "no response: code: None, info: Some(\"User is authenticated but not connected.\")",
+        );
+        assert_eq!(e.code(), "imap_disabled");
+        assert!(e.to_string().contains("IMAP"), "{e}");
+    }
+
+    #[test]
+    fn other_auth_errors_pass_through() {
+        let e = oauth_login_error("LOGIN failed.");
+        assert!(e.to_string().contains("sign-in failed"));
+    }
 }

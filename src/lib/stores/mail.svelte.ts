@@ -2,6 +2,7 @@
 // backend events, mutated optimistically by UI actions later.
 import { listen } from "@tauri-apps/api/event";
 import { api } from "../api";
+import { t } from "../i18n/index.svelte";
 import type { Account, Folder, SyncState, ThreadRow } from "../types";
 
 const PAGE = 100;
@@ -19,9 +20,22 @@ const state = $state({
   syncMessage: null as string | null,
   syncProgress: null as { done: number; total: number } | null,
   threadsLoading: false,
+  // Transient notice for a queued op that failed after all retries.
+  opError: null as string | null,
 });
 
 let listenersAttached = false;
+let opErrorTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Show a self-clearing failure notice (a queued op gave up after retries). */
+function showOpError(message: string) {
+  state.opError = message;
+  if (opErrorTimer) clearTimeout(opErrorTimer);
+  opErrorTimer = setTimeout(() => {
+    state.opError = null;
+    opErrorTimer = null;
+  }, 6000);
+}
 
 async function attachListeners() {
   if (listenersAttached) return;
@@ -50,6 +64,16 @@ async function attachListeners() {
     if (e.payload.folderId === state.selectedFolderId) {
       state.syncProgress = { done: e.payload.done, total: e.payload.total };
     }
+  });
+  // A queued mutation gave up after retries. Tell the user, and refresh so any
+  // optimistic state the backend rolled back (e.g. a reverted RSVP) reappears.
+  await listen<{ kind?: string; message?: string }>("ops:failed", (e) => {
+    const kind = e.payload?.kind;
+    const key =
+      kind === "rsvp" ? "ops.rsvp_failed" : kind === "send" ? "ops.send_failed" : "ops.failed";
+    showOpError(t(key));
+    void refreshThreads();
+    void refreshFolders();
   });
 }
 
@@ -154,6 +178,16 @@ export const mail = {
   },
   get syncProgress() {
     return state.syncProgress;
+  },
+  get opError() {
+    return state.opError;
+  },
+  dismissOpError() {
+    state.opError = null;
+    if (opErrorTimer) {
+      clearTimeout(opErrorTimer);
+      opErrorTimer = null;
+    }
   },
   get threadsLoading() {
     return state.threadsLoading;

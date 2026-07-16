@@ -455,6 +455,16 @@ pub fn upsert_rsvp(
     Ok(())
 }
 
+/// Drop a stored RSVP answer — used to undo an optimistic response whose
+/// reply email failed to send after all retries.
+pub fn delete_rsvp(conn: &Connection, account_id: &str, event_uid: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "DELETE FROM invite_rsvps WHERE account_id = ?1 AND event_uid = ?2",
+        params![account_id, event_uid],
+    )?;
+    Ok(())
+}
+
 pub fn enqueue_op(
     conn: &Connection,
     account_id: &str,

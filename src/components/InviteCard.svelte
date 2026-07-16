@@ -6,16 +6,30 @@
   let {
     invite,
     onRsvp,
+    onAddToCalendar,
   }: {
     invite: InviteView;
     onRsvp: (response: "accepted" | "declined" | "tentative") => Promise<void>;
+    onAddToCalendar: () => Promise<void>;
   } = $props();
 
   // Optimistic local answer layered over the stored one; reverted on error.
   let localResponse = $state<string | null>(null);
   let sending = $state(false);
   let failed = $state(false);
+  let addFailed = $state(false);
   const myResponse = $derived(localResponse ?? invite.myResponse);
+
+  // Skim has no calendar — hand the .ics to the OS so the user adds it
+  // wherever they keep their calendar.
+  async function addToCalendar() {
+    addFailed = false;
+    try {
+      await onAddToCalendar();
+    } catch {
+      addFailed = true;
+    }
+  }
 
   async function respond(response: "accepted" | "declined" | "tentative") {
     if (sending || invite.method !== "request") return;
@@ -211,6 +225,22 @@
       {/if}
     </div>
   {/if}
+
+  {#if invite.method === "request"}
+    <div class="cal-actions">
+      <button class="cal-btn" onclick={addToCalendar}>
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="1.5" y="2.5" width="13" height="12" rx="2" stroke="currentColor" stroke-width="1.2" />
+          <path d="M1.5 6h13" stroke="currentColor" stroke-width="1.2" />
+          <path d="M8 8.5v4M6 10.5h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+        </svg>
+        {t("invite.add_to_calendar")}
+      </button>
+      {#if addFailed}
+        <span class="rsvp-error">{t("invite.add_to_calendar_failed")}</span>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -334,5 +364,33 @@
   .rsvp-error {
     color: var(--text-dim);
     font-size: 12px;
+  }
+
+  .cal-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+  }
+  .cal-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--hairline-strong);
+    color: var(--text);
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .cal-btn:hover {
+    background: var(--hover);
+    border-color: var(--text-faint);
+  }
+  .cal-btn svg {
+    color: var(--text-dim);
+    flex-shrink: 0;
   }
 </style>
