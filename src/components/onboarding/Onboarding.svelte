@@ -1,14 +1,14 @@
 <script lang="ts">
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { aiApi, api, errorMessage, type AddAccountInput, type AiProvider } from "../../lib/api";
-  import { LOCALES, setLocale, t, type Locale } from "../../lib/i18n/index.svelte";
+  import { getLocale, LOCALES, setLocale, t, type Locale } from "../../lib/i18n/index.svelte";
   import { mail } from "../../lib/stores/mail.svelte";
   import type { Account, ServerPreset } from "../../lib/types";
 
   let { oncomplete }: { oncomplete: (account: Account) => void } = $props();
 
   let step: "welcome" | "connect" | "ai" = $state("welcome");
-  let locale: Locale = $state("en");
+  let locale: Locale = $state(getLocale());
   let connectedAccount = $state<Account | null>(null);
 
   // AI step

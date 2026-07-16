@@ -48,8 +48,12 @@ impl OauthProvider {
         match self {
             OauthProvider::Google => "https://mail.google.com/ openid email",
             OauthProvider::Microsoft => {
-                "https://outlook.office365.com/IMAP.AccessAsUser.All \
-                 https://outlook.office365.com/SMTP.Send offline_access openid email profile"
+                // The OAuth resource for IMAP/SMTP is `outlook.office.com` — the
+                // `outlook.office365.com` alias is NOT valid for personal
+                // Microsoft accounts and yields `invalid_scope`. (The IMAP/SMTP
+                // *server* hosts are still *.office365.com; that's unrelated.)
+                "https://outlook.office.com/IMAP.AccessAsUser.All \
+                 https://outlook.office.com/SMTP.Send offline_access openid email profile"
             }
         }
     }
@@ -372,6 +376,22 @@ pub async fn refresh_access_token(
     })
 }
 
+/// Minimal HTML page shown in the user's browser after the redirect. `body` is
+/// escaped since it can carry a provider-supplied error description.
+fn page(heading: &str, body: &str) -> String {
+    let esc = |s: &str| {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+    };
+    format!(
+        "<html><body style=\"font-family:sans-serif;text-align:center;padding-top:20vh\">\
+         <h2>{}</h2><p>{}</p></body></html>",
+        esc(heading),
+        esc(body),
+    )
+}
+
 async fn wait_for_code(listener: TcpListener, expected_state: &str) -> Result<String> {
     loop {
         let (mut stream, _) = listener
@@ -397,15 +417,23 @@ async fn wait_for_code(listener: TcpListener, expected_state: &str) -> Result<St
         };
 
         let ok = get("state").as_deref() == Some(expected_state) && get("code").is_some();
-        let (status, body) = if ok {
-            (
-                "200 OK",
-                "<html><body style=\"font-family:sans-serif;text-align:center;padding-top:20vh\">\
-                 <h2>Skim is connected</h2><p>You can close this tab and return to the app.</p>\
-                 </body></html>",
+        let error = get("error");
+        // The provider spells out what went wrong here — surface it instead of a
+        // generic "cancelled", which sent us on a wild goose chase once already.
+        let detail = get("error_description").unwrap_or_else(|| error.clone().unwrap_or_default());
+        let body = if ok {
+            page(
+                "Skim is connected",
+                "You can close this tab and return to the app.",
             )
-        } else if get("error").is_some() {
-            ("200 OK", "<html><body style=\"font-family:sans-serif;text-align:center;padding-top:20vh\"><h2>Authorization was cancelled</h2><p>You can close this tab.</p></body></html>")
+        } else if let Some(err) = error.as_deref() {
+            // Only a real user decline is a "cancellation"; everything else is a
+            // failure worth showing the reason for.
+            if err == "access_denied" {
+                page("Authorization was cancelled", "You can close this tab.")
+            } else {
+                page("Authorization failed", &detail)
+            }
         } else {
             // Favicon or stray request — keep listening.
             let _ = stream
@@ -414,15 +442,22 @@ async fn wait_for_code(listener: TcpListener, expected_state: &str) -> Result<St
             continue;
         };
         let response = format!(
-            "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         );
         let _ = stream.write_all(response.as_bytes()).await;
         let _ = stream.shutdown().await;
 
-        return match (get("code"), get("error")) {
+        return match (get("code"), error) {
             (Some(code), _) if get("state").as_deref() == Some(expected_state) => Ok(code),
-            (_, Some(err)) => Err(SkimError::other("oauth_cancelled", err)),
+            (_, Some(err)) => {
+                let code = if err == "access_denied" {
+                    "oauth_cancelled"
+                } else {
+                    "oauth"
+                };
+                Err(SkimError::other(code, detail))
+            }
             _ => Err(SkimError::other("oauth", "state mismatch in redirect")),
         };
     }
@@ -457,8 +492,8 @@ mod tests {
         // Microsoft must NOT carry Google's offline access flag.
         assert!(!q.contains_key("access_type"));
         let scope = q.get("scope").expect("scope present");
-        assert!(scope.contains("https://outlook.office365.com/IMAP.AccessAsUser.All"));
-        assert!(scope.contains("https://outlook.office365.com/SMTP.Send"));
+        assert!(scope.contains("https://outlook.office.com/IMAP.AccessAsUser.All"));
+        assert!(scope.contains("https://outlook.office.com/SMTP.Send"));
         assert!(scope.contains("offline_access"));
     }
 
