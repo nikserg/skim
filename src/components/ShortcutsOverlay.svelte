@@ -36,13 +36,9 @@
       ],
     },
     {
-      // Brand name, matching the hardcoded AI-toggle title in ReadingPane — not localized.
+      // Brand name, matching the AI action in ReadingPane — not localized.
       title: "Skim AI",
-      rows: [
-        { label: t("ai.draft_reply"), keys: ["D"] },
-        { label: t("ai.summarize"), keys: ["M"] },
-        { label: t("ai.ask_about"), keys: ["Q"] },
-      ],
+      rows: [{ label: t("ai.ask"), keys: ["Q"] }],
     },
     {
       title: t("shortcuts.global"),

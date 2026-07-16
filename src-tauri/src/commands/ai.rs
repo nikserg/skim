@@ -276,52 +276,6 @@ async fn collect_attachments(
 
 // ---- features ------------------------------------------------------------
 
-#[tauri::command]
-pub async fn ai_summarize(
-    state: State<'_, AppState>,
-    request_id: String,
-    thread_id: i64,
-    channel: Channel<AiEvent>,
-) -> Result<()> {
-    let ctx = ai_context(&state.db).await?;
-    // Latest messages of the thread (bounded), bodies fetched best-effort.
-    let ids: Vec<i64> = state
-        .db
-        .call(move |conn| {
-            let mut stmt = conn.prepare_cached(
-                "SELECT id FROM messages WHERE thread_id = ?1 ORDER BY date DESC LIMIT 6",
-            )?;
-            let rows = stmt
-                .query_map(rusqlite::params![thread_id], |r| r.get(0))?
-                .collect::<std::result::Result<Vec<_>, _>>()?;
-            Ok(rows)
-        })
-        .await?;
-    if ids.is_empty() {
-        return Err(SkimError::other("mail", "thread not found"));
-    }
-    // Chronological, so the last id is the most recent message (the anchor).
-    let chrono_ids: Vec<i64> = ids.into_iter().rev().collect();
-    let mut emails = Vec::with_capacity(chrono_ids.len());
-    for id in &chrono_ids {
-        emails.push(email_block(&state, *id).await?);
-    }
-    let media = collect_attachments(&state, &ctx, &chrono_ids, &mut emails).await;
-    let (system, user) = prompts::summarize(&emails, &ctx.now, &ctx.locale);
-    spawn_stream(
-        &state,
-        request_id,
-        ctx,
-        system,
-        user_turn(user),
-        media,
-        1024,
-        Vec::new(),
-        channel,
-    );
-    Ok(())
-}
-
 /// The writer profile from Settings, with the account name as fallback.
 async fn writer_profile(state: &State<'_, AppState>) -> Result<prompts::WriterProfile> {
     state
@@ -402,70 +356,6 @@ async fn reply_chain(
     Ok((chain, media))
 }
 
-#[tauri::command]
-pub async fn ai_draft(
-    state: State<'_, AppState>,
-    request_id: String,
-    instruction: String,
-    reply_to_message_id: Option<i64>,
-    tone: Option<String>,
-    channel: Channel<AiEvent>,
-) -> Result<()> {
-    let ctx = ai_context(&state.db).await?;
-    // A reply sees the whole conversation, not just the last message.
-    let (chain, media) = match reply_to_message_id {
-        Some(id) => reply_chain(&state, id, 8, Some(&ctx)).await?,
-        None => (Vec::new(), Vec::new()),
-    };
-    let profile = writer_profile(&state).await?;
-    let (system, user) = prompts::draft(
-        &instruction,
-        &chain,
-        tone.as_deref(),
-        &profile,
-        &ctx.now,
-        &ctx.locale,
-    );
-    spawn_stream(
-        &state,
-        request_id,
-        ctx,
-        system,
-        user_turn(user),
-        media,
-        2048,
-        Vec::new(),
-        channel,
-    );
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn ai_adjust_draft(
-    state: State<'_, AppState>,
-    request_id: String,
-    current_text: String,
-    adjustment: String,
-    channel: Channel<AiEvent>,
-) -> Result<()> {
-    let ctx = ai_context(&state.db).await?;
-    let profile = writer_profile(&state).await?;
-    let (system, user) =
-        prompts::adjust(&current_text, &adjustment, &profile, &ctx.now, &ctx.locale);
-    spawn_stream(
-        &state,
-        request_id,
-        ctx,
-        system,
-        user_turn(user),
-        Vec::new(),
-        2048,
-        Vec::new(),
-        channel,
-    );
-    Ok(())
-}
-
 /// One turn of an AI conversation (composer drafting or ask sessions), as sent
 /// by the frontend. `role` is "user" or "assistant".
 #[derive(Debug, Deserialize)]
@@ -497,10 +387,10 @@ fn session_messages(turns: &[AiTurn], preamble: &str) -> Vec<ChatMessage> {
     messages
 }
 
-/// Interactive email drafting. Unlike `ai_draft`/`ai_adjust_draft` (one-shot),
-/// this carries the whole conversation so the user can refine the draft turn by
-/// turn against a single shared context. The assistant's reply IS the current
-/// email body; the newest turn must be a user instruction.
+/// Interactive email drafting. Carries the whole conversation so the user can
+/// refine the draft turn by turn against a single shared context. The
+/// assistant's reply IS the current email body; the newest turn must be a user
+/// instruction.
 #[tauri::command]
 pub async fn ai_compose(
     state: State<'_, AppState>,

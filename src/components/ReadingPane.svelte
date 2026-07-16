@@ -4,6 +4,7 @@
   import { getLocale, t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
   import { ai } from "../lib/stores/ai.svelte";
+  import { aiChat } from "../lib/stores/aiChat.svelte";
   import { mail } from "../lib/stores/mail.svelte";
   import { ui } from "../lib/stores/ui.svelte";
   import type { MessageMeta, RenderedBody, ThreadDetail } from "../lib/types";
@@ -11,56 +12,55 @@
   import HtmlViewer from "./HtmlViewer.svelte";
   import InviteCard from "./InviteCard.svelte";
 
-  // ---- AI panel ----
-  type AiPanelKind = "summary" | "ask";
+  // ---- AI chat over this email ----
+  // A single continuable chat is the one AI surface for the open message: the
+  // "Ask" button opens it, the quick-prompt buttons seed it. The completed
+  // turns live in askTurns; the in-flight answer lives in aiPanel.text.
   let aiPanel = $state<{
-    kind: AiPanelKind;
-    status: "streaming" | "done" | "error";
+    status: "streaming" | "error";
     text: string;
   } | null>(null);
   let askOpen = $state(false);
   let askExpanded = $state(false);
   let askQuestion = $state("");
-  // The ask dialog so far; completed turns only, the streaming answer lives
-  // in aiPanel.text until "done".
   let askTurns = $state<{ role: "user" | "assistant"; content: string }[]>([]);
+  // Which message askTurns belongs to, so we can swap the visible chat for the
+  // cached one as the AI target changes (thread switch, focus change).
+  let askKey = $state<number | null>(null);
   let askInput: HTMLInputElement | undefined = $state();
   let askThreadEl: HTMLDivElement | undefined = $state();
   let cancelAi: (() => void) | null = null;
 
+  // Close the dock. The completed turns stay in askTurns (and the cache), so
+  // reopening — for this email or after hopping to another and back — restores
+  // the session. Only the in-flight, not-yet-answered turn is dropped.
   function closeAiPanel() {
     cancelAi?.();
     aiPanel = null;
     askOpen = false;
     askExpanded = false;
-    askTurns = [];
     askQuestion = "";
   }
 
-  function startAi(kind: AiPanelKind, command: "ai_summarize" | "ai_ask", args: Record<string, unknown>) {
+  function startAi(args: Record<string, unknown>) {
     cancelAi?.();
-    aiPanel = { kind, status: "streaming", text: "" };
-    cancelAi = aiStream(command, args, {
+    aiPanel = { status: "streaming", text: "" };
+    cancelAi = aiStream("ai_ask", args, {
       delta: (text) => {
         if (aiPanel) aiPanel = { ...aiPanel, text: aiPanel.text + text };
       },
       done: () => {
         if (!aiPanel) return;
-        if (aiPanel.kind === "ask") {
-          askTurns.push({ role: "assistant", content: aiPanel.text });
-          aiPanel = null;
-          queueMicrotask(() => askInput?.focus());
-        } else {
-          aiPanel = { ...aiPanel, status: "done" };
-        }
+        askTurns.push({ role: "assistant", content: aiPanel.text });
+        aiPanel = null;
+        queueMicrotask(() => askInput?.focus());
       },
       error: (code, message) => {
         // Put the failed question back into the input so it can be retried.
-        if (kind === "ask" && askTurns[askTurns.length - 1]?.role === "user") {
+        if (askTurns[askTurns.length - 1]?.role === "user") {
           askQuestion = askTurns.pop()!.content;
         }
         aiPanel = {
-          kind,
           status: "error",
           text: code === "ai_key" ? t("ai.needs_key") : message || t("ai.no_context"),
         };
@@ -75,34 +75,55 @@
     if (askThreadEl) askThreadEl.scrollTop = askThreadEl.scrollHeight;
   });
 
-  function summarize() {
-    if (!detail) return;
-    askOpen = false;
-    startAi("summary", "ai_summarize", { threadId: detail.id });
-  }
+  // Mirror the visible chat into the (LRU) cache on every completed turn, so it
+  // outlives the dock closing and switching away from this email.
+  $effect(() => {
+    void askTurns.length;
+    if (askKey !== null) aiChat.save(askKey, $state.snapshot(askTurns));
+  });
 
+  // Swap the visible chat for the target message's cached one when the AI
+  // target changes (thread switch, focus change). The outgoing chat is already
+  // in the cache via the effect above, so nothing is lost.
+  $effect(() => {
+    const id = replyTarget?.id ?? null;
+    if (id === askKey) return;
+    cancelAi?.();
+    aiPanel = null;
+    askQuestion = "";
+    askKey = id;
+    askTurns = id === null ? [] : aiChat.get(id);
+  });
+
+  // Open the (empty) chat for a free-form question.
   function openAsk() {
     askOpen = true;
     askQuestion = "";
     queueMicrotask(() => askInput?.focus());
   }
 
-  function submitAsk(ev: SubmitEvent) {
-    ev.preventDefault();
-    const question = askQuestion.trim();
+  // Send a question through the email chat. Shared by the input form and the
+  // quick-prompt buttons; guards against an empty/target-less/in-flight send.
+  function sendAsk(question: string) {
     const target = replyTarget;
-    if (!target || !question) return;
-    if (aiPanel?.kind === "ask" && aiPanel.status === "streaming") return;
+    if (!question || !target) return;
+    if (aiPanel?.status === "streaming") return;
     askTurns.push({ role: "user", content: question });
     askQuestion = "";
-    startAi("ask", "ai_ask", { messageId: target.id, turns: $state.snapshot(askTurns) });
+    startAi({ messageId: target.id, turns: $state.snapshot(askTurns) });
   }
 
-  async function aiDraftReply() {
-    const target = replyTarget;
-    if (!target) return;
-    const draft = await api.getReplyTemplate(target.id, "reply");
-    await api.openComposeWindow(draft.id);
+  function submitAsk(ev: SubmitEvent) {
+    ev.preventDefault();
+    sendAsk(askQuestion.trim());
+  }
+
+  // A quick-prompt button (Summarize / Translate): open the chat and fire a
+  // canned prompt; the answer is a normal turn the user can follow up on.
+  function quickPrompt(question: string) {
+    askOpen = true;
+    sendAsk(question);
+    queueMicrotask(() => askInput?.focus());
   }
 
   let detail = $state<ThreadDetail | null>(null);
@@ -197,17 +218,11 @@
     if (conversation) focusedEl?.scrollIntoView({ block: "nearest" });
   });
 
-  let aiRowOpen = $state(localStorage.getItem("skim.aiRowOpen") !== "0");
-  function toggleAiRow() {
-    aiRowOpen = !aiRowOpen;
-    localStorage.setItem("skim.aiRowOpen", aiRowOpen ? "1" : "0");
-  }
-
-  // Expose the AI actions to the global keyboard handler in App.svelte. The
-  // closures read the current reactive `latest`/`detail`, so a single
-  // registration stays correct across thread changes.
+  // Expose the AI chat to the global keyboard handler (Q) in App.svelte. The
+  // closure reads the current reactive state, so a single registration stays
+  // correct across thread changes.
   $effect(() => {
-    ui.setReadingAi({ draftReply: aiDraftReply, summarize, ask: openAsk });
+    ui.setReadingAi({ ask: openAsk });
     return () => ui.setReadingAi(null);
   });
 
@@ -248,8 +263,9 @@
     aiPanel = null;
     askOpen = false;
     askExpanded = false;
-    askTurns = [];
     askQuestion = "";
+    // askTurns is not reset here: the target-sync effect loads the new email's
+    // cached chat once its focused message settles.
     try {
       const d = await api.getThread(threadId);
       if (mail.selectedThreadId !== threadId) return;
@@ -494,7 +510,7 @@
       {/if}
     </div>
 
-    {#if askOpen || aiPanel}
+    {#if askOpen}
       <!-- AI dock sits above the actions so it's visible at any scroll position. -->
       <div class="ai-dock" class:expanded={askExpanded}>
         <div class="dock-tools">
@@ -515,88 +531,59 @@
             <svg width="9" height="9" viewBox="0 0 10 10"><path d="M0 0L10 10M10 0L0 10" stroke="currentColor" stroke-width="1.2" /></svg>
           </button>
         </div>
-        {#if askOpen}
-          {#if askTurns.length > 0 || aiPanel}
-            <div class="ask-thread" bind:this={askThreadEl}>
-              {#each askTurns as turn (turn)}
-                {#if turn.role === "user"}
-                  <div class="ask-q">{turn.content}</div>
-                {:else}
-                  <div class="ai-card">
-                    <div class="ai-label microlabel">{t("ai.answer")}</div>
-                    <div class="ai-text md-body" use:aiLinks>{@html mdLite(turn.content)}</div>
-                  </div>
-                {/if}
-              {/each}
-              {#if aiPanel}
-                <div class="ai-card" class:error={aiPanel.status === "error"}>
+        {#if askTurns.length > 0 || aiPanel}
+          <div class="ask-thread" bind:this={askThreadEl}>
+            {#each askTurns as turn (turn)}
+              {#if turn.role === "user"}
+                <div class="ask-q">{turn.content}</div>
+              {:else}
+                <div class="ai-card">
                   <div class="ai-label microlabel">{t("ai.answer")}</div>
-                  {#if aiPanel.text === "" && aiPanel.status === "streaming"}
-                    <span class="thinking">{t("ai.thinking")}</span>
-                  {:else}
-                    <div class="ai-text md-body" use:aiLinks>{@html mdLite(aiPanel.text)}</div>
-                  {/if}
+                  <div class="ai-text md-body" use:aiLinks>{@html mdLite(turn.content)}</div>
                 </div>
               {/if}
-            </div>
-          {/if}
-          <form class="ask-form" onsubmit={submitAsk}>
-            <span class="ai-spark">✦</span>
-            <input
-              bind:this={askInput}
-              bind:value={askQuestion}
-              placeholder={askTurns.length > 0 ? t("ai.ask_followup") : t("ai.ask_placeholder")}
-              spellcheck="false"
-            />
-          </form>
-        {:else if aiPanel}
-          <div class="ai-card" class:error={aiPanel.status === "error"}>
-            <div class="ai-label microlabel">
-              {aiPanel.kind === "summary" ? t("ai.summary") : t("ai.answer")}
-            </div>
-            {#if aiPanel.text === "" && aiPanel.status === "streaming"}
-              <span class="thinking">{t("ai.thinking")}</span>
-            {:else}
-              <div class="ai-text md-body" use:aiLinks>{@html mdLite(aiPanel.text)}</div>
+            {/each}
+            {#if aiPanel}
+              <div class="ai-card" class:error={aiPanel.status === "error"}>
+                <div class="ai-label microlabel">{t("ai.answer")}</div>
+                {#if aiPanel.text === "" && aiPanel.status === "streaming"}
+                  <span class="thinking">{t("ai.thinking")}</span>
+                {:else}
+                  <div class="ai-text md-body" use:aiLinks>{@html mdLite(aiPanel.text)}</div>
+                {/if}
+              </div>
             {/if}
           </div>
         {/if}
+        <form class="ask-form" onsubmit={submitAsk}>
+          <span class="ai-spark">✦</span>
+          <input
+            bind:this={askInput}
+            bind:value={askQuestion}
+            placeholder={askTurns.length > 0 ? t("ai.ask_followup") : t("ai.ask_placeholder")}
+            spellcheck="false"
+          />
+        </form>
+        <div class="ask-quick">
+          <button class="quick-btn" onclick={() => quickPrompt(t("ai.prompt_summarize"))}>
+            {t("ai.summarize")}
+          </button>
+          <button class="quick-btn" onclick={() => quickPrompt(t("ai.prompt_translate"))}>
+            {t("ai.translate")}
+          </button>
+        </div>
       </div>
     {/if}
 
     <footer class="actions">
-      {#if aiRowOpen}
-        {#if ai.keyPresent}
-          <div class="ai-row">
-            <button class="ai-btn" onclick={aiDraftReply}>✦ {t("ai.draft_reply")}<kbd>D</kbd></button>
-            <button class="ai-btn" onclick={summarize}>✦ {t("ai.summarize")}<kbd>M</kbd></button>
-            <button class="ai-btn" onclick={openAsk}>✦ {t("ai.ask_about")}<kbd>Q</kbd></button>
-          </div>
-        {:else}
-          <div class="ai-row ai-hint">
-            <span class="ai-hint-text">{t("ai.needs_key")}</span>
-            <button class="ai-btn" onclick={() => ui.openSettings()}>
-              {t("nav.settings")} →
-            </button>
-          </div>
-        {/if}
+      {#if ai.keyPresent}
+        <button class="ai-btn" onclick={openAsk}>✦ {t("ai.ask")}<kbd>Q</kbd></button>
       {/if}
-      <div class="mail-row">
-        <button
-          class="ai-toggle"
-          class:open={aiRowOpen}
-          onclick={toggleAiRow}
-          title="Skim AI"
-          aria-expanded={aiRowOpen}
-        >
-          ✦
-        </button>
-        <button class="btn" onclick={() => reply("reply")}>{t("reading.reply")}<kbd>R</kbd></button>
-        {#if canReplyAll}
-          <button class="btn" onclick={() => reply("reply_all")}>{t("reading.reply_all")}<kbd>A</kbd></button>
-        {/if}
-        <button class="btn" onclick={() => reply("forward")}>{t("reading.forward")}<kbd>F</kbd></button>
-      </div>
+      <button class="btn" onclick={() => reply("reply")}>{t("reading.reply")}<kbd>R</kbd></button>
+      {#if canReplyAll}
+        <button class="btn" onclick={() => reply("reply_all")}>{t("reading.reply_all")}<kbd>A</kbd></button>
+      {/if}
+      <button class="btn" onclick={() => reply("forward")}>{t("reading.forward")}<kbd>F</kbd></button>
     </footer>
   {/if}
 </section>
@@ -1052,63 +1039,22 @@
 
   .actions {
     display: flex;
-    flex-direction: column;
-    gap: 8px;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
     padding: 10px 36px 12px;
     border-top: 1px solid var(--hairline);
   }
-  .ai-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .ai-hint {
-    align-items: center;
-    gap: 10px;
-  }
-  .ai-hint-text {
-    font-size: 12.5px;
-    color: var(--text-dim);
-    line-height: 1.4;
-  }
-  .mail-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-  }
   .ai-btn {
-    padding: 6px 12px;
+    padding: 7px 16px;
     border-radius: var(--radius-m);
     border: 1px solid var(--accent-dim);
     color: var(--accent);
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 600;
     white-space: nowrap;
   }
   .ai-btn:hover {
-    background: var(--accent-soft);
-  }
-  .ai-toggle {
-    width: 32px;
-    height: 32px;
-    display: grid;
-    place-items: center;
-    border-radius: var(--radius-m);
-    border: 1px solid var(--hairline-strong);
-    color: var(--text-faint);
-    font-size: 13px;
-    flex-shrink: 0;
-    transition:
-      color 0.12s,
-      border-color 0.12s;
-  }
-  .ai-toggle:hover {
-    background: var(--hover);
-  }
-  .ai-toggle.open {
-    color: var(--accent);
-    border-color: var(--accent-dim);
     background: var(--accent-soft);
   }
   .btn {
@@ -1210,6 +1156,28 @@
     flex: 1;
     font-size: 13.5px;
     user-select: text;
+  }
+
+  /* Quick prompts under the input: canned AI actions that seed the same chat.
+     Accent-tinted — allowed here because these are AI features. */
+  .ask-quick {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    margin-right: 30px;
+  }
+  .quick-btn {
+    padding: 4px 11px;
+    border-radius: var(--radius-m);
+    border: 1px solid var(--accent-dim);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .quick-btn:hover {
+    background: var(--accent-soft);
   }
 
   .ai-card {

@@ -1,6 +1,0 @@
-# Publish ONLY the static landing in docs/.
-# Ignore everything at the repo root...
-/*
-# ...then re-include just what Vercel needs.
-!docs
-!vercel.json

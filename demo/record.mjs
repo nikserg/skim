@@ -222,16 +222,28 @@ async function tour(d) {
   mark("inbox-loaded");
   await sleep(READ);
 
-  // Scene 1 — Summarize a long thread.
+  // Scene 1 — Ask about the open email: a quick Summarize, then a follow-up.
+  // The reading pane has one AI surface: "✦ Ask" opens the dock, and the
+  // quick-prompt buttons seed the same continuable chat.
   await d.click('.row:has-text("Q3 launch")');
   await page.locator(".subject", { hasText: "Q3 launch" }).first().waitFor();
   await sleep(READ);
-  await d.click('.ai-btn:has-text("Summarize")');
+  await d.click(".ai-btn");
+  await page.locator(".ai-dock .ask-form input").waitFor();
+  await sleep(BEAT);
+  await d.click('.quick-btn:has-text("Summarize")');
+  // "sync" lands in the closing sentence of the summary, so matching it means
+  // the stream is all but done and the chat will accept the next question.
   await d.waitText(".ai-card .ai-text", "sync");
+  await sleep(READ + 900);
+  await d.type(".ai-dock .ask-form input", "Which of the three is mine?");
+  await sleep(500);
+  await page.keyboard.press("Enter");
+  await d.waitText(".ai-card .ai-text", "yours");
   await sleep(READ + 900);
   await d.click('.ai-dock .dock-btn[aria-label="Close"]');
   await sleep(BEAT);
-  mark("scene1-summarize-done");
+  mark("scene1-ask-done");
 
   // Scene 2 — Search + ask across the mailbox (command palette).
   await d.click(".sidebar .search");
@@ -241,7 +253,14 @@ async function tour(d) {
   await sleep(700);
   await page.keyboard.press("Enter");
   await d.waitText(".chat-answer .chat-text", "Thursday");
+  // Source chips render only once a turn is complete, so this also tells us the
+  // follow-up box has been re-enabled (it's disabled while streaming).
   await page.locator(".source-chip").first().waitFor();
+  await sleep(READ + 900);
+  await d.type(".chat-followup input", "And is the Acme contract signed?");
+  await sleep(500);
+  await page.keyboard.press("Enter");
+  await d.waitText(".chat-answer .chat-text", "4.2");
   await sleep(READ + 900);
   await d.click(".source-chip");
   await page.locator(".subject", { hasText: "Q3 launch" }).first().waitFor();

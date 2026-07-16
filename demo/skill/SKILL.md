@@ -53,13 +53,19 @@ trust your eyes, not the exit code.
 
 1. Confirm the three files in `docs/` have fresh mtimes.
 2. Check dimensions: screenshots 800px wide, MP4 1280×800.
-3. Pull a few frames from the MP4 and **actually look at them**:
+3. Pull frames across the whole MP4 and **actually look at them**. Sample by
+   fraction rather than fixed seconds — the tour's length changes whenever a scene
+   is added or the pacing is retuned, so hardcoded timestamps rot:
    ```bash
-   ffmpeg -y -ss 6 -i docs/skim-demo.mp4 -frames:v 1 /tmp/f6.png    # inbox + AI summary
-   ffmpeg -y -ss 13 -i docs/skim-demo.mp4 -frames:v 1 /tmp/f13.png  # command palette answer
-   ffmpeg -y -ss 22 -i docs/skim-demo.mp4 -frames:v 1 /tmp/f22.png  # AI-drafted reply
+   dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 docs/skim-demo.mp4)
+   for k in 1 2 3 4 5 6 7; do
+     ffmpeg -y -hide_banner -loglevel error \
+       -ss $(echo "$dur * $k / 8" | bc -l) -i docs/skim-demo.mp4 -frames:v 1 /tmp/f$k.png
+   done
    ```
-   Each pane should be populated and the AI text present.
+   Every frame should show a populated pane, and the AI scenes should have their
+   streamed text. `demo/output/progress.log` names each scene as it finished, which
+   helps map a bad frame back to the step that produced it.
 4. View both screenshots — check the dark one especially (email bodies render in a
    sandboxed iframe with their own theming logic and can go dark-on-dark).
 
@@ -75,10 +81,15 @@ The harness leans on two contracts. The failure message tells you which one move
 add the matching `case`. Symptom: an empty pane or missing data rather than a crash.
 
 **Selectors and English labels** (`demo/record.mjs`). The tour clicks things like
-`.row`, `.ai-btn:has-text("Summarize")`, `.ai-input .instruction`. Renamed CSS classes or
+`.row`, `.quick-btn:has-text("Summarize")`, `.ai-input .instruction`. Renamed CSS classes or
 changed strings in `src/lib/i18n/locales/en.json` break the matching step, and the timeout
 error names the selector that failed. The demo forces `locale: "en"`, so English labels are
 what matter.
+
+The same goes for the fixtures: `demo/mock/data.ts` matches the `ai.prompt_*` strings to
+decide which scripted answer a quick prompt gets, and the tour waits on distinctive words
+from those answers (`"sync"`, `"yours"`, `"4.2"`). Reword a fixture and the wait that
+depends on it times out.
 
 All fixture data and every scripted AI response live in `demo/mock/data.ts` — that's the
 file to edit when you want the demo to *show* something different (different emails, a

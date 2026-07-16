@@ -375,6 +375,22 @@ She's attached the checklist and draft press note, and proposes a 30-min sync Th
 
 export const AI_ASK = `The launch is **Thursday**. Three items still need an owner: the **landing page copy** (due Wednesday), the **pricing page** toggle change, and the **launch email**. Anna is asking you specifically to take the final pass on the landing copy and to add your voice to the email before it goes out.`;
 
+// A follow-up asked inside an existing email chat. It leans on what was already
+// said instead of restating it — that's the point of the dock being one
+// continuable session rather than a series of one-shot answers.
+export const AI_ASK_FOLLOWUP = `Only the **landing page copy** is yours — Anna asked your team for the final pass by **Wednesday EOD**. The pricing page change sits with the web team, and the launch email just needs your voice on Anna's draft before it goes to the list.`;
+
+// The Translate quick-prompt. The fixture mailbox is written in English, so this
+// is a faithful pass-through; it exists so the button does something believable
+// when a human pokes at `npm run demo:dev`. The scripted tour doesn't click it.
+export const AI_TRANSLATE = `Hi Alex,
+
+Pulling the last threads together before **Thursday's launch**. Three things still need a clear owner: the **landing page copy** (final pass by Wednesday EOD), the **pricing page** (annual toggle above the fold, not yet in staging), and the **launch email** (drafted, but it needs your voice before the 12k send).
+
+Two open questions: whether to announce the API beta on day one or hold it for the follow-up post, and whether the Acme contract is countersigned before we name them in the press note.
+
+The checklist and the draft press note are attached. Anna proposes a 30-minute sync on Thursday morning.`;
+
 export const AI_CHAT = {
   answer: `The **Q3 launch is this Thursday**. The landing page is owned by your team — Anna asked for a final copy pass by **Wednesday EOD** [1]. Priya also moved the onboarding **design review to Friday at 10:00**, so it won't collide with launch day [2].`,
   steps: [
@@ -386,6 +402,46 @@ export const AI_CHAT = {
     { index: 2, messageId: 1031, threadId: 103, folderId: 1, subject: "Design review moved to Friday 10:00", from: "Priya Nair" },
   ],
 };
+
+// A follow-up in the palette chat: the agent goes back to the mailbox, reads a
+// new email and cites it as [3] — [1] keeps its number from the first answer,
+// which is what the real agent does with `priorCitations`.
+export const AI_CHAT_FOLLOWUP = {
+  answer: `Not yet. Marcus has legal sign-off on everything except **section 4.2** (the payment schedule), and he can have it countersigned by **Friday** once you approve his edit [3]. Anna wants that closed before Acme is named in the press note [1].`,
+  steps: [
+    { kind: "search", arg: "Acme contract countersigned", count: 2 },
+    { kind: "read", arg: "Contract redline — v3 ready for your review", count: null },
+  ],
+  citations: [
+    { index: 1, messageId: 1011, threadId: 101, folderId: 1, subject: "Q3 launch — final checklist & open questions", from: "Anna Weber" },
+    { index: 3, messageId: 1021, threadId: 102, folderId: 1, subject: "Contract redline — v3 ready for your review", from: "Marcus Lee" },
+  ],
+};
+
+// --- Picking which scripted answer to serve -------------------------------
+// Both AI chats hand the mock their whole history, so the fixtures can react to
+// what was actually asked instead of replaying one canned answer forever.
+
+type Turn = { role: string; content: string };
+
+const userTurns = (turns: Turn[] | undefined) => (turns ?? []).filter((t) => t.role === "user");
+
+/** The email chat (`ai_ask`). The quick-prompt buttons send the exact
+ *  `ai.prompt_*` strings from en.json — the demo pins `locale: "en"`, so
+ *  matching on their English opening word is safe. Anything else is a
+ *  free-form question, and a second one in the session is a follow-up. */
+export function askAnswer(turns: Turn[] | undefined): string {
+  const asked = userTurns(turns);
+  const last = (asked[asked.length - 1]?.content ?? "").toLowerCase();
+  if (last.startsWith("summarize")) return AI_SUMMARY;
+  if (last.startsWith("translate")) return AI_TRANSLATE;
+  return asked.length > 1 ? AI_ASK_FOLLOWUP : AI_ASK;
+}
+
+/** The mailbox-wide palette chat (`ai_chat`): opener, then follow-up. */
+export function chatTurn(turns: Turn[] | undefined): typeof AI_CHAT {
+  return userTurns(turns).length > 1 ? AI_CHAT_FOLLOWUP : AI_CHAT;
+}
 
 // Reply drafted in the compose window (ai_compose, reply mode).
 export const AI_REPLY = `Hi Anna,

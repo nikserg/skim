@@ -7,8 +7,10 @@ current as the app evolves and never leaks personal mail.
 
 The tour covers four features:
 
-1. **Summarize** a long thread (streaming AI summary)
-2. **Search + Ask** across the mailbox (command palette → AI answer with citations)
+1. **Ask about the open email** (`✦ Ask` → the `Summarize` quick prompt → a
+   follow-up in the same chat)
+2. **Search + Ask** across the mailbox (command palette → AI answer with citations
+   → a follow-up that sends the agent back to the mailbox)
 3. **Draft a reply with AI** (compose window)
 4. **Compose a new email with AI** (from a one-line instruction)
 
@@ -16,7 +18,7 @@ The tour covers four features:
 
 Skim's entire backend surface goes through one choke point: the Tauri IPC layer
 (`invoke()` and streaming `Channel`s in `src/lib/api.ts`). The UI never talks to a
-server directly — it just calls commands like `list_threads` or `ai_summarize`.
+server directly — it just calls commands like `list_threads` or `ai_ask`.
 
 So the demo swaps **only that layer**:
 
@@ -115,4 +117,4 @@ DEMO_PREBUILT=1 node demo/record.mjs
 </video>
 ```
 
-~1 MB and far crisper than a GIF at the same size.
+~2 MB and far crisper than a GIF at the same size.

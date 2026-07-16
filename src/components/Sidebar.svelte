@@ -93,6 +93,7 @@
             title={collapsed ? folder.displayName : undefined}
           >
             <span class="dot"></span>
+            <span class="initial" aria-hidden="true">{folder.displayName.charAt(0).toUpperCase()}</span>
             <span class="name">{folder.displayName}</span>
             {#if folder.unreadCount > 0}
               <span class="count">{folder.unreadCount}</span>
@@ -270,6 +271,13 @@
     border: 1.5px solid var(--text-faint);
     margin: 0 3px;
   }
+  /* First letter of a label — the icon stand-in for the collapsed rail, where
+     an anonymous dot tells you nothing. Hidden in the expanded menu. */
+  .initial {
+    display: none;
+    font-size: 13px;
+    font-weight: 600;
+  }
 
   .footer {
     display: flex;
@@ -343,7 +351,10 @@
     margin-top: 0;
   }
   .sidebar.collapsed .dot {
-    margin: 0;
+    display: none;
+  }
+  .sidebar.collapsed .initial {
+    display: block;
   }
   /* unread count → corner badge (ink, never the AI accent) */
   .sidebar.collapsed .count {

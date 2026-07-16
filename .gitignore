@@ -22,7 +22,6 @@ Thumbs.db
 # Logs
 *.log
 
-.vercel
 .env*
 
 # Demo generator: build + generated video assets (regenerate with `npm run demo`)

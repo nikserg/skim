@@ -161,12 +161,6 @@
       case "KeyF":
         void replyToSelected("forward");
         return;
-      case "KeyD":
-        if (ai.keyPresent) ui.readingAi?.draftReply();
-        return;
-      case "KeyM":
-        if (ai.keyPresent) ui.readingAi?.summarize();
-        return;
       case "KeyQ":
         if (ai.keyPresent) ui.readingAi?.ask();
         return;

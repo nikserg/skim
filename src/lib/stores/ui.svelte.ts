@@ -4,7 +4,7 @@ import type { Lightness, Temperature, Theme } from "../types";
 const media = window.matchMedia("(prefers-color-scheme: dark)");
 
 /** AI actions the reading pane exposes to the global keyboard handler. */
-type ReadingAiActions = { draftReply: () => void; summarize: () => void; ask: () => void };
+type ReadingAiActions = { ask: () => void };
 let readingAi: ReadingAiActions | null = null;
 
 /** Message currently open in the reading pane, for AI context. Non-reactive —

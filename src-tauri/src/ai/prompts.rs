@@ -54,25 +54,6 @@ fn render_emails(emails: &[EmailBlock], limit: usize) -> String {
         .join("\n\n")
 }
 
-pub fn summarize(emails: &[EmailBlock], now: &str, locale: &str) -> (String, String) {
-    let system = format!(
-        "You are Skim's email assistant. Be terse and concrete. {} {}",
-        now_block(now),
-        locale_line(locale)
-    );
-    let user = format!(
-        "Summarize this email conversation in 2–4 short bullet points. \
-         Account for any attached files (their extracted text, or documents/images \
-         provided to you directly). Call out action items, deadlines, and any asks \
-         directed at the user. No preamble.\n\
-         Formatting: '-' bullets and **bold** for the key terms (names, figures, \
-         deadlines); no headings. A markdown '|' table is fine only when the data is \
-         genuinely tabular.\n\n{}",
-        render_emails(emails, MAX_BODY_CHARS / emails.len().max(1))
-    );
-    (system, user)
-}
-
 /// The user's standing writer preferences from Settings.
 #[derive(Default, Clone)]
 pub struct WriterProfile {
@@ -134,55 +115,6 @@ fn profile_block(profile: &WriterProfile) -> String {
     out
 }
 
-/// `reply_chain` is the conversation in chronological order; the LAST entry
-/// is the message being replied to. Empty for a fresh email.
-pub fn draft(
-    instruction: &str,
-    reply_chain: &[EmailBlock],
-    tone: Option<&str>,
-    profile: &WriterProfile,
-    now: &str,
-    locale: &str,
-) -> (String, String) {
-    let tone_line = match tone {
-        Some("shorter") => "Keep it under 80 words.".to_string(),
-        Some("warmer") => "Use a friendly, warm register.".to_string(),
-        Some("formal") => "Use a professional, formal register.".to_string(),
-        // The per-request tone chip overrides the standing style.
-        _ => style_directive(profile),
-    };
-    // Replies follow the conversation's language, not the UI locale.
-    let language_rule = if reply_chain.is_empty() {
-        format!(
-            "Write in the language the instruction implies; otherwise {}",
-            locale_line(locale)
-        )
-    } else {
-        "Write the reply in the language of the message being replied to — \
-         NOT the user's interface language, unless they are the same."
-            .to_string()
-    };
-    let system = format!(
-        "You draft emails for {}, writing in their voice (first person). Write only the \
-         email body — no subject line, no commentary, no placeholder signature blocks. \
-         {} {language_rule} {tone_line}{}",
-        profile.name,
-        now_block(now),
-        profile_block(profile)
-    );
-    let user = if reply_chain.is_empty() {
-        format!("Write an email that does the following: {instruction}")
-    } else {
-        let per_email = (MAX_BODY_CHARS / reply_chain.len().max(1)).min(MAX_CHAIN_CHARS);
-        format!(
-            "The conversation so far, oldest first:\n\n{}\n\nWrite a reply to the LAST \
-             message that does the following: {instruction}",
-            render_emails(reply_chain, per_email)
-        )
-    };
-    (system, user)
-}
-
 /// System prompt + reply-context preamble for an interactive drafting session.
 /// Each user turn is an instruction; the assistant answers with the full,
 /// current email body. `reply_chain` is empty for a fresh email; otherwise it
@@ -237,34 +169,6 @@ pub fn compose_session(
         )
     };
     (system, preamble)
-}
-
-pub fn adjust(
-    current_text: &str,
-    adjustment: &str,
-    profile: &WriterProfile,
-    now: &str,
-    locale: &str,
-) -> (String, String) {
-    let directive = match adjustment {
-        "shorter" => "Rewrite it to be significantly shorter (aim for half the length) while keeping every essential point.",
-        "warmer" => "Rewrite it in a friendlier, warmer register without losing substance.",
-        "formal" => "Rewrite it in a professional, formal register.",
-        other => other,
-    };
-    let system = format!(
-        "You edit email drafts written in the voice of {}. Output only the rewritten \
-         email body, nothing else. {} Keep the original language of the draft; otherwise {}{}",
-        profile.name,
-        now_block(now),
-        locale_line(locale),
-        profile_block(profile)
-    );
-    let user = format!(
-        "Current draft:\n\n{}\n\n{directive}",
-        truncate(current_text, MAX_BODY_CHARS)
-    );
-    (system, user)
 }
 
 /// Q&A session over an email conversation. `chain` is chronological; the last

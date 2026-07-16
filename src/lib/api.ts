@@ -150,9 +150,6 @@ export const aiApi = {
 /** Start a streaming AI request. Returns a cancel function. */
 export function aiStream(
   command:
-    | "ai_summarize"
-    | "ai_draft"
-    | "ai_adjust_draft"
     | "ai_compose"
     | "ai_ask"
     | "ai_chat"

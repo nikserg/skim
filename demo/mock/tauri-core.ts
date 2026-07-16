@@ -52,8 +52,8 @@ function streamText(
   setTimeout(tick, startDelay);
 }
 
-function runChat(channel: Channel<any>, requestId: string): void {
-  const { steps, answer, citations } = db.AI_CHAT;
+function runChat(channel: Channel<any>, requestId: string, turns: any[] | undefined): void {
+  const { steps, answer, citations } = db.chatTurn(turns);
   let delay = 300;
   steps.forEach((s, idx) => {
     const id = `step-${idx}`;
@@ -72,11 +72,8 @@ function runChat(channel: Channel<any>, requestId: string): void {
 }
 
 const AI_COMMANDS = new Set([
-  "ai_summarize",
   "ai_ask",
   "ai_compose",
-  "ai_draft",
-  "ai_adjust_draft",
   "ai_chat",
   "ai_recap",
   "ai_analyze_style",
@@ -89,21 +86,19 @@ function handleAi(cmd: string, args: any): void {
   if (!channel) return;
 
   switch (cmd) {
-    case "ai_summarize":
-      streamText(channel, db.AI_SUMMARY, requestId);
-      return;
+    // The email chat and the palette chat are both continuable: the UI sends the
+    // whole history, and the fixtures answer the question that was actually
+    // asked (quick prompt, opener, or follow-up).
     case "ai_ask":
-      streamText(channel, db.AI_ASK, requestId);
+      streamText(channel, db.askAnswer(args?.turns), requestId);
       return;
     case "ai_recap":
       streamText(channel, db.AI_SUMMARY, requestId);
       return;
     case "ai_chat":
-      runChat(channel, requestId);
+      runChat(channel, requestId, args?.turns);
       return;
-    case "ai_compose":
-    case "ai_draft":
-    case "ai_adjust_draft": {
+    case "ai_compose": {
       const isReply = args?.replyToMessageId != null;
       streamText(channel, isReply ? db.AI_REPLY : db.AI_COMPOSE_NEW, requestId);
       return;
