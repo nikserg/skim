@@ -3,6 +3,7 @@
   import Sidebar from "./components/Sidebar.svelte";
   import MessageList from "./components/MessageList.svelte";
   import ReadingPane from "./components/ReadingPane.svelte";
+  import ComposeForm from "./components/ComposeForm.svelte";
   import AiRecap from "./components/AiRecap.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import ShortcutsOverlay from "./components/ShortcutsOverlay.svelte";
@@ -13,7 +14,7 @@
   import { mail } from "./lib/stores/mail.svelte";
   import { palette } from "./lib/stores/palette.svelte";
   import { ui } from "./lib/stores/ui.svelte";
-  import type { Account } from "./lib/types";
+  import type { Account, Draft } from "./lib/types";
 
   let ready = $state(false);
 
@@ -21,6 +22,76 @@
   $effect(() => {
     if (mail.selectedThreadId !== null && ui.recapOpen) ui.closeRecap();
   });
+
+  // ---- In-pane draft editor (Drafts folder) ----
+  // Selecting a draft opens the compose surface in the reading pane instead of
+  // the read-only view. `draftEditorId` is the local draft to edit; `draftOrigin`
+  // the Drafts-folder message it mirrors (needed to remove it on discard).
+  let draftEditorId = $state<number | null>(null);
+  let draftOrigin = $state<number | null>(null);
+  let draftResolveToken = 0;
+
+  $effect(() => {
+    const folder = mail.selectedFolder;
+    const threadId = mail.selectedThreadId;
+    const messageId = mail.selectedMessageId;
+    if (folder?.role !== "drafts" || threadId === null) {
+      draftEditorId = null;
+      draftOrigin = null;
+      return;
+    }
+    const token = ++draftResolveToken;
+    void (async () => {
+      try {
+        // Grouped rows carry no messageId — resolve the draft message from the
+        // thread (its latest message).
+        let msgId = messageId;
+        if (msgId == null) {
+          const detail = await api.getThread(threadId);
+          msgId = detail.messages[detail.messages.length - 1]?.id ?? null;
+        }
+        if (msgId == null) return;
+        const draft = await api.editDraft(msgId);
+        if (token !== draftResolveToken) return; // selection moved on
+        draftOrigin = msgId;
+        draftEditorId = draft.id;
+      } catch {
+        if (token === draftResolveToken) {
+          draftEditorId = null;
+          draftOrigin = null;
+        }
+      }
+    })();
+  });
+
+  function draftPreview(body: string): string {
+    return (body.split(/\r?\n/).find((l) => l.trim()) ?? "").slice(0, 200);
+  }
+
+  /** Reflect a live autosave in the Drafts list row. */
+  function onDraftLocalSave(d: Draft) {
+    if (mail.selectedThreadId !== null) {
+      mail.patchThreadRow(mail.selectedThreadId, {
+        subject: d.subject,
+        snippet: draftPreview(d.body),
+      });
+    }
+  }
+
+  function onDraftSent() {
+    // The backend removes the server copy from Drafts; drop the row now.
+    if (mail.selectedThreadId !== null) mail.removeThreadFromList(mail.selectedThreadId);
+    draftEditorId = null;
+    draftOrigin = null;
+  }
+
+  function onDraftDiscarded() {
+    // The form deleted the local draft; remove the server copy too.
+    if (draftOrigin !== null) void api.deleteMessages([draftOrigin]);
+    if (mail.selectedThreadId !== null) mail.removeThreadFromList(mail.selectedThreadId);
+    draftEditorId = null;
+    draftOrigin = null;
+  }
 
   $effect(() => {
     void (async () => {
@@ -133,8 +204,18 @@
       void composeNew();
       return;
     }
+    // Escape leaves the in-pane draft editor (its teardown writes edits back),
+    // even while a field is focused — handle it before the typing guard.
+    if (e.key === "Escape" && draftEditorId !== null && mail.selectedFolder?.role === "drafts") {
+      e.preventDefault();
+      mail.selectedThreadId = null;
+      return;
+    }
     if (palette.open || ui.shortcutsOpen || isTyping() || e.ctrlKey || e.metaKey || e.altKey)
       return;
+    // The in-pane draft editor owns the keyboard — don't let list shortcuts
+    // (archive/reply/star…) act on the draft being edited.
+    if (mail.selectedFolder?.role === "drafts" && draftEditorId !== null) return;
 
     switch (e.code) {
       case "KeyJ":
@@ -209,7 +290,16 @@
       <main class="panes">
         <Sidebar />
         <MessageList />
-        {#if ui.recapOpen && mail.selectedThreadId === null}
+        {#if mail.selectedFolder?.role === "drafts" && draftEditorId !== null}
+          {#key draftEditorId}
+            <ComposeForm
+              draftId={draftEditorId}
+              onSent={onDraftSent}
+              onDiscarded={onDraftDiscarded}
+              onLocalSave={onDraftLocalSave}
+            />
+          {/key}
+        {:else if ui.recapOpen && mail.selectedThreadId === null}
           <AiRecap />
         {:else}
           <ReadingPane />

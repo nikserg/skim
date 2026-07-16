@@ -979,6 +979,9 @@ impl Engine {
         if kind == "unsubscribe" {
             return self.execute_unsubscribe(payload).await;
         }
+        if kind == "save_draft" {
+            return self.execute_save_draft(payload).await;
+        }
         let imap_name = payload["imapName"].as_str().unwrap_or_default().to_string();
         let folder_id = payload["folderId"].as_i64();
         let uids: Vec<u32> = payload["uids"]
@@ -1071,47 +1074,28 @@ impl Engine {
         };
 
         // Threading headers from the message being replied to.
-        let refs = if let Some(parent_id) = draft.reply_to_message_id {
-            self.db
-                .call(move |conn| {
-                    use rusqlite::OptionalExtension;
-                    let row: Option<(Option<String>, Option<String>)> = conn
-                        .query_row(
-                            "SELECT message_id, references_ids FROM messages WHERE id = ?1",
-                            rusqlite::params![parent_id],
-                            |r| Ok((r.get(0)?, r.get(1)?)),
-                        )
-                        .optional()?;
-                    let (msgid, refs_json) = row.unwrap_or((None, None));
-                    let mut references: Vec<String> = refs_json
-                        .and_then(|j| serde_json::from_str::<Vec<String>>(&j).ok())
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|r| format!("<{r}>"))
-                        .collect();
-                    let in_reply_to = msgid.map(|m| format!("<{m}>"));
-                    if let Some(irt) = &in_reply_to {
-                        references.push(irt.clone());
-                    }
-                    Ok(smtp::OutgoingRefs {
-                        in_reply_to,
-                        references,
-                    })
-                })
-                .await?
-        } else {
-            smtp::OutgoingRefs {
-                in_reply_to: None,
-                references: Vec::new(),
-            }
-        };
+        let refs = self.outgoing_refs(draft.reply_to_message_id).await?;
+
+        // A server-backed draft keeps a stable Message-ID so the Sent copy and
+        // the draft we're about to remove from the Drafts folder share it.
+        let imap_message_id = self
+            .db
+            .call(move |conn| crate::db::drafts::origin_coords(conn, draft_id))
+            .await?
+            .and_then(|(_, mid)| mid);
 
         let attachments = self
             .db
             .call(move |conn| crate::db::draft_attachments::load_for_send(conn, draft_id))
             .await?;
 
-        let raw = smtp::build_message(&self.account, &draft, &refs, &attachments)?;
+        let raw = smtp::build_message(
+            &self.account,
+            &draft,
+            &refs,
+            &attachments,
+            imap_message_id.as_deref(),
+        )?;
 
         let mut cache = self.oauth_token.take();
         let creds = resolve_credentials(&self.db, &self.account, &mut cache).await?;
@@ -1120,12 +1104,164 @@ impl Engine {
 
         let sent_folder_id = self.mirror_to_sent(&raw).await;
 
+        // Remove the now-sent copy from the Drafts folder (server + local).
+        if let Some(mid) = &imap_message_id {
+            if let Err(e) = self.remove_server_draft(mid).await {
+                tracing::warn!(error = %e, "cannot remove sent draft from Drafts folder");
+            }
+        }
+
         self.db
             .call(move |conn| crate::db::drafts::delete(conn, draft_id))
             .await?;
         let _ = self.app.emit("drafts:updated", json!({}));
         let _ = self.app.emit("mail:sent", json!({ "draftId": draft_id }));
         Ok(sent_folder_id)
+    }
+
+    /// Build threading headers (In-Reply-To/References) for an outgoing message
+    /// from the local parent it replies to.
+    async fn outgoing_refs(
+        &mut self,
+        reply_to_message_id: Option<i64>,
+    ) -> Result<smtp::OutgoingRefs> {
+        let Some(parent_id) = reply_to_message_id else {
+            return Ok(smtp::OutgoingRefs {
+                in_reply_to: None,
+                references: Vec::new(),
+            });
+        };
+        self.db
+            .call(move |conn| {
+                use rusqlite::OptionalExtension;
+                let row: Option<(Option<String>, Option<String>)> = conn
+                    .query_row(
+                        "SELECT message_id, references_ids FROM messages WHERE id = ?1",
+                        rusqlite::params![parent_id],
+                        |r| Ok((r.get(0)?, r.get(1)?)),
+                    )
+                    .optional()?;
+                let (msgid, refs_json) = row.unwrap_or((None, None));
+                let mut references: Vec<String> = refs_json
+                    .and_then(|j| serde_json::from_str::<Vec<String>>(&j).ok())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|r| format!("<{r}>"))
+                    .collect();
+                let in_reply_to = msgid.map(|m| format!("<{m}>"));
+                if let Some(irt) = &in_reply_to {
+                    references.push(irt.clone());
+                }
+                Ok(smtp::OutgoingRefs {
+                    in_reply_to,
+                    references,
+                })
+            })
+            .await
+    }
+
+    /// Write a server-backed draft back to the IMAP Drafts folder: append the
+    /// current MIME with the `\Draft` flag under its stable Message-ID, then
+    /// expunge any prior copies sharing that Message-ID. Ordering the SEARCH
+    /// before the APPEND keeps retries idempotent (they converge to one copy).
+    async fn execute_save_draft(&mut self, payload: &serde_json::Value) -> Result<Option<i64>> {
+        let Some(draft_id) = payload["draftId"].as_i64() else {
+            return Ok(None);
+        };
+        let draft = self
+            .db
+            .call(move |conn| crate::db::drafts::get(conn, draft_id))
+            .await?;
+        let Some(draft) = draft else {
+            return Ok(None); // sent or discarded before this op drained
+        };
+        let imap_message_id = self
+            .db
+            .call(move |conn| crate::db::drafts::origin_coords(conn, draft_id))
+            .await?
+            .and_then(|(_, mid)| mid);
+        let Some(imap_message_id) = imap_message_id else {
+            return Ok(None); // not a server-backed draft; nothing to write
+        };
+
+        let refs = self.outgoing_refs(draft.reply_to_message_id).await?;
+        let attachments = self
+            .db
+            .call(move |conn| crate::db::draft_attachments::load_for_send(conn, draft_id))
+            .await?;
+        let raw = smtp::build_message(
+            &self.account,
+            &draft,
+            &refs,
+            &attachments,
+            Some(&imap_message_id),
+        )?;
+
+        let drafts_name = self.role_folder("drafts", "Drafts").await?;
+        self.ensure_selected(&drafts_name).await?;
+        let old_uids = self.uid_search_message_id(&imap_message_id).await?;
+        {
+            let session = self.session().await?;
+            session
+                .append(&drafts_name, Some("(\\Draft)"), None, &raw)
+                .await
+                .map_err(imap_err)?;
+        }
+        if !old_uids.is_empty() {
+            let set = old_uids
+                .iter()
+                .map(|u| u.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            self.delete_and_expunge(&set).await?;
+        }
+        Ok(self.folder_id_by_name(&drafts_name).await)
+    }
+
+    /// Delete a server draft (identified by its Message-ID) from the Drafts
+    /// folder. Used when a draft is sent or discarded.
+    async fn remove_server_draft(&mut self, imap_message_id: &str) -> Result<()> {
+        let drafts_name = self.role_folder("drafts", "Drafts").await?;
+        self.ensure_selected(&drafts_name).await?;
+        let uids = self.uid_search_message_id(imap_message_id).await?;
+        if !uids.is_empty() {
+            let set = uids
+                .iter()
+                .map(|u| u.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            self.delete_and_expunge(&set).await?;
+        }
+        Ok(())
+    }
+
+    /// UID SEARCH the selected mailbox for a message by its Message-ID header.
+    async fn uid_search_message_id(&mut self, imap_message_id: &str) -> Result<Vec<u32>> {
+        let session = self.session().await?;
+        let set = session
+            .uid_search(format!("HEADER MESSAGE-ID {imap_message_id}"))
+            .await
+            .map_err(imap_err)?;
+        Ok(set.into_iter().collect())
+    }
+
+    /// Look up a folder's local id by its IMAP name.
+    async fn folder_id_by_name(&mut self, imap_name: &str) -> Option<i64> {
+        let account_id = self.account.id.clone();
+        let name = imap_name.to_string();
+        self.db
+            .call(move |conn| {
+                use rusqlite::OptionalExtension;
+                conn.query_row(
+                    "SELECT id FROM folders WHERE account_id = ?1 AND imap_name = ?2",
+                    rusqlite::params![account_id, name],
+                    |r| r.get(0),
+                )
+                .optional()
+            })
+            .await
+            .ok()
+            .flatten()
     }
 
     /// Send a queued calendar RSVP (iMIP METHOD:REPLY) to the organizer.

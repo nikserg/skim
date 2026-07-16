@@ -138,6 +138,9 @@ export interface Draft {
   bcc: string;
   subject: string;
   body: string;
+  /** The local message id this draft mirrors, when opened from the Drafts
+   *  folder; null for ordinary local-only drafts. */
+  originMessageId: number | null;
 }
 
 /** A file staged on a draft. Metadata only — the bytes stay in the backend. */

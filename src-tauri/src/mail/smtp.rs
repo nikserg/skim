@@ -29,11 +29,16 @@ pub struct OutgoingRefs {
 /// `attachments` is a list of `(filename, mime_type, bytes)`. With none, the
 /// message is a single text/plain part (unchanged from plain mail); with any,
 /// it becomes a `multipart/mixed` of the body plus one part per file.
+///
+/// `message_id` overrides the RFC822 Message-ID (given without angle brackets);
+/// pass `Some` to keep a stable identity when the same draft is saved back to
+/// the IMAP Drafts folder and later sent, `None` to let lettre generate one.
 pub fn build_message(
     account: &Account,
     draft: &Draft,
     refs: &OutgoingRefs,
     attachments: &[(String, String, Vec<u8>)],
+    message_id: Option<&str>,
 ) -> Result<Vec<u8>> {
     let from: Mailbox = match &account.display_name {
         Some(name) if !name.is_empty() => format!("{} <{}>", name, account.email),
@@ -66,6 +71,13 @@ pub fn build_message(
     }
 
     builder = builder.subject(&draft.subject);
+
+    if let Some(mid) = message_id {
+        // lettre uses the given value verbatim (unlike its auto-generated id,
+        // which it wraps); our ids are stored bare, so add the angle brackets.
+        let bare = mid.trim_matches(|c| c == '<' || c == '>');
+        builder = builder.message_id(Some(format!("<{bare}>")));
+    }
 
     if let Some(irt) = &refs.in_reply_to {
         builder = builder.in_reply_to(irt.clone());
@@ -265,6 +277,7 @@ mod tests {
             bcc: String::new(),
             subject: "Hi".into(),
             body: "Body text".into(),
+            origin_message_id: None,
         }
     }
 
@@ -277,7 +290,7 @@ mod tests {
 
     #[test]
     fn plain_message_has_no_multipart() {
-        let raw = build_message(&account(), &draft(), &no_refs(), &[]).unwrap();
+        let raw = build_message(&account(), &draft(), &no_refs(), &[], None).unwrap();
         let text = String::from_utf8_lossy(&raw);
         assert!(!text.to_ascii_lowercase().contains("multipart/mixed"));
         assert!(text.contains("Body text"));
@@ -290,7 +303,7 @@ mod tests {
             "text/plain".to_string(),
             b"hello attachment".to_vec(),
         )];
-        let raw = build_message(&account(), &draft(), &no_refs(), &attachments).unwrap();
+        let raw = build_message(&account(), &draft(), &no_refs(), &attachments, None).unwrap();
         let text = String::from_utf8_lossy(&raw);
         assert!(text.to_ascii_lowercase().contains("multipart/mixed"));
         // The filename appears in the Content-Disposition of the attachment part.
@@ -306,8 +319,23 @@ mod tests {
             vec![0u8, 1, 2, 3],
         )];
         // Must not panic on an unparseable MIME type.
-        let raw = build_message(&account(), &draft(), &no_refs(), &attachments).unwrap();
+        let raw = build_message(&account(), &draft(), &no_refs(), &attachments, None).unwrap();
         let text = String::from_utf8_lossy(&raw);
         assert!(text.contains("blob.bin"));
+    }
+
+    #[test]
+    fn message_id_override_is_used() {
+        let raw = build_message(
+            &account(),
+            &draft(),
+            &no_refs(),
+            &[],
+            Some("skim-abc@example.com"),
+        )
+        .unwrap();
+        let text = String::from_utf8_lossy(&raw);
+        // lettre wraps the id in angle brackets on the Message-ID header line.
+        assert!(text.contains("<skim-abc@example.com>"));
     }
 }

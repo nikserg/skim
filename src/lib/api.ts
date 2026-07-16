@@ -73,6 +73,8 @@ export const api = {
   createDraft: () => invoke<Draft>("create_draft"),
   getDraft: (draftId: number) => invoke<Draft>("get_draft", { draftId }),
   updateDraft: (draft: Draft) => invoke<void>("update_draft", { draft }),
+  saveServerDraft: (draft: Draft) => invoke<void>("save_server_draft", { draft }),
+  editDraft: (messageId: number) => invoke<Draft>("edit_draft", { messageId }),
   deleteDraft: (draftId: number) => invoke<void>("delete_draft", { draftId }),
   getReplyTemplate: (messageId: number, mode: "reply" | "reply_all" | "forward") =>
     invoke<Draft>("get_reply_template", { messageId, mode }),

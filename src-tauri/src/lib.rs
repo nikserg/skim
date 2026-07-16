@@ -208,6 +208,8 @@ pub fn run() {
             commands::compose::create_draft,
             commands::compose::get_draft,
             commands::compose::update_draft,
+            commands::compose::save_server_draft,
+            commands::compose::edit_draft,
             commands::compose::delete_draft,
             commands::compose::get_reply_template,
             commands::compose::send_draft,

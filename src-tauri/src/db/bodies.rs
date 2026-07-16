@@ -79,6 +79,44 @@ pub fn set_body(
     tx.commit()
 }
 
+/// Optimistically mirror an edited server draft onto its local message row so
+/// the list and a reopen show the new content before the write-back to the IMAP
+/// Drafts folder lands. Overwrites subject/snippet/body (drafts are plain text,
+/// so the HTML body is cleared) and keeps FTS + the thread snippet coherent.
+pub fn patch_local_draft(
+    conn: &mut Connection,
+    message_id: i64,
+    subject: &str,
+    body: &str,
+) -> rusqlite::Result<()> {
+    let snippet: String = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    let snippet: String = snippet.chars().take(200).collect();
+    let tx = conn.transaction()?;
+    tx.execute(
+        "UPDATE messages SET subject = ?2, snippet = ?3 WHERE id = ?1",
+        params![message_id, subject, snippet],
+    )?;
+    tx.execute(
+        "INSERT INTO message_bodies (message_id, body_html, body_text)
+         VALUES (?1, NULL, ?2)
+         ON CONFLICT(message_id) DO UPDATE SET body_html = NULL, body_text = excluded.body_text",
+        params![message_id, body],
+    )?;
+    queries::fts_index_body(&tx, message_id, body)?;
+    let thread_id: Option<i64> = tx
+        .query_row(
+            "SELECT thread_id FROM messages WHERE id = ?1",
+            params![message_id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten();
+    if let Some(tid) = thread_id {
+        threading::recompute_thread(&tx, tid)?;
+    }
+    tx.commit()
+}
+
 pub fn get_body(
     conn: &Connection,
     message_pk: i64,
