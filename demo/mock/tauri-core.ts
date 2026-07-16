@@ -141,6 +141,8 @@ export function invoke<T = any>(cmd: string, args: any = {}): Promise<T> {
       return ok([db.ACCOUNT]);
     case "google_oauth_available":
       return ok(false);
+    case "microsoft_oauth_available":
+      return ok(false);
     case "autoconfig_lookup":
       return ok(null);
 

@@ -88,7 +88,7 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
     let (tx, mut rx) = mpsc::unbounded_channel::<SyncCommand>();
     let handle = SyncHandle { tx: tx.clone() };
 
-    spawn_idle_watcher(db.clone(), account.clone(), tx.clone());
+    spawn_idle_watcher(account.clone(), tx.clone());
 
     tauri::async_runtime::spawn(async move {
         let mut engine = Engine {
@@ -142,7 +142,6 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
 
 /// Shared credential resolution (worker + IDLE connection).
 async fn resolve_credentials(
-    db: &Db,
     account: &Account,
     oauth_cache: &mut Option<(String, i64)>,
 ) -> Result<imap_client::Credentials> {
@@ -155,14 +154,31 @@ async fn resolve_credentials(
                 return Ok(imap_client::Credentials::OauthToken(token.clone()));
             }
         }
-        let config = oauth_config(db)
-            .await?
-            .ok_or_else(|| SkimError::other("oauth", "Google OAuth client id is not configured"))?;
-        let (token, expires_at) = oauth::refresh_access_token(&config, &secret).await?;
-        *oauth_cache = Some((token.clone(), expires_at));
-        Ok(imap_client::Credentials::OauthToken(token))
+        let provider = oauth_provider_for(account);
+        let config = oauth::baked_in_config(provider)
+            .ok_or_else(|| SkimError::other("oauth", "OAuth client id is not configured"))?;
+        let refreshed = oauth::refresh_access_token(&config, &secret).await?;
+        // Microsoft rotates the refresh token on every use; persist the new one
+        // so the account keeps working past the old token's lifetime.
+        if let Some(new_rt) = refreshed.new_refresh_token {
+            if new_rt != secret {
+                secrets::set(&secrets::mail_key(&account.id), &new_rt)?;
+            }
+        }
+        *oauth_cache = Some((refreshed.access_token.clone(), refreshed.expires_at));
+        Ok(imap_client::Credentials::OauthToken(refreshed.access_token))
     } else {
         Ok(imap_client::Credentials::Password(secret))
+    }
+}
+
+/// Which OAuth issuer backs this account, derived from its provider. `auth_kind`
+/// stays a plain "password"/"oauth" flag, so existing accounts need no migration.
+fn oauth_provider_for(account: &Account) -> oauth::OauthProvider {
+    if account.provider == "microsoft" {
+        oauth::OauthProvider::Microsoft
+    } else {
+        oauth::OauthProvider::Google
     }
 }
 
@@ -227,7 +243,7 @@ impl Engine {
     async fn session(&mut self) -> Result<&mut imap_client::Session> {
         if self.session.is_none() {
             let mut cache = self.oauth_token.take();
-            let creds = resolve_credentials(&self.db, &self.account, &mut cache).await?;
+            let creds = resolve_credentials(&self.account, &mut cache).await?;
             self.oauth_token = cache;
             let session = imap_client::login(
                 &self.account.imap_host,
@@ -1098,7 +1114,7 @@ impl Engine {
         )?;
 
         let mut cache = self.oauth_token.take();
-        let creds = resolve_credentials(&self.db, &self.account, &mut cache).await?;
+        let creds = resolve_credentials(&self.account, &mut cache).await?;
         self.oauth_token = cache;
         smtp::send(&self.account, &creds, &raw).await?;
 
@@ -1279,7 +1295,7 @@ impl Engine {
         let raw = smtp::build_calendar_reply(&self.account, &to, &subject, &text_body, &ics)?;
 
         let mut cache = self.oauth_token.take();
-        let creds = resolve_credentials(&self.db, &self.account, &mut cache).await?;
+        let creds = resolve_credentials(&self.account, &mut cache).await?;
         self.oauth_token = cache;
         smtp::send(&self.account, &creds, &raw).await?;
 
@@ -1321,7 +1337,7 @@ impl Engine {
                 let raw = smtp::build_unsubscribe_mail(&self.account, to, subject)?;
 
                 let mut cache = self.oauth_token.take();
-                let creds = resolve_credentials(&self.db, &self.account, &mut cache).await?;
+                let creds = resolve_credentials(&self.account, &mut cache).await?;
                 self.oauth_token = cache;
                 smtp::send(&self.account, &creds, &raw).await?;
                 Ok(None)
@@ -1488,7 +1504,7 @@ impl Engine {
 
 // ---- IDLE watcher -------------------------------------------------------
 
-fn spawn_idle_watcher(db: Db, account: Account, tx: mpsc::UnboundedSender<SyncCommand>) {
+fn spawn_idle_watcher(account: Account, tx: mpsc::UnboundedSender<SyncCommand>) {
     tauri::async_runtime::spawn(async move {
         let mut oauth_cache: Option<(String, i64)> = None;
         let mut backoff = 5u64;
@@ -1496,7 +1512,7 @@ fn spawn_idle_watcher(db: Db, account: Account, tx: mpsc::UnboundedSender<SyncCo
             if tx.is_closed() {
                 break;
             }
-            match idle_session(&db, &account, &tx, &mut oauth_cache).await {
+            match idle_session(&account, &tx, &mut oauth_cache).await {
                 Ok(()) => backoff = 5,
                 Err(e) => {
                     tracing::debug!(error = %e, "IDLE connection ended");
@@ -1509,12 +1525,11 @@ fn spawn_idle_watcher(db: Db, account: Account, tx: mpsc::UnboundedSender<SyncCo
 }
 
 async fn idle_session(
-    db: &Db,
     account: &Account,
     tx: &mpsc::UnboundedSender<SyncCommand>,
     oauth_cache: &mut Option<(String, i64)>,
 ) -> Result<()> {
-    let creds = resolve_credentials(db, account, oauth_cache).await?;
+    let creds = resolve_credentials(account, oauth_cache).await?;
     let mut session = imap_client::login(
         &account.imap_host,
         account.imap_port,
@@ -1707,26 +1722,6 @@ fn decode_imap_utf7(s: &str) -> String {
         }
     }
     out
-}
-
-/// OAuth client configuration: baked in at compile time or stored in
-/// settings by the user.
-pub async fn oauth_config(db: &Db) -> Result<Option<oauth::OauthConfig>> {
-    if let Some(cfg) = oauth::baked_in_config() {
-        return Ok(Some(cfg));
-    }
-    let id = db
-        .call(|conn| queries::get_setting(conn, "google_client_id"))
-        .await?;
-    let secret = db
-        .call(|conn| queries::get_setting(conn, "google_client_secret"))
-        .await?;
-    Ok(id
-        .filter(|s| !s.is_empty())
-        .map(|client_id| oauth::OauthConfig {
-            client_id,
-            client_secret: secret.unwrap_or_default(),
-        }))
 }
 
 #[cfg(test)]

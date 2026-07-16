@@ -1,10 +1,12 @@
-//! Google OAuth for Gmail IMAP/SMTP (XOAUTH2).
+//! OAuth (XOAUTH2) for Gmail and Microsoft (Exchange Online / Office 365).
 //!
 //! Installed-app flow: loopback redirect on 127.0.0.1 with PKCE (S256).
 //! The client id/secret are either baked in at build time via the
-//! `SKIM_GOOGLE_CLIENT_ID` / `SKIM_GOOGLE_CLIENT_SECRET` env vars or supplied
-//! by the user in settings (stored in the `settings` table — they are not
-//! secret for installed apps, per Google's own documentation).
+//! `SKIM_GOOGLE_CLIENT_ID` / `SKIM_GOOGLE_CLIENT_SECRET` /
+//! `SKIM_MICROSOFT_CLIENT_ID` env vars or supplied by the user in settings
+//! (stored in the `settings` table — they are not secret for installed apps,
+//! per Google's and Microsoft's own documentation). Microsoft public clients
+//! use PKCE only and carry no secret.
 
 use crate::error::{Result, SkimError};
 use base64::Engine;
@@ -12,27 +14,72 @@ use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
-const AUTH_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
-const TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
 const USERINFO_ENDPOINT: &str = "https://openidconnect.googleapis.com/v1/userinfo";
-const SCOPES: &str = "https://mail.google.com/ openid email";
+
+/// The identity provider that issues the OAuth tokens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OauthProvider {
+    Google,
+    /// Microsoft `common` authority — both work/school (Office 365) and
+    /// personal (outlook.com) accounts.
+    Microsoft,
+}
+
+impl OauthProvider {
+    fn auth_endpoint(self) -> &'static str {
+        match self {
+            OauthProvider::Google => "https://accounts.google.com/o/oauth2/v2/auth",
+            OauthProvider::Microsoft => {
+                "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+            }
+        }
+    }
+
+    fn token_endpoint(self) -> &'static str {
+        match self {
+            OauthProvider::Google => "https://oauth2.googleapis.com/token",
+            OauthProvider::Microsoft => {
+                "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+            }
+        }
+    }
+
+    fn scopes(self) -> &'static str {
+        match self {
+            OauthProvider::Google => "https://mail.google.com/ openid email",
+            OauthProvider::Microsoft => {
+                "https://outlook.office365.com/IMAP.AccessAsUser.All \
+                 https://outlook.office365.com/SMTP.Send offline_access openid email profile"
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct OauthConfig {
+    pub provider: OauthProvider,
     pub client_id: String,
     pub client_secret: String,
 }
 
-pub fn baked_in_config() -> Option<OauthConfig> {
-    let id = option_env!("SKIM_GOOGLE_CLIENT_ID")?;
+/// Client credentials baked in at build time, if any, for the given provider.
+pub fn baked_in_config(provider: OauthProvider) -> Option<OauthConfig> {
+    let (id, secret) = match provider {
+        OauthProvider::Google => (
+            option_env!("SKIM_GOOGLE_CLIENT_ID"),
+            option_env!("SKIM_GOOGLE_CLIENT_SECRET").unwrap_or_default(),
+        ),
+        // Public client — no secret.
+        OauthProvider::Microsoft => (option_env!("SKIM_MICROSOFT_CLIENT_ID"), ""),
+    };
+    let id = id?;
     if id.is_empty() {
         return None;
     }
     Some(OauthConfig {
+        provider,
         client_id: id.to_string(),
-        client_secret: option_env!("SKIM_GOOGLE_CLIENT_SECRET")
-            .unwrap_or_default()
-            .to_string(),
+        client_secret: secret.to_string(),
     })
 }
 
@@ -52,11 +99,30 @@ struct TokenResponse {
     refresh_token: Option<String>,
     #[serde(default)]
     expires_in: Option<i64>,
+    /// OpenID Connect id token — Microsoft carries the account address in its
+    /// claims, sparing us a separate userinfo/Graph round-trip.
+    #[serde(default)]
+    id_token: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct UserInfo {
     email: String,
+}
+
+/// Pull the account address out of an OIDC id token's claims (unverified: the
+/// token came straight from the provider's TLS token endpoint). Microsoft puts
+/// the address in `preferred_username`; fall back to the standard claims.
+fn email_from_id_token(id_token: &str) -> Option<String> {
+    let payload = id_token.split('.').nth(1)?;
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload)
+        .ok()?;
+    let claims: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    ["preferred_username", "email", "upn"]
+        .iter()
+        .find_map(|k| claims.get(*k).and_then(|v| v.as_str()))
+        .map(|s| s.to_string())
 }
 
 fn random_token() -> String {
@@ -99,18 +165,7 @@ pub async fn authorize(
     let challenge = sha256_base64url(&verifier);
     let state = random_token();
 
-    let mut auth_url = url::Url::parse(AUTH_ENDPOINT).expect("static url");
-    auth_url
-        .query_pairs_mut()
-        .append_pair("client_id", &config.client_id)
-        .append_pair("redirect_uri", &redirect_uri)
-        .append_pair("response_type", "code")
-        .append_pair("scope", SCOPES)
-        .append_pair("code_challenge", &challenge)
-        .append_pair("code_challenge_method", "S256")
-        .append_pair("state", &state)
-        .append_pair("access_type", "offline")
-        .append_pair("prompt", "consent");
+    let auth_url = build_auth_url(config, &redirect_uri, &challenge, &state);
 
     open_url(auth_url.as_str())?;
 
@@ -135,7 +190,7 @@ pub async fn authorize(
         form.push(("client_secret", config.client_secret.clone()));
     }
     let resp = client
-        .post(TOKEN_ENDPOINT)
+        .post(config.provider.token_endpoint())
         .form(&form)
         .send()
         .await
@@ -151,62 +206,134 @@ pub async fn authorize(
         .json()
         .await
         .map_err(|e| SkimError::other("oauth", e.to_string()))?;
-    let refresh_token = tokens.refresh_token.ok_or_else(|| {
+    let refresh_token = tokens.refresh_token.clone().ok_or_else(|| {
         SkimError::other(
             "oauth",
-            "Google did not return a refresh token; remove Skim from your Google account's \
-             third-party access list and try again",
+            match config.provider {
+                OauthProvider::Google => {
+                    "Google did not return a refresh token; remove Skim from your Google \
+                     account's third-party access list and try again"
+                }
+                OauthProvider::Microsoft => {
+                    "Microsoft did not return a refresh token; make sure the offline_access \
+                     scope is granted and try again"
+                }
+            },
         )
     })?;
 
-    // The consent screen lets users untick individual permissions — verify
-    // the mail scope actually made it into the token before trying IMAP.
-    let tokeninfo: serde_json::Value = client
-        .get(format!(
-            "https://www.googleapis.com/oauth2/v3/tokeninfo?access_token={}",
-            tokens.access_token
-        ))
-        .send()
-        .await
-        .map_err(|e| SkimError::other("network", e.to_string()))?
-        .json()
-        .await
-        .unwrap_or_default();
-    let scope = tokeninfo["scope"].as_str().unwrap_or_default();
-    if !scope.contains("https://mail.google.com/") {
-        return Err(SkimError::other(
-            "oauth",
-            "Google did not grant mail access. Make sure the scope \
-             https://mail.google.com/ is added under Data access in your \
-             Google Cloud project, and that you approve it on the consent \
-             screen (it may be an unticked checkbox).",
-        ));
-    }
-
-    // Resolve the email address.
-    let userinfo: UserInfo = client
-        .get(USERINFO_ENDPOINT)
-        .bearer_auth(&tokens.access_token)
-        .send()
-        .await
-        .map_err(|e| SkimError::other("network", e.to_string()))?
-        .json()
-        .await
-        .map_err(|e| SkimError::other("oauth", e.to_string()))?;
+    let email = resolve_email(&client, config.provider, &tokens).await?;
 
     Ok(OauthOutcome {
-        email: userinfo.email,
+        email,
         refresh_token,
         access_token: tokens.access_token,
         expires_at: now_unix() + tokens.expires_in.unwrap_or(3600) - 60,
     })
 }
 
+/// Build the provider-specific authorization URL.
+fn build_auth_url(
+    config: &OauthConfig,
+    redirect_uri: &str,
+    challenge: &str,
+    state: &str,
+) -> url::Url {
+    let mut auth_url = url::Url::parse(config.provider.auth_endpoint()).expect("static url");
+    {
+        let mut q = auth_url.query_pairs_mut();
+        q.append_pair("client_id", &config.client_id)
+            .append_pair("redirect_uri", redirect_uri)
+            .append_pair("response_type", "code")
+            .append_pair("scope", config.provider.scopes())
+            .append_pair("code_challenge", challenge)
+            .append_pair("code_challenge_method", "S256")
+            .append_pair("state", state);
+        match config.provider {
+            // Force a refresh token and a fresh consent on every run.
+            OauthProvider::Google => {
+                q.append_pair("access_type", "offline")
+                    .append_pair("prompt", "consent");
+            }
+            // `offline_access` (in the scope) already yields a refresh token;
+            // let the user pick which account to sign in with.
+            OauthProvider::Microsoft => {
+                q.append_pair("prompt", "select_account");
+            }
+        }
+    }
+    auth_url
+}
+
+/// Resolve the account's email address after a successful token exchange.
+async fn resolve_email(
+    client: &reqwest::Client,
+    provider: OauthProvider,
+    tokens: &TokenResponse,
+) -> Result<String> {
+    match provider {
+        OauthProvider::Google => {
+            // The consent screen lets users untick individual permissions —
+            // verify the mail scope actually made it into the token first.
+            let tokeninfo: serde_json::Value = client
+                .get(format!(
+                    "https://www.googleapis.com/oauth2/v3/tokeninfo?access_token={}",
+                    tokens.access_token
+                ))
+                .send()
+                .await
+                .map_err(|e| SkimError::other("network", e.to_string()))?
+                .json()
+                .await
+                .unwrap_or_default();
+            let scope = tokeninfo["scope"].as_str().unwrap_or_default();
+            if !scope.contains("https://mail.google.com/") {
+                return Err(SkimError::other(
+                    "oauth",
+                    "Google did not grant mail access. Make sure the scope \
+                     https://mail.google.com/ is added under Data access in your \
+                     Google Cloud project, and that you approve it on the consent \
+                     screen (it may be an unticked checkbox).",
+                ));
+            }
+            let userinfo: UserInfo = client
+                .get(USERINFO_ENDPOINT)
+                .bearer_auth(&tokens.access_token)
+                .send()
+                .await
+                .map_err(|e| SkimError::other("network", e.to_string()))?
+                .json()
+                .await
+                .map_err(|e| SkimError::other("oauth", e.to_string()))?;
+            Ok(userinfo.email)
+        }
+        // The address rides along in the id token's claims — no extra call.
+        OauthProvider::Microsoft => tokens
+            .id_token
+            .as_deref()
+            .and_then(email_from_id_token)
+            .ok_or_else(|| {
+                SkimError::other("oauth", "Microsoft did not return an account address")
+            }),
+    }
+}
+
+/// A refreshed access token, plus a rotated refresh token when the provider
+/// issues one (Microsoft rotates on every refresh; Google typically doesn't).
+#[derive(Debug, Clone)]
+pub struct RefreshedToken {
+    pub access_token: String,
+    /// Unix seconds when the access token expires.
+    pub expires_at: i64,
+    /// The new refresh token to persist, if the provider returned one.
+    pub new_refresh_token: Option<String>,
+}
+
 /// Exchange a refresh token for a fresh access token.
 pub async fn refresh_access_token(
     config: &OauthConfig,
     refresh_token: &str,
-) -> Result<(String, i64)> {
+) -> Result<RefreshedToken> {
     let client = reqwest::Client::new();
     let mut form = vec![
         ("client_id", config.client_id.clone()),
@@ -217,7 +344,7 @@ pub async fn refresh_access_token(
         form.push(("client_secret", config.client_secret.clone()));
     }
     let resp = client
-        .post(TOKEN_ENDPOINT)
+        .post(config.provider.token_endpoint())
         .form(&form)
         .send()
         .await
@@ -238,10 +365,11 @@ pub async fn refresh_access_token(
         .json()
         .await
         .map_err(|e| SkimError::other("oauth", e.to_string()))?;
-    Ok((
-        tokens.access_token,
-        now_unix() + tokens.expires_in.unwrap_or(3600) - 60,
-    ))
+    Ok(RefreshedToken {
+        access_token: tokens.access_token,
+        expires_at: now_unix() + tokens.expires_in.unwrap_or(3600) - 60,
+        new_refresh_token: tokens.refresh_token,
+    })
 }
 
 async fn wait_for_code(listener: TcpListener, expected_state: &str) -> Result<String> {
@@ -297,5 +425,84 @@ async fn wait_for_code(listener: TcpListener, expected_state: &str) -> Result<St
             (_, Some(err)) => Err(SkimError::other("oauth_cancelled", err)),
             _ => Err(SkimError::other("oauth", "state mismatch in redirect")),
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg(provider: OauthProvider) -> OauthConfig {
+        OauthConfig {
+            provider,
+            client_id: "client-123".into(),
+            client_secret: String::new(),
+        }
+    }
+
+    #[test]
+    fn microsoft_auth_url_uses_common_authority_and_scopes() {
+        let url = build_auth_url(
+            &cfg(OauthProvider::Microsoft),
+            "http://127.0.0.1:5000",
+            "challenge",
+            "state-xyz",
+        );
+        assert!(url
+            .as_str()
+            .starts_with("https://login.microsoftonline.com/common/oauth2/v2.0/authorize"));
+        let q: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+        assert_eq!(q.get("client_id").map(String::as_str), Some("client-123"));
+        assert_eq!(q.get("prompt").map(String::as_str), Some("select_account"));
+        // Microsoft must NOT carry Google's offline access flag.
+        assert!(!q.contains_key("access_type"));
+        let scope = q.get("scope").expect("scope present");
+        assert!(scope.contains("https://outlook.office365.com/IMAP.AccessAsUser.All"));
+        assert!(scope.contains("https://outlook.office365.com/SMTP.Send"));
+        assert!(scope.contains("offline_access"));
+    }
+
+    #[test]
+    fn google_auth_url_keeps_offline_consent() {
+        let url = build_auth_url(
+            &cfg(OauthProvider::Google),
+            "http://127.0.0.1:5000",
+            "challenge",
+            "state-xyz",
+        );
+        assert!(url
+            .as_str()
+            .starts_with("https://accounts.google.com/o/oauth2/v2/auth"));
+        let q: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+        assert_eq!(q.get("access_type").map(String::as_str), Some("offline"));
+        assert_eq!(q.get("prompt").map(String::as_str), Some("consent"));
+    }
+
+    #[test]
+    fn id_token_email_prefers_preferred_username() {
+        // header.payload.signature — only the payload is read.
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(r#"{"preferred_username":"alice@contoso.com","email":"other@x.com"}"#);
+        let jwt = format!("eyJhbGciOiJSUzI1NiJ9.{payload}.sig");
+        assert_eq!(
+            email_from_id_token(&jwt).as_deref(),
+            Some("alice@contoso.com")
+        );
+    }
+
+    #[test]
+    fn id_token_email_falls_back_to_email_claim() {
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(r#"{"email":"bob@outlook.com"}"#);
+        let jwt = format!("hdr.{payload}.sig");
+        assert_eq!(
+            email_from_id_token(&jwt).as_deref(),
+            Some("bob@outlook.com")
+        );
+    }
+
+    #[test]
+    fn id_token_email_rejects_garbage() {
+        assert_eq!(email_from_id_token("not-a-jwt"), None);
     }
 }

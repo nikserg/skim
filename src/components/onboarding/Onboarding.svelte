@@ -55,9 +55,7 @@
 
   // connect form
   let oauthAvailable = $state(false);
-  let showOauthSetup = $state(false);
-  let clientId = $state("");
-  let clientSecret = $state("");
+  let msOauthAvailable = $state(false);
   let email = $state("");
   let password = $state("");
   let preset = $state<ServerPreset | null>(null);
@@ -67,7 +65,7 @@
   let smtpHost = $state("");
   let smtpPort = $state(587);
   let smtpSecurity = $state("starttls");
-  let busy: "none" | "google" | "password" = $state("none");
+  let busy: "none" | "google" | "microsoft" | "password" = $state("none");
   let error = $state("");
 
   async function chooseLocale(code: Locale) {
@@ -79,13 +77,7 @@
   async function toConnect() {
     step = "connect";
     oauthAvailable = await api.googleOauthAvailable().catch(() => false);
-  }
-
-  async function saveOauthConfig() {
-    await api.setSetting("google_client_id", clientId.trim());
-    await api.setSetting("google_client_secret", clientSecret.trim());
-    oauthAvailable = await api.googleOauthAvailable();
-    showOauthSetup = false;
+    msOauthAvailable = await api.microsoftOauthAvailable().catch(() => false);
   }
 
   async function onEmailChange() {
@@ -109,6 +101,19 @@
     error = "";
     try {
       const account = await api.startGoogleOauth();
+      await accountConnected(account);
+    } catch (e) {
+      error = errorMessage(e);
+    } finally {
+      busy = "none";
+    }
+  }
+
+  async function connectMicrosoft() {
+    busy = "microsoft";
+    error = "";
+    try {
+      const account = await api.startMicrosoftOauth();
       await accountConnected(account);
     } catch (e) {
       error = errorMessage(e);
@@ -282,29 +287,21 @@
             {t("onb.continue_google")} →
           {/if}
         </button>
+      {/if}
+      {#if msOauthAvailable}
+        <button class="primary microsoft" onclick={connectMicrosoft} disabled={busy !== "none"}>
+          {#if busy === "microsoft"}
+            {t("onb.waiting_microsoft")}
+          {:else}
+            <span class="ms-badge" aria-hidden="true">
+              <span></span><span></span><span></span><span></span>
+            </span>
+            {t("onb.continue_microsoft")} →
+          {/if}
+        </button>
+      {/if}
+      {#if oauthAvailable || msOauthAvailable}
         <div class="oauth-note microlabel">🔒 {t("onb.oauth_note")}</div>
-      {:else}
-        <div class="oauth-missing">
-          {t("onb.oauth_missing")}
-          <button class="linkish" onclick={() => (showOauthSetup = !showOauthSetup)}>
-            {t("onb.oauth_setup")}
-          </button>
-        </div>
-        {#if showOauthSetup}
-          <div class="oauth-setup">
-            <label>
-              <span class="microlabel">{t("onb.client_id")}</span>
-              <input bind:value={clientId} spellcheck="false" />
-            </label>
-            <label>
-              <span class="microlabel">{t("onb.client_secret")}</span>
-              <input bind:value={clientSecret} spellcheck="false" />
-            </label>
-            <button class="secondary" onclick={saveOauthConfig} disabled={!clientId.trim()}>
-              {t("onb.save")}
-            </button>
-          </div>
-        {/if}
       {/if}
 
       <div class="divider"><span class="microlabel">{t("onb.or_password")}</span></div>
@@ -435,16 +432,6 @@
     opacity: 0.5;
     cursor: default;
   }
-  .secondary {
-    padding: 8px 14px;
-    border-radius: var(--radius-s);
-    border: 1px solid var(--hairline-strong);
-    font-weight: 600;
-    font-size: 13px;
-  }
-  .secondary:hover:not(:disabled) {
-    background: var(--hover);
-  }
 
   .g-badge {
     width: 20px;
@@ -457,24 +444,36 @@
     font-size: 11px;
     font-weight: 800;
   }
+  .primary.microsoft {
+    margin-top: 12px;
+  }
+  .ms-badge {
+    width: 16px;
+    height: 16px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .ms-badge span {
+    display: block;
+  }
+  .ms-badge span:nth-child(1) {
+    background: #f25022;
+  }
+  .ms-badge span:nth-child(2) {
+    background: #7fba00;
+  }
+  .ms-badge span:nth-child(3) {
+    background: #00a4ef;
+  }
+  .ms-badge span:nth-child(4) {
+    background: #ffb900;
+  }
   .oauth-note {
     text-align: center;
     margin-top: 10px;
-  }
-  .oauth-missing {
-    margin-top: 22px;
-    padding: 12px 14px;
-    border: 1px solid var(--hairline-strong);
-    border-radius: var(--radius-m);
-    font-size: 13px;
-    color: var(--text-dim);
-    line-height: 1.5;
-  }
-  .oauth-setup {
-    margin-top: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
   }
 
   .linkish {

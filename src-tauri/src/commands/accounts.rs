@@ -27,8 +27,13 @@ pub fn autoconfig_lookup(email: String) -> Option<autoconfig::ServerPreset> {
 }
 
 #[tauri::command]
-pub async fn google_oauth_available(state: State<'_, AppState>) -> Result<bool> {
-    Ok(sync::oauth_config(&state.db).await?.is_some())
+pub fn google_oauth_available() -> bool {
+    oauth::baked_in_config(oauth::OauthProvider::Google).is_some()
+}
+
+#[tauri::command]
+pub fn microsoft_oauth_available() -> bool {
+    oauth::baked_in_config(oauth::OauthProvider::Microsoft).is_some()
 }
 
 #[tauri::command]
@@ -95,7 +100,7 @@ pub async fn add_account(
 /// Full Google OAuth flow: browser consent → tokens → account.
 #[tauri::command]
 pub async fn start_google_oauth(app: AppHandle, state: State<'_, AppState>) -> Result<Account> {
-    let config = sync::oauth_config(&state.db).await?.ok_or_else(|| {
+    let config = oauth::baked_in_config(oauth::OauthProvider::Google).ok_or_else(|| {
         SkimError::other(
             "oauth_unconfigured",
             "Google OAuth client id is not configured",
@@ -129,6 +134,47 @@ pub async fn start_google_oauth(app: AppHandle, state: State<'_, AppState>) -> R
             .map(|p| p.smtp_host.to_string())
             .unwrap_or_else(|| "smtp.gmail.com".into()),
         smtp_port: preset.as_ref().map(|p| p.smtp_port).unwrap_or(587),
+        smtp_security: "starttls".into(),
+        auth_kind: "oauth".into(),
+    };
+    finish_add_account(&app, &state, account, &outcome.refresh_token).await
+}
+
+/// Full Microsoft OAuth flow (Exchange Online / Office 365): browser consent →
+/// tokens → account. Uses the `common` authority, so both work/school and
+/// personal Microsoft accounts sign in through the same button.
+#[tauri::command]
+pub async fn start_microsoft_oauth(app: AppHandle, state: State<'_, AppState>) -> Result<Account> {
+    let config = oauth::baked_in_config(oauth::OauthProvider::Microsoft).ok_or_else(|| {
+        SkimError::other(
+            "oauth_unconfigured",
+            "Microsoft OAuth client id is not configured",
+        )
+    })?;
+
+    let opener = app.clone();
+    let outcome = oauth::authorize(&config, move |url| {
+        opener
+            .opener()
+            .open_url(url, None::<&str>)
+            .map_err(|e| SkimError::other("oauth", format!("cannot open browser: {e}")))
+    })
+    .await?;
+
+    // Verify the token actually works for IMAP before saving anything.
+    let creds = imap_client::Credentials::OauthToken(outcome.access_token.clone());
+    let session = imap_client::login("outlook.office365.com", 993, &outcome.email, &creds).await?;
+    drop(session);
+
+    let account = Account {
+        id: uuid::Uuid::new_v4().to_string(),
+        email: outcome.email.clone(),
+        display_name: None,
+        provider: "microsoft".into(),
+        imap_host: "outlook.office365.com".into(),
+        imap_port: 993,
+        smtp_host: "smtp.office365.com".into(),
+        smtp_port: 587,
         smtp_security: "starttls".into(),
         auth_kind: "oauth".into(),
     };

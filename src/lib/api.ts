@@ -28,10 +28,12 @@ export const api = {
   autoconfigLookup: (email: string) =>
     invoke<ServerPreset | null>("autoconfig_lookup", { email }),
   googleOauthAvailable: () => invoke<boolean>("google_oauth_available"),
+  microsoftOauthAvailable: () => invoke<boolean>("microsoft_oauth_available"),
   listAccounts: () => invoke<Account[]>("list_accounts"),
   addAccount: (input: AddAccountInput, password: string) =>
     invoke<Account>("add_account", { input, password }),
   startGoogleOauth: () => invoke<Account>("start_google_oauth"),
+  startMicrosoftOauth: () => invoke<Account>("start_microsoft_oauth"),
   removeAccount: (accountId: string) => invoke<void>("remove_account", { accountId }),
 
   // mail

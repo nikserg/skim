@@ -185,9 +185,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::accounts::autoconfig_lookup,
             commands::accounts::google_oauth_available,
+            commands::accounts::microsoft_oauth_available,
             commands::accounts::list_accounts,
             commands::accounts::add_account,
             commands::accounts::start_google_oauth,
+            commands::accounts::start_microsoft_oauth,
             commands::accounts::remove_account,
             commands::mail::list_folders,
             commands::mail::list_threads,

@@ -201,11 +201,12 @@ fn openai_messages(turns: &[Turn]) -> Vec<Value> {
 const SEARCH_DESC: &str = "Search the user's mailbox. Combine any of: keyword (matches \
     subject/sender/recipients/body; ALL words must match, prefix-matched — prefer 1-2 \
     distinctive words), sender substring, subject substring, folder, attachment presence, \
-    and a date range. Leave `query` empty to list the most recent emails by date (use this \
-    for \"last month\" / summary questions, together with `after`). Trash and junk are \
-    excluded unless you pass folder=\"trash\" or folder=\"junk\". Returns compact rows, each \
-    tagged [N]; rows with attachments are marked \u{1F4CE}, and a total match count is \
-    reported when more matched than shown.";
+    unread-only, starred-only, and a date range. Leave `query` empty to list the most recent \
+    emails by date (use this for \"last month\" / summary questions, together with `after`). \
+    Trash and junk are excluded unless you pass folder=\"trash\" or folder=\"junk\". Returns \
+    compact rows, each tagged [N]; rows with attachments are marked \u{1F4CE}, unread rows are \
+    marked \u{25CF}, starred rows \u{2605}, and a total match count is reported when more \
+    matched than shown.";
 const READ_DESC: &str = "Read the full body of a search result, identified by its [N] ref number. \
     Also returns the readable text of its attachments (PDFs, documents, spreadsheets) when available. \
     Pass thread=true to read the email's whole conversation; each message gets its own [N].";
@@ -221,6 +222,8 @@ fn search_schema() -> Value {
             "before":  { "type": "string", "description": "only emails on/before this date, YYYY-MM-DD" },
             "folder":  { "type": "string", "description": "restrict to a folder role: inbox, sent, archive, trash, junk, drafts, starred" },
             "has_attachment": { "type": "boolean", "description": "only emails with attachments" },
+            "unread":  { "type": "boolean", "description": "only unread emails" },
+            "starred": { "type": "boolean", "description": "only starred emails" },
             "limit":   { "type": "integer", "description": "max results, 1-25 (default 10)" }
         }
     })
@@ -450,6 +453,12 @@ fn describe(reg: &Registry, tc: &ToolCall) -> (&'static str, String) {
                 (None, Some(b)) => parts.push(format!("until {b}")),
                 (None, None) => {}
             }
+            if tc.input.get("unread").and_then(Value::as_bool) == Some(true) {
+                parts.push("unread".to_string());
+            }
+            if tc.input.get("starred").and_then(Value::as_bool) == Some(true) {
+                parts.push("starred".to_string());
+            }
             let arg = if parts.is_empty() {
                 "recent".to_string()
             } else {
@@ -490,6 +499,8 @@ struct RowData {
     date: i64,
     snippet: String,
     has_attachments: bool,
+    is_read: bool,
+    is_starred: bool,
 }
 
 /// Header line(s) above the result rows: the OR-fallback notice and/or the
@@ -526,6 +537,14 @@ async fn search_emails(
     let folder = str_opt(input, "folder");
     let has_attachment = input
         .get("has_attachment")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let unread = input
+        .get("unread")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let starred = input
+        .get("starred")
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let after = str_opt(input, "after").and_then(|s| parse_day_start(&s));
@@ -567,6 +586,12 @@ async fn search_emails(
     if has_attachment {
         clauses.push("m.has_attachments = 1");
     }
+    if unread {
+        clauses.push("m.is_read = 0");
+    }
+    if starred {
+        clauses.push("m.is_starred = 1");
+    }
     let filter_sql = if clauses.is_empty() {
         String::new()
     } else {
@@ -588,7 +613,8 @@ async fn search_emails(
     }
 
     const COLS: &str = "m.id, m.thread_id, m.folder_id, COALESCE(m.subject,''), \
-        m.from_name, m.from_addr, m.date, COALESCE(m.snippet,''), m.has_attachments";
+        m.from_name, m.from_addr, m.date, COALESCE(m.snippet,''), m.has_attachments, \
+        m.is_read, m.is_starred";
 
     for (fts, broad) in attempts {
         let count_limit = SEARCH_COUNT_CAP + 1;
@@ -638,6 +664,8 @@ async fn search_emails(
                             date: r.get(6)?,
                             snippet: r.get(7)?,
                             has_attachments: r.get(8)?,
+                            is_read: r.get(9)?,
+                            is_starred: r.get(10)?,
                         })
                     })?
                     .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -680,8 +708,20 @@ async fn search_emails(
             } else {
                 ""
             };
+            // Mark only the exceptional states, right after the [N] ref:
+            // ● unread, ★ starred.
+            let mut marks = String::new();
+            if !row.is_read {
+                marks.push('\u{25CF}');
+            }
+            if row.is_starred {
+                marks.push('\u{2605}');
+            }
+            if !marks.is_empty() {
+                marks.push(' ');
+            }
             lines.push(format!(
-                "[{idx}] {} | {} | {}{clip} — {}",
+                "[{idx}] {marks}{} | {} | {}{clip} — {}",
                 format_date(row.date),
                 from,
                 row.subject,
@@ -1025,5 +1065,94 @@ mod tests {
         let start = parse_day_start("2026-07-14").unwrap();
         let end = parse_day_end("2026-07-14").unwrap();
         assert_eq!(end - start, 86_400);
+    }
+
+    fn seeded_deps() -> AgentDeps {
+        use crate::db::models::NewMessage;
+        use crate::db::queries::insert_message;
+
+        let db = crate::db::Db::open_in_memory().unwrap();
+        db.with(|conn| {
+            conn.execute(
+                "INSERT INTO accounts (id, email, provider, imap_host, smtp_host, created_at)
+                 VALUES ('acc1', 'me@example.com', 'custom', 'imap.example.com', 'smtp.example.com', 0)",
+                [],
+            )?;
+            conn.execute(
+                "INSERT INTO folders (id, account_id, imap_name, role, display_name)
+                 VALUES (1, 'acc1', 'INBOX', 'inbox', 'Inbox')",
+                [],
+            )?;
+            // Read, not starred.
+            insert_message(
+                conn,
+                &NewMessage {
+                    account_id: "acc1".into(),
+                    folder_id: 1,
+                    uid: 1,
+                    subject: Some("Invoice".into()),
+                    from_name: Some("Acme".into()),
+                    from_addr: Some("billing@acme.test".into()),
+                    date: 1000,
+                    is_read: true,
+                    ..Default::default()
+                },
+            )?;
+            // Unread and starred.
+            insert_message(
+                conn,
+                &NewMessage {
+                    account_id: "acc1".into(),
+                    folder_id: 1,
+                    uid: 2,
+                    subject: Some("Newsletter".into()),
+                    from_name: Some("News".into()),
+                    from_addr: Some("hi@news.test".into()),
+                    date: 2000,
+                    is_read: false,
+                    is_starred: true,
+                    ..Default::default()
+                },
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        AgentDeps {
+            db,
+            engines: std::collections::HashMap::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn search_marks_and_filters_read_state() {
+        let deps = seeded_deps();
+
+        // No flag filters: both emails listed; the unread+starred one carries
+        // the ● and ★ markers, the read one carries neither.
+        let mut reg = Registry::new();
+        let (out, count) = search_emails(&deps, &mut reg, &json!({})).await.unwrap();
+        assert_eq!(count, 2);
+        let newsletter = out.lines().find(|l| l.contains("Newsletter")).unwrap();
+        assert!(newsletter.contains('\u{25CF}'), "unread ● missing: {out}");
+        assert!(newsletter.contains('\u{2605}'), "starred ★ missing: {out}");
+        let invoice = out.lines().find(|l| l.contains("Invoice")).unwrap();
+        assert!(!invoice.contains('\u{25CF}'));
+        assert!(!invoice.contains('\u{2605}'));
+
+        // unread=true keeps only the unread one.
+        let mut reg = Registry::new();
+        let (out, count) = search_emails(&deps, &mut reg, &json!({ "unread": true }))
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+        assert!(out.contains("Newsletter") && !out.contains("Invoice"));
+
+        // starred=true keeps only the starred one.
+        let mut reg = Registry::new();
+        let (out, count) = search_emails(&deps, &mut reg, &json!({ "starred": true }))
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+        assert!(out.contains("Newsletter") && !out.contains("Invoice"));
     }
 }

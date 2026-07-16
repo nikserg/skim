@@ -36,7 +36,7 @@ pub fn lookup(email: &str) -> Option<ServerPreset> {
             smtp_port: 587,
             smtp_security: "starttls",
             needs_app_password: true,
-            supports_oauth: false,
+            supports_oauth: true,
         },
         "yahoo.com" => ServerPreset {
             provider: "yahoo",
