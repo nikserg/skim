@@ -3,7 +3,7 @@
   import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { aiApi, aiStream, api, errorMessage } from "../../lib/api";
-  import type { AiProvider } from "../../lib/api";
+  import type { AiProvider, OrModel } from "../../lib/api";
   import { LOCALES, getLocale, setLocale, t, type Locale } from "../../lib/i18n/index.svelte";
   import { ai } from "../../lib/stores/ai.svelte";
   import { mail } from "../../lib/stores/mail.svelte";
@@ -77,6 +77,11 @@
   let providerTab = $state<AiProvider>("anthropic");
   let orModel = $state("anthropic/claude-sonnet-5");
   let orCustom = $state("");
+  // OpenRouter's live catalog, so the field can't be set to a model that
+  // doesn't exist. Empty until fetched — and if the fetch fails, forever.
+  let orModels = $state<OrModel[]>([]);
+  let orCustomOpen = $state(false);
+  let orHighlight = $state(0);
   let imagesPolicy = $state("block");
   let notifications = $state("on");
   let groupThreads = $state("on");
@@ -193,11 +198,14 @@
   ];
 
   // Cross-vendor picks for OpenRouter; any other slug goes in the custom field.
+  // Verified against the live catalog — check these when bumping a release, a
+  // preset that no longer exists fails only once the user sends a request.
   const OR_MODELS = [
     { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5" },
-    { id: "openai/gpt-5.1", label: "ChatGPT · GPT-5.1" },
-    { id: "google/gemini-3-pro", label: "Gemini 3 Pro" },
-    { id: "x-ai/grok-4.1", label: "Grok 4.1" },
+    { id: "openai/gpt-5.6-luna", label: "ChatGPT · GPT-5.6 Luna" },
+    { id: "google/gemini-3.5-flash", label: "Gemini 3.5 Flash" },
+    { id: "x-ai/grok-4.5", label: "Grok 4.5" },
+    { id: "deepseek/deepseek-v4-flash", label: "DeepSeek V4 Flash" },
   ];
   const orIsPreset = $derived(OR_MODELS.some((m) => m.id === orModel));
 
@@ -214,17 +222,85 @@
     }
   }
 
+  // Fetched once per session, the first time the OpenRouter model picker is
+  // actually on screen. Not $state — it guards the effect that fills orModels.
+  let orModelsRequested = false;
+
+  $effect(() => {
+    if (providerTab !== "openrouter" || !tabHasKey || orModelsRequested) return;
+    orModelsRequested = true;
+    void aiApi
+      .orModels()
+      .then((m) => (orModels = m))
+      // Offline: leave the catalog empty and let the field take free text.
+      .catch(() => {});
+  });
+
+  const orCatalogKnown = $derived(orModels.length > 0);
+
+  // Presets already have their own buttons above the field.
+  const orSuggestions = $derived.by(() => {
+    const q = orCustom.trim().toLowerCase();
+    const pool = orModels.filter((m) => !OR_MODELS.some((p) => p.id === m.id));
+    const matches = q
+      ? pool.filter((m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
+      : pool;
+    return matches.slice(0, 8);
+  });
+
+  // Typed something real, but no model matches it. A preset typed out by hand
+  // is filtered out of the suggestions yet still perfectly valid.
+  const orCustomUnknown = $derived(
+    orCatalogKnown &&
+      orCustom.trim().length > 0 &&
+      orSuggestions.length === 0 &&
+      !orModels.some((m) => m.id === orCustom.trim()),
+  );
+
   async function setOrModel(id: string) {
     orModel = id;
     orCustom = "";
+    orCustomOpen = false;
     await api.setSetting("openrouter_model", id);
   }
 
+  // Commit only a model that exists. Without a catalog we can't tell, so we
+  // trust the input rather than block the user offline.
   function saveOrCustom() {
     const v = orCustom.trim();
-    if (!v) return;
-    orModel = v;
-    void api.setSetting("openrouter_model", v);
+    if (!v) {
+      orCustomOpen = false;
+      return;
+    }
+    if (!orCatalogKnown || orModels.some((m) => m.id === v)) {
+      void setOrModel(v);
+    }
+  }
+
+  function orCustomKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      orCustomOpen = false;
+      return;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (!orSuggestions.length) return;
+      e.preventDefault();
+      orCustomOpen = true;
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      orHighlight = (orHighlight + step + orSuggestions.length) % orSuggestions.length;
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const picked = orCustomOpen ? orSuggestions[orHighlight] : undefined;
+      if (picked) void setOrModel(picked.id);
+      else saveOrCustom();
+    }
+  }
+
+  function orCustomInput() {
+    orCustomOpen = true;
+    orHighlight = 0;
   }
 
   async function chooseLocale(code: Locale) {
@@ -479,17 +555,45 @@
                   <span class="model-slug">{m.id}</span>
                 </button>
               {/each}
-              <label class="writer-field or-custom" class:custom-active={!orIsPreset}>
-                <span class="microlabel">{t("settings.or_custom")}</span>
+              <!-- Not a <label>: a click inside one is forwarded to the input,
+                   which would re-focus it and pop the list open again. -->
+              <div class="writer-field or-custom" class:custom-active={!orIsPreset}>
+                <label class="microlabel" for="or-model">{t("settings.or_custom")}</label>
                 <input
+                  id="or-model"
                   bind:value={orCustom}
+                  oninput={orCustomInput}
+                  onfocus={orCustomInput}
                   onblur={saveOrCustom}
-                  onkeydown={(e) => e.key === "Enter" && saveOrCustom()}
+                  onkeydown={orCustomKeydown}
                   placeholder={orIsPreset ? t("settings.or_custom_ph") : orModel}
                   spellcheck="false"
                   autocomplete="off"
+                  role="combobox"
+                  aria-expanded={orCustomOpen && orSuggestions.length > 0}
+                  aria-controls="or-suggestions"
                 />
-              </label>
+                {#if orCustomOpen && orSuggestions.length > 0}
+                  <div class="or-suggestions" id="or-suggestions" role="listbox">
+                    {#each orSuggestions as m, i (m.id)}
+                      <button
+                        class="or-suggestion"
+                        class:highlight={i === orHighlight}
+                        role="option"
+                        aria-selected={i === orHighlight}
+                        onmouseenter={() => (orHighlight = i)}
+                        onmousedown={(e) => e.preventDefault()}
+                        onclick={() => setOrModel(m.id)}
+                      >
+                        {m.name}
+                        <span class="model-slug">{m.id}</span>
+                      </button>
+                    {/each}
+                  </div>
+                {:else if orCustomUnknown}
+                  <span class="dim hint">{t("settings.or_custom_unknown")}</span>
+                {/if}
+              </div>
             </div>
           {/if}
 
@@ -967,12 +1071,46 @@
     color: var(--text-faint);
     margin-top: 2px;
   }
+  .or-custom {
+    position: relative;
+  }
   .or-custom input {
     font-family: var(--font-mono);
     font-size: 12px;
   }
   .or-custom.custom-active input {
     border-color: var(--accent);
+  }
+  /* Floats over the writer section below rather than pushing it around. */
+  .or-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 2;
+    margin-top: 4px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    max-height: 244px;
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--radius-s);
+    box-shadow: var(--shadow-pop);
+  }
+  .or-suggestion {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 8px;
+    border-radius: var(--radius-s);
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .or-suggestion.highlight {
+    background: var(--hover);
+    color: var(--text);
   }
 
   /* "My style" — violet, like every AI moment */

@@ -211,6 +211,7 @@
   "settings.model_haiku": "Claude Haiku 4.5 — il più veloce",
   "settings.or_custom": "Qualsiasi altro modello",
   "settings.or_custom_ph": "vendor/model — qualsiasi modello su OpenRouter",
+  "settings.or_custom_unknown": "Nessun modello di questo tipo su OpenRouter",
   "settings.close": "Chiudi",
   "notify.new_one": "{n} nuovo messaggio",
   "notify.new_other": "{n} nuovi messaggi",

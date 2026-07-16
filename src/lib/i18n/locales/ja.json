@@ -207,6 +207,7 @@
   "settings.model_haiku": "Claude Haiku 4.5 — 最速",
   "settings.or_custom": "その他の任意のモデル",
   "settings.or_custom_ph": "vendor/model — OpenRouter の任意のモデル",
+  "settings.or_custom_unknown": "OpenRouter にそのモデルはありません",
   "settings.close": "閉じる",
   "notify.new_other": "新着メール {n} 件",
   "invite.untitled": "招待",

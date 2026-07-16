@@ -113,6 +113,13 @@ pub fn ai_clear_key(provider: String) -> Result<()> {
     secrets::delete(Provider::parse(&provider).secret())
 }
 
+/// OpenRouter's live catalog, so the model field can only ever be set to a
+/// model that exists. Fetched on demand — Settings asks once per session.
+#[tauri::command]
+pub async fn openrouter_models() -> Result<Vec<openrouter::Model>> {
+    openrouter::list_models().await
+}
+
 // ---- shared plumbing -----------------------------------------------------
 
 struct AiContext {

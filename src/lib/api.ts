@@ -154,10 +154,17 @@ export interface AiKeyStatus {
   openrouter: boolean;
 }
 
+/** A model from OpenRouter's live catalog. */
+export interface OrModel {
+  id: string;
+  name: string;
+}
+
 export const aiApi = {
   setKey: (provider: AiProvider, key: string) => invoke<void>("ai_set_key", { provider, key }),
   keyStatus: () => invoke<AiKeyStatus>("ai_key_status"),
   clearKey: (provider: AiProvider) => invoke<void>("ai_clear_key", { provider }),
+  orModels: () => invoke<OrModel[]>("openrouter_models"),
 };
 
 /** Start a streaming AI request. Returns a cancel function. */

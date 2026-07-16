@@ -207,6 +207,7 @@
   "settings.model_haiku": "Claude Haiku 4.5——速度最快",
   "settings.or_custom": "任意其他模型",
   "settings.or_custom_ph": "vendor/model——OpenRouter 上的任意模型",
+  "settings.or_custom_unknown": "OpenRouter 上没有该模型",
   "settings.close": "关闭",
   "notify.new_other": "{n} 封新邮件",
   "invite.untitled": "邀请",

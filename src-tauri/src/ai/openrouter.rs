@@ -5,7 +5,7 @@
 use super::{AssistantTurn, ChatMessage, ToolCall};
 use crate::error::{Result, SkimError};
 use futures::StreamExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeMap;
 
@@ -36,6 +36,59 @@ pub async fn validate_key(key: &str) -> Result<()> {
             format!("unexpected response: {code}"),
         )),
     }
+}
+
+// ---- catalog --------------------------------------------------------------
+
+/// One model the user may pick.
+#[derive(Debug, Clone, Serialize)]
+pub struct Model {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+struct CatalogResponse {
+    data: Vec<CatalogModel>,
+}
+
+#[derive(Deserialize)]
+struct CatalogModel {
+    id: String,
+    name: String,
+    #[serde(default)]
+    supported_parameters: Vec<String>,
+}
+
+/// The live model catalog, narrowed to what Skim can actually drive: the chat
+/// agent calls tools, so a model without tool support would silently fail on
+/// the mailbox-wide assistant. Needs no API key. Ordered as OpenRouter returns
+/// it — newest first.
+pub async fn list_models() -> Result<Vec<Model>> {
+    let resp = reqwest::Client::new()
+        .get(format!("{API_BASE}/models"))
+        .send()
+        .await
+        .map_err(|e| SkimError::other("network", e.to_string()))?;
+    if resp.status() != 200 {
+        return Err(SkimError::other(
+            "ai",
+            format!("could not load the model list: {}", resp.status()),
+        ));
+    }
+    let catalog: CatalogResponse = resp
+        .json()
+        .await
+        .map_err(|e| SkimError::other("ai", e.to_string()))?;
+    Ok(catalog
+        .data
+        .into_iter()
+        .filter(|m| m.supported_parameters.iter().any(|p| p == "tools"))
+        .map(|m| Model {
+            id: m.id,
+            name: m.name,
+        })
+        .collect())
 }
 
 /// Stream a completion, invoking `on_delta` for each text fragment.
