@@ -418,65 +418,6 @@ pub async fn report_spam(
     .await
 }
 
-/// A `<uri>`-bracketed target extracted from a `List-Unsubscribe` header.
-enum UnsubTarget {
-    /// An https: endpoint (may accept an RFC 8058 one-click POST).
-    Http(String),
-    /// A mailto: address plus its optional `?subject=`.
-    Mail { to: String, subject: String },
-}
-
-/// Parse a raw `List-Unsubscribe` value (`<uri>, <uri>`) into its targets.
-fn parse_unsub_targets(raw: &str) -> Vec<UnsubTarget> {
-    let mut out = Vec::new();
-    for part in raw.split(',') {
-        let uri = part
-            .trim()
-            .trim_start_matches('<')
-            .trim_end_matches('>')
-            .trim();
-        if let Some(rest) = uri.strip_prefix("mailto:") {
-            let (addr, query) = rest.split_once('?').unwrap_or((rest, ""));
-            let addr = addr.trim();
-            if addr.is_empty() {
-                continue;
-            }
-            let subject = query
-                .split('&')
-                .find_map(|kv| kv.strip_prefix("subject="))
-                .map(percent_decode)
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| "unsubscribe".to_string());
-            out.push(UnsubTarget::Mail {
-                to: addr.to_string(),
-                subject,
-            });
-        } else if uri.starts_with("https://") || uri.starts_with("http://") {
-            out.push(UnsubTarget::Http(uri.to_string()));
-        }
-    }
-    out
-}
-
-/// Minimal `application/x-www-form-urlencoded` decode for a mailto `subject`.
-fn percent_decode(s: &str) -> String {
-    let bytes = s.replace('+', " ").into_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(b) = u8::from_str_radix(&String::from_utf8_lossy(&bytes[i + 1..i + 3]), 16) {
-                out.push(b);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
 /// Unsubscribe from a mailing list using the message's `List-Unsubscribe`
 /// header. Acts for the user: a one-click POST (RFC 8058) or an unsubscribe
 /// email goes through the offline op queue; a plain https link is opened in the
@@ -513,7 +454,15 @@ pub async fn unsubscribe(
         }
     };
 
+    use crate::mail::parse::{parse_unsub_targets, UnsubTarget};
     let targets = parse_unsub_targets(&raw);
+    // The header is attacker-controlled; only https endpoints may receive the
+    // silent one-click POST (RFC 8058 requires https). Plain http links are
+    // never POSTed — at most opened visibly in the browser below.
+    let https = targets.iter().find_map(|t| match t {
+        UnsubTarget::Http(url) if url.starts_with("https://") => Some(url.clone()),
+        _ => None,
+    });
     let http = targets.iter().find_map(|t| match t {
         UnsubTarget::Http(url) => Some(url.clone()),
         _ => None,
@@ -525,7 +474,7 @@ pub async fn unsubscribe(
 
     // Priority: one-click POST → unsubscribe email → open link in the browser.
     if one_click {
-        if let Some(url) = &http {
+        if let Some(url) = &https {
             let payload = json!({ "method": "post", "url": url });
             enqueue_unsub_op(&state, &account_id, payload).await?;
             let _ = app.emit("mail:updated", json!({}));

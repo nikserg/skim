@@ -182,28 +182,38 @@ pub fn parse_body(raw: &[u8]) -> ParsedBody {
 
 /// Cheap HTML → text for FTS/snippets when a message has no text part.
 pub fn html_to_text(html: &str) -> String {
+    // Tag names are ASCII, so compare bytes case-insensitively in place —
+    // a `to_lowercase()` copy has different byte offsets (`İ` grows), and
+    // indexing the original's offsets into it can split a UTF-8 char.
+    fn starts_ignore_ascii_case(s: &str, prefix: &str) -> bool {
+        s.len() >= prefix.len()
+            && s.as_bytes()[..prefix.len()].eq_ignore_ascii_case(prefix.as_bytes())
+    }
+
     let mut out = String::with_capacity(html.len() / 2);
     let mut in_tag = false;
     let mut in_script = false;
-    let lower = html.to_lowercase();
     let mut i = 0;
     let bytes = html.as_bytes();
     while i < bytes.len() {
         if !in_tag && bytes[i] == b'<' {
             in_tag = true;
-            if lower[i..].starts_with("<script") || lower[i..].starts_with("<style") {
+            let rest = &html[i..];
+            if starts_ignore_ascii_case(rest, "<script") || starts_ignore_ascii_case(rest, "<style")
+            {
                 in_script = true;
             } else if in_script
-                && (lower[i..].starts_with("</script") || lower[i..].starts_with("</style"))
+                && (starts_ignore_ascii_case(rest, "</script")
+                    || starts_ignore_ascii_case(rest, "</style"))
             {
                 in_script = false;
             }
         } else if in_tag && bytes[i] == b'>' {
             in_tag = false;
         } else if !in_tag && !in_script {
-            // SAFETY: iterate on char boundaries
-            let ch_start = i;
-            let ch = html[ch_start..].chars().next().unwrap_or(' ');
+            // SAFETY: outside tags `i` always sits on a char boundary — it
+            // advances by whole chars here and past ASCII `<`/`>` elsewhere.
+            let ch = html[i..].chars().next().unwrap_or(' ');
             out.push(ch);
             i += ch.len_utf8();
             continue;
@@ -219,6 +229,95 @@ pub fn html_to_text(html: &str) -> String {
         .replace("&quot;", "\"")
         .replace("&#39;", "'");
     out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A `<uri>`-bracketed target extracted from a `List-Unsubscribe` header.
+pub enum UnsubTarget {
+    /// An http(s): endpoint. Only `https:` ones may receive an RFC 8058
+    /// one-click POST; plain `http:` is only ever opened in the browser.
+    Http(String),
+    /// A mailto: address plus its optional `?subject=`.
+    Mail { to: String, subject: String },
+}
+
+/// Parse a raw `List-Unsubscribe` value (`<uri>, <uri>`) into its targets.
+pub fn parse_unsub_targets(raw: &str) -> Vec<UnsubTarget> {
+    let mut out = Vec::new();
+    for part in raw.split(',') {
+        let uri = part
+            .trim()
+            .trim_start_matches('<')
+            .trim_end_matches('>')
+            .trim();
+        if let Some(rest) = uri.strip_prefix("mailto:") {
+            let (addr, query) = rest.split_once('?').unwrap_or((rest, ""));
+            let addr = addr.trim();
+            if addr.is_empty() {
+                continue;
+            }
+            let subject = query
+                .split('&')
+                .find_map(|kv| kv.strip_prefix("subject="))
+                .map(percent_decode)
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "unsubscribe".to_string());
+            out.push(UnsubTarget::Mail {
+                to: addr.to_string(),
+                subject,
+            });
+        } else if uri.starts_with("https://") || uri.starts_with("http://") {
+            out.push(UnsubTarget::Http(uri.to_string()));
+        }
+    }
+    out
+}
+
+/// Minimal `application/x-www-form-urlencoded` decode for a mailto `subject`.
+fn percent_decode(s: &str) -> String {
+    let bytes = s.replace('+', " ").into_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(b) = u8::from_str_radix(&String::from_utf8_lossy(&bytes[i + 1..i + 3]), 16) {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// The domain an unsubscribe click will actually contact, shown next to the
+/// chip so the user sees the destination before acting. Mirrors the action
+/// priority of `commands::mail::unsubscribe`: one-click https POST →
+/// unsubscribe email → link opened in the browser.
+pub fn unsubscribe_host(raw: &str, one_click: bool) -> Option<String> {
+    let targets = parse_unsub_targets(raw);
+    let https_host = targets.iter().find_map(|t| match t {
+        UnsubTarget::Http(u) if u.starts_with("https://") => {
+            url::Url::parse(u).ok()?.host_str().map(str::to_string)
+        }
+        _ => None,
+    });
+    if one_click {
+        if let Some(host) = https_host.clone() {
+            return Some(host);
+        }
+    }
+    let mail_host = targets.iter().find_map(|t| match t {
+        UnsubTarget::Mail { to, .. } => to.rsplit_once('@').map(|(_, d)| d.to_string()),
+        _ => None,
+    });
+    mail_host.or(https_host).or_else(|| {
+        targets.iter().find_map(|t| match t {
+            UnsubTarget::Http(u) => url::Url::parse(u).ok()?.host_str().map(str::to_string),
+            _ => None,
+        })
+    })
 }
 
 pub fn make_snippet(text: &str) -> String {
@@ -279,5 +378,38 @@ mod tests {
         let msg = headers("From: A Friend <friend@example.com>\r\nSubject: Hi\r\n\r\n");
         assert!(msg.list_unsubscribe.is_none());
         assert!(!msg.list_unsubscribe_one_click);
+    }
+
+    #[test]
+    fn html_to_text_survives_length_changing_unicode() {
+        // 'İ' lowercases to two chars — a lowercased copy has shifted byte
+        // offsets, which used to desync and panic on a mid-char slice.
+        let html = "İİİİ<script>var x = 1;</script><b>текст</b> ürün";
+        assert_eq!(html_to_text(html), "İİİİтекст ürün");
+    }
+
+    #[test]
+    fn html_to_text_strips_uppercase_script_and_style() {
+        let html = "<SCRIPT>alert(1)</SCRIPT>hello <STYLE>b{}</STYLE>world";
+        assert_eq!(html_to_text(html), "hello world");
+    }
+
+    #[test]
+    fn unsubscribe_host_prefers_one_click_https() {
+        let raw = "<mailto:unsub@lists.example.org>, <https://mail.example.com/u?t=1>";
+        assert_eq!(
+            unsubscribe_host(raw, true).as_deref(),
+            Some("mail.example.com")
+        );
+        // Without one-click the mail path wins, matching the command's priority.
+        assert_eq!(
+            unsubscribe_host(raw, false).as_deref(),
+            Some("lists.example.org")
+        );
+        assert_eq!(
+            unsubscribe_host("<https://mail.example.com/u>", false).as_deref(),
+            Some("mail.example.com")
+        );
+        assert_eq!(unsubscribe_host("junk", true), None);
     }
 }

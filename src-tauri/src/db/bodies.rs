@@ -237,6 +237,11 @@ pub fn get_attachment_by_cid(
 fn row_to_meta(r: &rusqlite::Row) -> rusqlite::Result<MessageMeta> {
     let to_json: Option<String> = r.get(6)?;
     let cc_json: Option<String> = r.get(7)?;
+    let list_unsubscribe: Option<String> = r.get(14)?;
+    let one_click: bool = r.get(15)?;
+    let unsubscribe_host = list_unsubscribe
+        .as_deref()
+        .and_then(|raw| crate::mail::parse::unsubscribe_host(raw, one_click));
     Ok(MessageMeta {
         id: r.get(0)?,
         folder_id: r.get(1)?,
@@ -254,7 +259,8 @@ fn row_to_meta(r: &rusqlite::Row) -> rusqlite::Result<MessageMeta> {
         is_starred: r.get(11)?,
         has_attachments: r.get(12)?,
         body_state: r.get(13)?,
-        can_unsubscribe: r.get(14)?,
+        can_unsubscribe: list_unsubscribe.is_some(),
+        unsubscribe_host,
     })
 }
 
@@ -265,14 +271,14 @@ pub fn get_thread(conn: &Connection, thread_id: i64) -> rusqlite::Result<Option<
     let mut stmt = conn.prepare_cached(
         "SELECT id, folder_id, thread_id, subject, from_name, from_addr, to_addrs, cc_addrs,
                 date, snippet, is_read, is_starred, has_attachments, body_state,
-                (list_unsubscribe IS NOT NULL), message_id
+                list_unsubscribe, list_unsubscribe_one_click, message_id
          FROM messages WHERE thread_id = ?1 ORDER BY date, id",
     )?;
     let mut seen: HashSet<String> = HashSet::new();
     let mut messages = Vec::new();
     let rows = stmt.query_map(params![thread_id], |r| {
         let meta = row_to_meta(r)?;
-        let msgid: Option<String> = r.get(15)?;
+        let msgid: Option<String> = r.get(16)?;
         Ok((meta, msgid))
     })?;
     for row in rows {

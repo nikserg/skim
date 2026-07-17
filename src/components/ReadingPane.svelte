@@ -619,7 +619,9 @@
           <span class="unsub done">{t("reading.unsubscribed")} ✓</span>
         {:else}
           <button class="unsub" onclick={() => unsubscribe(message.id)}>
-            {t("reading.unsubscribe")}
+            {t("reading.unsubscribe")}{#if message.unsubscribeHost}<span class="unsub-host"
+                >· {message.unsubscribeHost}</span
+              >{/if}
           </button>
         {/if}
       {/if}
@@ -1036,6 +1038,12 @@
   button.unsub:hover {
     background: var(--hover);
     color: var(--text);
+  }
+  /* Destination domain — the user sees where the click goes before acting. */
+  .unsub-host {
+    margin-left: 4px;
+    color: var(--text-faint);
+    font-size: 11px;
   }
   .unsub.done {
     color: var(--success);

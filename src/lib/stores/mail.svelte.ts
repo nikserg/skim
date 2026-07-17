@@ -111,10 +111,26 @@ async function selectFolder(id: number) {
   }
 }
 
+let loadingMore = false;
+
 async function loadMoreThreads() {
-  if (state.selectedFolderId === null) return;
-  const more = await fetchPage(state.selectedFolderId, state.threads.length);
-  state.threads = [...state.threads, ...more];
+  // Scroll fires this repeatedly; a second call during the await would read
+  // the same offset and append the same page twice (duplicate {#each} keys).
+  if (state.selectedFolderId === null || loadingMore) return;
+  const folderId = state.selectedFolderId;
+  const grouped = state.groupThreads;
+  loadingMore = true;
+  try {
+    const more = await fetchPage(folderId, state.threads.length);
+    // The user may have switched folders (or grouping) mid-fetch — these rows
+    // belong to the previous view, don't append them to the new one.
+    if (state.selectedFolderId !== folderId || state.groupThreads !== grouped) return;
+    // A concurrent refresh can shift the offset; drop rows we already show.
+    const seen = new Set(state.threads.map((t) => t.messageId ?? t.id));
+    state.threads = [...state.threads, ...more.filter((t) => !seen.has(t.messageId ?? t.id))];
+  } finally {
+    loadingMore = false;
+  }
 }
 
 /** Toggle thread grouping and reload the current folder in the new mode. */

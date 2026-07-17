@@ -1334,8 +1334,22 @@ impl Engine {
                 if url.is_empty() {
                     return Ok(None);
                 }
-                let resp = reqwest::Client::new()
-                    .post(url)
+                // The URL comes straight from a message header, i.e. from the
+                // sender — this is an SSRF boundary. https only, the host must
+                // resolve to public addresses, and the checked addresses are
+                // pinned so a second DNS answer can't swap in a private one.
+                let (target, addrs) = validate_unsub_url(url).await?;
+                let host = target.host_str().unwrap_or_default().to_string();
+                let client = reqwest::Client::builder()
+                    // A redirect could hop from the vetted https host to an
+                    // internal one; RFC 8058 expects a direct 2xx anyway.
+                    .redirect(reqwest::redirect::Policy::none())
+                    .timeout(std::time::Duration::from_secs(30))
+                    .resolve_to_addrs(&host, &addrs)
+                    .build()
+                    .map_err(|e| SkimError::other("unsubscribe", e.to_string()))?;
+                let resp = client
+                    .post(target)
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .body("List-Unsubscribe=One-Click")
                     .send()
@@ -1627,6 +1641,80 @@ fn imap_err(e: async_imap::error::Error) -> SkimError {
     SkimError::other("imap", e.to_string())
 }
 
+/// Vet a one-click unsubscribe endpoint before POSTing to it. The URL is
+/// sender-controlled, so this is the SSRF gate: https only, and every address
+/// the host resolves to must be public — otherwise a crafted header would turn
+/// the user's click into a probe of their LAN or a metadata endpoint. Returns
+/// the parsed URL plus the vetted addresses so the caller can pin them.
+async fn validate_unsub_url(url: &str) -> Result<(reqwest::Url, Vec<std::net::SocketAddr>)> {
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|e| SkimError::other("unsubscribe", format!("bad unsubscribe url: {e}")))?;
+    if parsed.scheme() != "https" {
+        return Err(SkimError::other(
+            "unsubscribe",
+            "unsubscribe endpoint is not https",
+        ));
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| SkimError::other("unsubscribe", "unsubscribe url has no host"))?
+        .to_string();
+    let port = parsed.port().unwrap_or(443);
+    let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host.as_str(), port))
+        .await
+        .map_err(|e| SkimError::other("unsubscribe", format!("cannot resolve {host}: {e}")))?
+        .collect();
+    if addrs.is_empty() {
+        return Err(SkimError::other(
+            "unsubscribe",
+            format!("{host} did not resolve"),
+        ));
+    }
+    if addrs.iter().any(|a| !is_public_ip(a.ip())) {
+        return Err(SkimError::other(
+            "unsubscribe",
+            format!("{host} resolves to a non-public address"),
+        ));
+    }
+    Ok((parsed, addrs))
+}
+
+/// True when the address is routable on the public internet — not loopback,
+/// LAN, link-local (cloud metadata), CGNAT, or another reserved range.
+/// A hand-rolled check because `IpAddr::is_global` is still unstable.
+fn is_public_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => is_public_v4(v4),
+        std::net::IpAddr::V6(v6) => {
+            if let Some(mapped) = v6.to_ipv4_mapped() {
+                return is_public_v4(mapped);
+            }
+            let seg0 = v6.segments()[0];
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || (seg0 & 0xfe00) == 0xfc00 // unique-local fc00::/7
+                || (seg0 & 0xffc0) == 0xfe80) // link-local fe80::/10
+        }
+    }
+}
+
+fn is_public_v4(ip: std::net::Ipv4Addr) -> bool {
+    let o = ip.octets();
+    !(ip.is_loopback()
+        || ip.is_private()
+        || ip.is_link_local() // 169.254/16 — cloud metadata lives here
+        || ip.is_unspecified()
+        || ip.is_broadcast()
+        || ip.is_multicast()
+        || ip.is_documentation()
+        || o[0] == 0 // "this network" 0.0.0.0/8
+        || (o[0] == 100 && (o[1] & 0xc0) == 64) // CGNAT 100.64/10
+        || (o[0] == 192 && o[1] == 0 && o[2] == 0) // IETF protocol 192.0.0.0/24
+        || (o[0] == 198 && (o[1] & 0xfe) == 18) // benchmarking 198.18/15
+        || o[0] >= 240) // reserved 240/4
+}
+
 fn detect_role(imap_name: &str, attrs_lower: &str) -> Option<String> {
     if imap_name.eq_ignore_ascii_case("INBOX") {
         return Some("inbox".into());
@@ -1758,5 +1846,52 @@ mod utf7_tests {
         assert_eq!(decode_imap_utf7("&Jjo-!"), "☺!");
         // malformed input survives untouched
         assert_eq!(decode_imap_utf7("&broken"), "&broken");
+    }
+}
+
+#[cfg(test)]
+mod unsub_ssrf_tests {
+    use super::is_public_ip;
+    use std::net::IpAddr;
+
+    fn ip(s: &str) -> IpAddr {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn rejects_non_public_addresses() {
+        for bad in [
+            "127.0.0.1",
+            "10.1.2.3",
+            "172.16.0.1",
+            "192.168.1.1",
+            "169.254.169.254", // cloud metadata
+            "0.0.0.0",
+            "100.64.0.1", // CGNAT
+            "198.18.0.1", // benchmarking
+            "255.255.255.255",
+            "240.0.0.1",
+            "::1",
+            "::",
+            "fe80::1",
+            "fc00::1",
+            "fd12::1",
+            "ff02::1",
+            "::ffff:192.168.1.1", // v4-mapped private
+        ] {
+            assert!(!is_public_ip(ip(bad)), "{bad} should be rejected");
+        }
+    }
+
+    #[test]
+    fn accepts_public_addresses() {
+        for good in [
+            "93.184.216.34",
+            "8.8.8.8",
+            "2606:2800:220:1::1",
+            "::ffff:8.8.8.8",
+        ] {
+            assert!(is_public_ip(ip(good)), "{good} should be accepted");
+        }
     }
 }

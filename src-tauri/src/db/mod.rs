@@ -40,14 +40,14 @@ impl Db {
         Self::init(Connection::open_in_memory()?)
     }
 
-    fn init(conn: Connection) -> Result<Self> {
+    fn init(mut conn: Connection) -> Result<Self> {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
 
         assert_fts5(&conn)?;
-        migrate(&conn)?;
+        migrate(&mut conn, MIGRATIONS)?;
 
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -89,13 +89,18 @@ fn assert_fts5(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-fn migrate(conn: &Connection) -> Result<()> {
+fn migrate(conn: &mut Connection, migrations: &[&str]) -> Result<()> {
     let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    for (i, sql) in MIGRATIONS.iter().enumerate() {
+    for (i, sql) in migrations.iter().enumerate() {
         let target = (i + 1) as i64;
         if version < target {
-            conn.execute_batch(sql)?;
-            conn.pragma_update(None, "user_version", target)?;
+            // The migration and its version bump commit together: a failing
+            // statement rolls the whole step back, so a later start retries it
+            // from scratch instead of hitting "table already exists" forever.
+            let tx = conn.transaction()?;
+            tx.execute_batch(sql)?;
+            tx.pragma_update(None, "user_version", target)?;
+            tx.commit()?;
             tracing::info!(migration = target, "applied database migration");
         }
     }
@@ -121,5 +126,27 @@ mod tests {
             Ok(())
         })
         .unwrap();
+    }
+
+    #[test]
+    fn failed_migration_rolls_back_entirely() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let bad = &["CREATE TABLE half_done (x INTEGER); THIS IS NOT SQL;"];
+        assert!(migrate(&mut conn, bad).is_err());
+        // Neither the early DDL nor the version bump may survive, so the next
+        // start retries the migration from scratch instead of wedging on
+        // "table already exists".
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 0);
+        let leftover: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name = 'half_done'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(leftover, 0);
     }
 }

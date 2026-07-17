@@ -35,8 +35,38 @@
 
   let rowsEl: HTMLDivElement | undefined = $state();
 
+  // Windowed rendering: only the rows near the viewport get live components,
+  // so a folder with thousands of messages doesn't hold thousands of DOM
+  // nodes. Rows are fixed-height (three nowrap lines), which keeps the
+  // arithmetic exact; the real height is measured off the first rendered row.
+  const OVERSCAN = 8;
+  let scrollTop = $state(0);
+  let viewH = $state(0);
+  let rowH = $state(76);
+
+  const start = $derived(Math.max(0, Math.floor(scrollTop / rowH) - OVERSCAN));
+  const end = $derived(
+    Math.min(mail.threads.length, Math.ceil((scrollTop + viewH) / rowH) + OVERSCAN),
+  );
+  const visible = $derived(mail.threads.slice(start, end));
+
+  $effect(() => {
+    void visible;
+    const el = rowsEl?.querySelector<HTMLElement>("button.row");
+    if (el && Math.abs(el.offsetHeight - rowH) > 0.5) rowH = el.offsetHeight;
+  });
+
+  // A new folder (or grouping mode) is a new list — start it at the top.
+  $effect(() => {
+    void mail.selectedFolderId;
+    void mail.groupThreads;
+    if (rowsEl) rowsEl.scrollTop = 0;
+    scrollTop = 0;
+  });
+
   function onScroll() {
     if (!rowsEl) return;
+    scrollTop = rowsEl.scrollTop;
     if (rowsEl.scrollTop + rowsEl.clientHeight > rowsEl.scrollHeight - 400) {
       if (mail.threads.length >= 100) void mail.loadMoreThreads();
     }
@@ -64,13 +94,14 @@
       {/if}
     </div>
   </header>
-  <div class="rows" bind:this={rowsEl} onscroll={onScroll}>
+  <div class="rows" bind:this={rowsEl} bind:clientHeight={viewH} onscroll={onScroll}>
     {#if mail.threads.length === 0 && !mail.threadsLoading}
       <div class="empty">
         {mail.syncState === "syncing" ? t("sync.syncing") : t("list.empty")}
       </div>
     {:else}
-      {#each mail.threads as thread (thread.messageId ?? thread.id)}
+      <div class="spacer" style="height: {start * rowH}px"></div>
+      {#each visible as thread (thread.messageId ?? thread.id)}
         <MessageRow
           {thread}
           selected={mail.groupThreads
@@ -82,6 +113,7 @@
           }}
         />
       {/each}
+      <div class="spacer" style="height: {(mail.threads.length - end) * rowH}px"></div>
     {/if}
   </div>
 </section>
