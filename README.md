@@ -99,7 +99,7 @@ Requirements: Windows 10/11 with [WebView2](https://developer.microsoft.com/micr
 
 Press **Continue with Google** during onboarding. Skim opens your browser, you approve access, done. Skim never sees your password; the OAuth token is stored in Credential Manager.
 
-> **Note for source builds:** Google requires each app distribution to register its own OAuth client. Official installers ship with the project's client ID. If you build from source, either paste your own client ID in the connect screen (see below) or use an app password.
+> **Note for source builds:** Google requires each app distribution to register its own OAuth client. Official installers ship with the project's client ID. If you build from source, either bake in your own client ID at build time (see below) or use an app password.
 
 ### Gmail / Yahoo / iCloud / Outlook — app password
 
@@ -122,7 +122,7 @@ For forks and source builds (~15 minutes, free):
 3. *Google Auth Platform* → configure the consent screen (External).
 4. *Data access* → add the scope `https://mail.google.com/`.
 5. *Clients* → create an **OAuth client ID** of type **Desktop app**.
-6. Paste the client ID (and secret) into Skim's connect screen, or bake them into your build via the `SKIM_GOOGLE_CLIENT_ID` / `SKIM_GOOGLE_CLIENT_SECRET` env vars.
+6. Bake the client ID (and secret) into your build via the `SKIM_GOOGLE_CLIENT_ID` / `SKIM_GOOGLE_CLIENT_SECRET` env vars at compile time.
 
 While your Google app is unverified it runs in *testing* mode: only listed test users can sign in and refresh tokens expire weekly. App passwords have no such limits.
 

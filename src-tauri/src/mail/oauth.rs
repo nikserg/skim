@@ -1,12 +1,11 @@
 //! OAuth (XOAUTH2) for Gmail and Microsoft (Exchange Online / Office 365).
 //!
 //! Installed-app flow: loopback redirect on 127.0.0.1 with PKCE (S256).
-//! The client id/secret are either baked in at build time via the
+//! The client id/secret are baked in at build time via the
 //! `SKIM_GOOGLE_CLIENT_ID` / `SKIM_GOOGLE_CLIENT_SECRET` /
-//! `SKIM_MICROSOFT_CLIENT_ID` env vars or supplied by the user in settings
-//! (stored in the `settings` table — they are not secret for installed apps,
-//! per Google's and Microsoft's own documentation). Microsoft public clients
-//! use PKCE only and carry no secret.
+//! `SKIM_MICROSOFT_CLIENT_ID` env vars (they are not secret for installed
+//! apps, per Google's and Microsoft's own documentation). Microsoft public
+//! clients use PKCE only and carry no secret.
 
 use crate::error::{Result, SkimError};
 use base64::Engine;

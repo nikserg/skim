@@ -20,8 +20,6 @@ const ALLOWED: &[&str] = &[
     "ai_style",
     "ai_style_profile",
     "ai_instructions",
-    "google_client_id",
-    "google_client_secret",
 ];
 
 #[tauri::command]
