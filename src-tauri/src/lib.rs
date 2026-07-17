@@ -19,8 +19,9 @@ pub fn run() {
         )
         .init();
 
-    // Several dependencies (reqwest, tokio-rustls) link rustls with different
-    // crypto backends; pick one explicitly or every TLS handshake panics.
+    // ring is the only rustls crypto backend we compile (Cargo.toml disables the
+    // default aws-lc one), but keep the explicit install: if a dependency ever
+    // re-enables a second backend, rustls would panic on every TLS handshake.
     rustls::crypto::ring::default_provider()
         .install_default()
         .ok();

@@ -51,3 +51,15 @@ jobs:
           # latest.json must point auto-updaters at the NSIS installer; the
           # default here is the MSI, which would silently migrate everyone.
           updaterJsonPreferNsis: true
+
+      # The updater reads signatures from latest.json (embedded there in
+      # full); the standalone .sig assets are never fetched — drop them to
+      # keep the release page down to setup.exe + msi + latest.json.
+      - name: Drop .sig assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view ${{ github.ref_name }} --json assets -q '.assets[].name' |
+            Select-String '\.sig$' | ForEach-Object {
+              gh release delete-asset ${{ github.ref_name }} $_.Line --yes
+            }

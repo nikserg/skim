@@ -36,8 +36,10 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 chrono-tz = "0.10"
 uuid = { version = "1", features = ["v4"] }
 async-imap = { version = "0.10", default-features = false, features = ["runtime-tokio"] }
-rustls = { version = "0.23", features = ["ring"] }
-tokio-rustls = "0.26"
+# default-features off: the default `aws_lc_rs` backend would compile a second
+# (unused) crypto library into the binary alongside ring — ~2 MB of dead weight.
+rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging", "tls12"] }
 rustls-platform-verifier = "0.5"
 futures = "0.3"
 mail-parser = "0.11"
