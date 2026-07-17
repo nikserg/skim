@@ -291,35 +291,6 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// The domain an unsubscribe click will actually contact, shown next to the
-/// chip so the user sees the destination before acting. Mirrors the action
-/// priority of `commands::mail::unsubscribe`: one-click https POST →
-/// unsubscribe email → link opened in the browser.
-pub fn unsubscribe_host(raw: &str, one_click: bool) -> Option<String> {
-    let targets = parse_unsub_targets(raw);
-    let https_host = targets.iter().find_map(|t| match t {
-        UnsubTarget::Http(u) if u.starts_with("https://") => {
-            url::Url::parse(u).ok()?.host_str().map(str::to_string)
-        }
-        _ => None,
-    });
-    if one_click {
-        if let Some(host) = https_host.clone() {
-            return Some(host);
-        }
-    }
-    let mail_host = targets.iter().find_map(|t| match t {
-        UnsubTarget::Mail { to, .. } => to.rsplit_once('@').map(|(_, d)| d.to_string()),
-        _ => None,
-    });
-    mail_host.or(https_host).or_else(|| {
-        targets.iter().find_map(|t| match t {
-            UnsubTarget::Http(u) => url::Url::parse(u).ok()?.host_str().map(str::to_string),
-            _ => None,
-        })
-    })
-}
-
 pub fn make_snippet(text: &str) -> String {
     let cleaned = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut snippet: String = cleaned.chars().take(140).collect();
@@ -392,24 +363,5 @@ mod tests {
     fn html_to_text_strips_uppercase_script_and_style() {
         let html = "<SCRIPT>alert(1)</SCRIPT>hello <STYLE>b{}</STYLE>world";
         assert_eq!(html_to_text(html), "hello world");
-    }
-
-    #[test]
-    fn unsubscribe_host_prefers_one_click_https() {
-        let raw = "<mailto:unsub@lists.example.org>, <https://mail.example.com/u?t=1>";
-        assert_eq!(
-            unsubscribe_host(raw, true).as_deref(),
-            Some("mail.example.com")
-        );
-        // Without one-click the mail path wins, matching the command's priority.
-        assert_eq!(
-            unsubscribe_host(raw, false).as_deref(),
-            Some("lists.example.org")
-        );
-        assert_eq!(
-            unsubscribe_host("<https://mail.example.com/u>", false).as_deref(),
-            Some("mail.example.com")
-        );
-        assert_eq!(unsubscribe_host("junk", true), None);
     }
 }

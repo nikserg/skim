@@ -138,6 +138,26 @@ pub fn relink_origin(
     Ok(())
 }
 
+/// Ensure the draft carries a stable Message-ID for its server copy, minting the
+/// given `candidate` only when none is set yet. Returns the effective value.
+/// Lets a local-only draft become addressable in the IMAP Drafts folder without
+/// disturbing a server-backed draft that already has one.
+pub fn ensure_imap_message_id(
+    conn: &Connection,
+    draft_id: i64,
+    candidate: &str,
+) -> rusqlite::Result<String> {
+    conn.execute(
+        "UPDATE drafts SET imap_message_id = ?2 WHERE id = ?1 AND imap_message_id IS NULL",
+        params![draft_id, candidate],
+    )?;
+    conn.query_row(
+        "SELECT imap_message_id FROM drafts WHERE id = ?1",
+        params![draft_id],
+        |r| r.get(0),
+    )
+}
+
 /// The server-copy coordinates of a draft: `(origin_message_id, imap_message_id)`.
 /// Both `None`/absent for ordinary local drafts.
 pub fn origin_coords(

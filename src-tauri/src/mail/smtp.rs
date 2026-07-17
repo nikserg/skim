@@ -4,10 +4,11 @@ use crate::db::drafts::Draft;
 use crate::db::models::Account;
 use crate::error::{Result, SkimError};
 use crate::mail::imap_client::Credentials;
+use lettre::address::Envelope;
 use lettre::message::header::ContentType;
 use lettre::message::{Attachment, Mailbox, Message, MultiPart, SinglePart};
 use lettre::transport::smtp::authentication::{Credentials as SmtpCredentials, Mechanism};
-use lettre::{AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
+use lettre::{Address, AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
 
 /// Parse a raw comma/semicolon-separated recipient string.
 pub fn parse_recipients(raw: &str) -> Vec<String> {
@@ -33,12 +34,17 @@ pub struct OutgoingRefs {
 /// `message_id` overrides the RFC822 Message-ID (given without angle brackets);
 /// pass `Some` to keep a stable identity when the same draft is saved back to
 /// the IMAP Drafts folder and later sent, `None` to let lettre generate one.
+///
+/// `allow_empty_recipients` is `true` only when storing a draft in the Drafts
+/// folder (a work-in-progress may legitimately have no `To` yet); the send path
+/// keeps it `false` so a message can never be submitted without a recipient.
 pub fn build_message(
     account: &Account,
     draft: &Draft,
     refs: &OutgoingRefs,
     attachments: &[(String, String, Vec<u8>)],
     message_id: Option<&str>,
+    allow_empty_recipients: bool,
 ) -> Result<Vec<u8>> {
     let from: Mailbox = match &account.display_name {
         Some(name) if !name.is_empty() => format!("{} <{}>", name, account.email),
@@ -50,20 +56,35 @@ pub fn build_message(
     let mut builder = Message::builder().from(from);
 
     let to = parse_recipients(&draft.to);
-    if to.is_empty() {
-        return Err(SkimError::other("send", "no valid recipients"));
+    let cc = parse_recipients(&draft.cc);
+    let bcc = parse_recipients(&draft.bcc);
+    if to.is_empty() && cc.is_empty() && bcc.is_empty() {
+        if !allow_empty_recipients {
+            return Err(SkimError::other("send", "no valid recipients"));
+        }
+        // lettre refuses to build a message with no destination at all. A
+        // work-in-progress draft legitimately has none yet, so hand it a
+        // throwaway envelope (used only for lettre's validation — the envelope
+        // is not serialized, so no bogus To header reaches the stored draft).
+        let self_addr = account
+            .email
+            .parse::<Address>()
+            .map_err(|e| SkimError::other("send", format!("invalid sender: {e}")))?;
+        let envelope = Envelope::new(Some(self_addr.clone()), vec![self_addr])
+            .map_err(|e| SkimError::other("send", format!("cannot build message: {e}")))?;
+        builder = builder.envelope(envelope);
     }
     for addr in &to {
         builder = builder.to(addr
             .parse()
             .map_err(|e| SkimError::other("send", format!("invalid recipient {addr}: {e}")))?);
     }
-    for addr in parse_recipients(&draft.cc) {
+    for addr in &cc {
         builder = builder.cc(addr
             .parse()
             .map_err(|e| SkimError::other("send", format!("invalid recipient {addr}: {e}")))?);
     }
-    for addr in parse_recipients(&draft.bcc) {
+    for addr in &bcc {
         builder = builder.bcc(
             addr.parse()
                 .map_err(|e| SkimError::other("send", format!("invalid recipient {addr}: {e}")))?,
@@ -290,7 +311,7 @@ mod tests {
 
     #[test]
     fn plain_message_has_no_multipart() {
-        let raw = build_message(&account(), &draft(), &no_refs(), &[], None).unwrap();
+        let raw = build_message(&account(), &draft(), &no_refs(), &[], None, false).unwrap();
         let text = String::from_utf8_lossy(&raw);
         assert!(!text.to_ascii_lowercase().contains("multipart/mixed"));
         assert!(text.contains("Body text"));
@@ -303,7 +324,8 @@ mod tests {
             "text/plain".to_string(),
             b"hello attachment".to_vec(),
         )];
-        let raw = build_message(&account(), &draft(), &no_refs(), &attachments, None).unwrap();
+        let raw =
+            build_message(&account(), &draft(), &no_refs(), &attachments, None, false).unwrap();
         let text = String::from_utf8_lossy(&raw);
         assert!(text.to_ascii_lowercase().contains("multipart/mixed"));
         // The filename appears in the Content-Disposition of the attachment part.
@@ -319,7 +341,8 @@ mod tests {
             vec![0u8, 1, 2, 3],
         )];
         // Must not panic on an unparseable MIME type.
-        let raw = build_message(&account(), &draft(), &no_refs(), &attachments, None).unwrap();
+        let raw =
+            build_message(&account(), &draft(), &no_refs(), &attachments, None, false).unwrap();
         let text = String::from_utf8_lossy(&raw);
         assert!(text.contains("blob.bin"));
     }
@@ -332,10 +355,25 @@ mod tests {
             &no_refs(),
             &[],
             Some("skim-abc@example.com"),
+            false,
         )
         .unwrap();
         let text = String::from_utf8_lossy(&raw);
         // lettre wraps the id in angle brackets on the Message-ID header line.
         assert!(text.contains("<skim-abc@example.com>"));
+    }
+
+    #[test]
+    fn empty_recipients_rejected_unless_allowed() {
+        let mut d = draft();
+        d.to = String::new();
+        // The send path refuses a recipient-less message.
+        assert!(build_message(&account(), &d, &no_refs(), &[], None, false).is_err());
+        // Saving to the Drafts folder allows it (work-in-progress, no To yet).
+        let raw = build_message(&account(), &d, &no_refs(), &[], None, true).unwrap();
+        let text = String::from_utf8_lossy(&raw);
+        assert!(text.contains("Body text"));
+        // The throwaway envelope must not leak a To header into the draft.
+        assert!(!text.contains("To:"));
     }
 }

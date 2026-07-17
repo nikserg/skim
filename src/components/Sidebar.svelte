@@ -5,6 +5,7 @@
   import { mail } from "../lib/stores/mail.svelte";
   import { palette } from "../lib/stores/palette.svelte";
   import { ui } from "../lib/stores/ui.svelte";
+  import { updater } from "../lib/stores/update.svelte";
   import Settings from "./settings/Settings.svelte";
 
   async function compose() {
@@ -129,6 +130,52 @@
       <button class="sync error microlabel" onclick={() => mail.syncNow()} title={mail.syncMessage}>
         <span class="warn-icon">⚠</span>
         <span class="name">{t("sync.error")}</span>
+      </button>
+    {/if}
+    {#if updater.status === "available"}
+      <div class="sync update microlabel">
+        <button
+          class="update-go"
+          onclick={() => updater.download()}
+          title={`${t("update.available")} · v${updater.version}`}
+        >
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 2.5v8M4.5 7L8 10.5 11.5 7M3 13.5h10" />
+          </svg>
+          <span class="name">{t("update.available")}</span>
+        </button>
+        <button
+          class="update-dismiss"
+          onclick={() => updater.dismiss()}
+          title={t("update.dismiss")}
+          aria-label={t("update.dismiss")}
+        >×</button>
+      </div>
+    {:else if updater.status === "downloading"}
+      <div class="sync microlabel">
+        <span class="spinner"></span>
+        <span class="name">
+          {t("update.downloading")}
+          {#if updater.progress >= 0}
+            {Math.round(updater.progress * 100)}%
+          {/if}
+        </span>
+      </div>
+    {:else if updater.status === "ready"}
+      <button
+        class="sync update update-go microlabel"
+        onclick={() => updater.restart()}
+        title={collapsed ? t("update.restart") : undefined}
+      >
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M13.5 8a5.5 5.5 0 1 1-1.61-3.89M13.5 2.5V6H10" />
+        </svg>
+        <span class="name">{t("update.restart")}</span>
+      </button>
+    {:else if updater.status === "error"}
+      <button class="sync error microlabel update-go" onclick={() => updater.download()}>
+        <span class="warn-icon">⚠</span>
+        <span class="name">{t("update.error")}</span>
       </button>
     {/if}
     <button class="item" onclick={() => ui.openSettings()} title={collapsed ? t("nav.settings") : undefined}>
@@ -432,6 +479,41 @@
   }
   .sync.error {
     color: var(--danger);
+  }
+  .sync.update {
+    color: var(--text-dim);
+  }
+  .update-go {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    text-align: left;
+  }
+  .update-go:hover {
+    color: var(--text);
+  }
+  .sync.error.update-go:hover {
+    color: var(--danger);
+  }
+  .update-dismiss {
+    /* generous hit area — the glyph itself is tiny */
+    padding: 4px 8px;
+    margin: -4px -8px -4px 0;
+    font-size: 13px;
+    line-height: 1;
+    color: var(--text-faint);
+  }
+  .update-dismiss:hover {
+    color: var(--text);
+  }
+  .sidebar.collapsed .update-dismiss {
+    display: none;
+  }
+  .sidebar.collapsed .update-go {
+    flex: none;
   }
   .spinner {
     width: 10px;

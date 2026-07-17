@@ -1132,6 +1132,7 @@ impl Engine {
             &refs,
             &attachments,
             imap_message_id.as_deref(),
+            false,
         )?;
 
         let mut cache = self.oauth_token.take();
@@ -1232,6 +1233,7 @@ impl Engine {
             &refs,
             &attachments,
             Some(&imap_message_id),
+            true,
         )?;
 
         let drafts_name = self.role_folder("drafts", "Drafts").await?;

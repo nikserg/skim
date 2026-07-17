@@ -39,6 +39,19 @@
   // merely opening a draft and leaving never rewrites it (which would, for an
   // HTML draft, flatten it to plain text on the server).
   let dirty = false;
+  // Explicit-save state for the standalone compose window (`chrome`): 'clean'
+  // shows nothing, 'dirty' shows the Save button, 'saved' shows "Saved". Editing
+  // after a save flips it back to 'dirty'. Unused in the inline editor.
+  let saveState = $state<"clean" | "dirty" | "saved">("clean");
+  // Set once the draft has been committed to the Drafts folder, so closing the
+  // window keeps it instead of dropping the (now real) draft.
+  let committed = $state(false);
+
+  /** Mark an edit: guards the inline write-back and drives the window Save state. */
+  function markDirty() {
+    dirty = true;
+    saveState = "dirty";
+  }
 
   // ---- Attachments ----
   const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -70,7 +83,7 @@
           bytes,
         );
         attachments.push(meta);
-        dirty = true;
+        markDirty();
       } catch (e) {
         error = errorMessage(e);
       }
@@ -87,7 +100,7 @@
     try {
       await api.removeDraftAttachment(id);
       attachments = attachments.filter((a) => a.id !== id);
-      dirty = true;
+      markDirty();
     } catch (e) {
       error = errorMessage(e);
     }
@@ -308,7 +321,7 @@
   });
 
   function scheduleSave() {
-    dirty = true;
+    markDirty();
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
       if (!draft) return;
@@ -368,23 +381,67 @@
     onDiscarded?.();
   }
 
+  /** Explicit save from the compose window: commit the draft to the Drafts
+   *  folder so it becomes a real, reopenable message. Optimistic — if offline
+   *  the queued op drains later. */
+  async function save() {
+    if (!draft || saveState !== "dirty") return;
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    const snapshot = $state.snapshot(draft) as Draft;
+    try {
+      await api.updateDraft(snapshot);
+      await api.saveServerDraft(snapshot);
+      dirty = false;
+      committed = true;
+      saveState = "saved";
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
+
+  function onWindowKeydown(e: KeyboardEvent) {
+    // Ctrl/Cmd+S saves the compose window's draft. `e.code` so it works on any
+    // keyboard layout. Only the standalone window handles this (the inline
+    // editor lives under App.svelte's global shortcuts).
+    if (chrome && (e.ctrlKey || e.metaKey) && e.code === "KeyS") {
+      e.preventDefault();
+      void save();
+    }
+  }
+
   async function close() {
-    // Closing keeps the draft: flush edits back to the server (and locally).
     settled = true;
-    await flushServer();
+    if (chrome) {
+      // The window's ✕ saves nothing. Drop a never-saved local draft so it
+      // doesn't linger as an orphaned row; a saved one stays in Drafts.
+      if (!committed && draft) await api.deleteDraft(draft.id).catch(() => {});
+    } else {
+      // Inline: closing keeps the draft — flush edits back to the server.
+      await flushServer();
+    }
     onClose?.();
   }
 
-  // Inline teardown (e.g. switching to another draft row, or leaving the folder)
-  // must still write the edits back to the Drafts folder.
+  // Teardown. Inline (switching draft rows / leaving the folder) still writes
+  // edits back to the Drafts folder; the window instead cleans up an unsaved
+  // local draft.
   onDestroy(() => {
     if (settled) return;
     settled = true;
-    void flushServer();
+    if (chrome) {
+      if (!committed && draft) void api.deleteDraft(draft.id).catch(() => {});
+    } else {
+      void flushServer();
+    }
   });
 
   const title = $derived(draft?.subject || t("compose.new"));
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 <div
   class="compose-form"
@@ -554,9 +611,23 @@
       </button>
       <input bind:this={fileInput} type="file" multiple class="file-input" onchange={pickFiles} />
       <div class="grow"></div>
-      <button class="discard" onclick={discard} title={t("compose.discard")}>
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 4h10M6.5 4V2.5h3V4M4.5 4l.5 9.5h6l.5-9.5M6.7 6.5v5M9.3 6.5v5" /></svg>
-      </button>
+      {#if chrome}
+        <!-- The window has no discard: closing already drops an unsaved draft.
+             Instead, editing reveals an explicit Save; a saved draft shows a
+             confirmation until the next edit. -->
+        {#if saveState === "dirty"}
+          <button class="save" onclick={save} title={t("compose.save")}>
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 8.5l3.5 3.5L13 4.5" /></svg>
+            <kbd>Ctrl S</kbd>
+          </button>
+        {:else if saveState === "saved"}
+          <span class="saved-label">{t("compose.saved")}</span>
+        {/if}
+      {:else}
+        <button class="discard" onclick={discard} title={t("compose.discard")}>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 4h10M6.5 4V2.5h3V4M4.5 4l.5 9.5h6l.5-9.5M6.7 6.5v5M9.3 6.5v5" /></svg>
+        </button>
+      {/if}
     </footer>
   {/if}
 
@@ -813,6 +884,33 @@
   .discard:hover {
     background: var(--hover);
     color: var(--danger);
+  }
+  /* Explicit Save in the compose window: icon + shortcut hint, muted until hover. */
+  .save {
+    height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    border-radius: var(--radius-s);
+    color: var(--text-dim);
+  }
+  .save:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .save kbd {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-faint);
+  }
+  .saved-label {
+    display: flex;
+    align-items: center;
+    height: 34px;
+    padding: 0 12px;
+    font-size: 12.5px;
+    color: var(--text-faint);
   }
 
   /* Staged-attachment chips, above the footer. */

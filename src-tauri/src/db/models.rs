@@ -72,11 +72,8 @@ pub struct MessageMeta {
     pub body_state: i64,
     /// True when the message carries a usable `List-Unsubscribe` header, so the
     /// reading pane can offer an unsubscribe chip. The full target stays in the
-    /// DB — only the destination's domain goes to the frontend, so the user can
-    /// see where the click will go.
+    /// DB and is never sent to the frontend — the chip just triggers the action.
     pub can_unsubscribe: bool,
-    /// Domain the unsubscribe action will contact (shown next to the chip).
-    pub unsubscribe_host: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -70,8 +70,6 @@ export interface MessageMeta {
   bodyState: number;
   /** True when the message has a List-Unsubscribe header (mailing list). */
   canUnsubscribe: boolean;
-  /** Domain the unsubscribe action will contact, shown next to the chip. */
-  unsubscribeHost: string | null;
 }
 
 export interface ThreadDetail {

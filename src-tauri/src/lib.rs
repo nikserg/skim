@@ -54,6 +54,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .register_uri_scheme_protocol("skim-cid", |ctx, request| {
             // Serves cached inline (cid:) images to the message iframe:
             // http://skim-cid.localhost/<message_pk>/<url-encoded content id>
@@ -142,9 +143,21 @@ pub fn run() {
                 }
             }
 
-            // `--minimized` (autostart) keeps the window hidden in the tray.
+            // `--minimized` (autostart) keeps the window hidden in the tray —
+            // except right after a self-update: the installer relaunches Skim
+            // with the old process args, but the user explicitly clicked
+            // "Restart" and expects the window back. The frontend sets this
+            // one-shot flag just before installing.
+            let update_relaunch = db
+                .with(|conn| db::queries::get_setting(conn, "update_relaunch"))
+                .ok()
+                .flatten()
+                .is_some_and(|v| v == "1");
+            if update_relaunch {
+                let _ = db.with(|conn| db::queries::set_setting(conn, "update_relaunch", "0"));
+            }
             let minimized = std::env::args().any(|a| a == "--minimized");
-            if !minimized {
+            if !minimized || update_relaunch {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
@@ -178,6 +191,22 @@ pub fn run() {
                         state.data_dir.clone(),
                     );
                     engines.insert(account.id, sync_handle);
+                }
+            });
+
+            // A successful self-update leaves the installer behind in
+            // `%TEMP%\Skim-{version}-updater-{rand}\` — the updater plugin
+            // keeps that dir alive across its own process::exit and never
+            // gets a chance to delete it. Sweep leftovers from past updates.
+            tauri::async_runtime::spawn(async {
+                let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+                    return;
+                };
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().to_lowercase();
+                    if name.starts_with("skim-") && name.contains("-updater-") {
+                        let _ = std::fs::remove_dir_all(entry.path());
+                    }
                 }
             });
             Ok(())

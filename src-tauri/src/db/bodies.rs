@@ -238,10 +238,6 @@ fn row_to_meta(r: &rusqlite::Row) -> rusqlite::Result<MessageMeta> {
     let to_json: Option<String> = r.get(6)?;
     let cc_json: Option<String> = r.get(7)?;
     let list_unsubscribe: Option<String> = r.get(14)?;
-    let one_click: bool = r.get(15)?;
-    let unsubscribe_host = list_unsubscribe
-        .as_deref()
-        .and_then(|raw| crate::mail::parse::unsubscribe_host(raw, one_click));
     Ok(MessageMeta {
         id: r.get(0)?,
         folder_id: r.get(1)?,
@@ -260,7 +256,6 @@ fn row_to_meta(r: &rusqlite::Row) -> rusqlite::Result<MessageMeta> {
         has_attachments: r.get(12)?,
         body_state: r.get(13)?,
         can_unsubscribe: list_unsubscribe.is_some(),
-        unsubscribe_host,
     })
 }
 

@@ -20,6 +20,9 @@ const ALLOWED: &[&str] = &[
     "ai_style",
     "ai_style_profile",
     "ai_instructions",
+    "update_last_check",
+    "update_dismissed",
+    "update_relaunch",
 ];
 
 #[tauri::command]

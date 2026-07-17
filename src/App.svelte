@@ -14,6 +14,7 @@
   import { mail } from "./lib/stores/mail.svelte";
   import { palette } from "./lib/stores/palette.svelte";
   import { ui } from "./lib/stores/ui.svelte";
+  import { updater } from "./lib/stores/update.svelte";
   import type { Account, Draft } from "./lib/types";
 
   let ready = $state(false);
@@ -97,8 +98,9 @@
     void (async () => {
       const inTauri = "__TAURI_INTERNALS__" in window;
       if (inTauri) {
+        let settings: Record<string, string> = {};
         try {
-          const settings = await api.getSettings();
+          settings = await api.getSettings();
           if (settings.locale) await setLocale(settings.locale as never);
           // Apply the stored theme (migrating legacy values); persist the
           // normalized string back once if migration changed it.
@@ -108,6 +110,7 @@
         } catch {
           // settings are best-effort at boot
         }
+        updater.init(settings);
         await mail.boot();
         void ai.refresh();
       }

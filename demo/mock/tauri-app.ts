@@ -1,6 +1,6 @@
 // Mock of `@tauri-apps/api/app`.
 export async function getVersion(): Promise<string> {
-  return "demo";
+  return "0.1.25";
 }
 export async function getName(): Promise<string> {
   return "Skim";

@@ -29,9 +29,19 @@
       "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http://skim-cid.localhost https: http:; font-src 'self' data:; connect-src ipc: http://ipc.localhost ws://localhost:1420 http://localhost:1420; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdFOUVGQjI1RkQ2Nzc0MDYKUldRR2RHZjlKZnVlZnFVaXBEeFlmSlIxNGF5dkFTcVVIeVgrV05seFd4bEM5U0tGZ052Rkk0RnAK",
+      "endpoints": ["https://github.com/nikserg/skim/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

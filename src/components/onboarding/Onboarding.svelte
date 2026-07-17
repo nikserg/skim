@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getVersion } from "@tauri-apps/api/app";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { aiApi, api, errorMessage, errorCode, type AddAccountInput, type AiProvider } from "../../lib/api";
   import { getLocale, LOCALES, setLocale, t, type Locale } from "../../lib/i18n/index.svelte";
@@ -10,6 +11,10 @@
   let step: "welcome" | "connect" | "ai" = $state("welcome");
   let locale: Locale = $state(getLocale());
   let connectedAccount = $state<Account | null>(null);
+  let appVersion = $state("");
+  void getVersion()
+    .then((v) => (appVersion = v))
+    .catch(() => {});
 
   // AI step
   let aiKey = $state("");
@@ -213,7 +218,7 @@
         </div>
       </div>
 
-      <div class="footer microlabel">{t("onb.footer")} · v0.1</div>
+      <div class="footer microlabel">{t("onb.footer")}{appVersion ? ` · v${appVersion}` : ""}</div>
     </div>
   {:else if step === "ai"}
     <div class="card connect">

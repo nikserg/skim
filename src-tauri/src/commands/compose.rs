@@ -110,10 +110,12 @@ pub async fn update_draft(state: State<'_, AppState>, draft: Draft) -> Result<()
         .await
 }
 
-/// Persist edits to a draft and, for a server-backed one (opened from the IMAP
-/// Drafts folder), queue the write-back to that folder. The local `messages`
-/// row is patched optimistically so the list and a reopen show the new content
-/// before the op drains. For a local-only draft this is a plain `update`.
+/// Persist edits to a draft and queue the write-back to the IMAP Drafts folder so
+/// the draft becomes a real, reopenable message there. A server-backed draft
+/// (opened from Drafts) already mirrors a local `messages` row, patched
+/// optimistically so the list and a reopen show the new content before the op
+/// drains; a local-only draft has no such row yet — it gets a freshly minted
+/// Message-ID and the post-op folder resync creates the row.
 #[tauri::command]
 pub async fn save_server_draft(
     app: AppHandle,
@@ -121,31 +123,32 @@ pub async fn save_server_draft(
     draft: Draft,
 ) -> Result<()> {
     let account_id = draft.account_id.clone();
-    let origin = draft.origin_message_id;
+    let candidate = format!("skim-{}@skim.local", uuid::Uuid::new_v4());
     state
         .db
         .call(move |conn| {
             drafts::update(conn, &draft)?;
+            // Give a local-only draft a stable server identity (no-op if it
+            // already has one) so the save_draft op can APPEND it to Drafts.
+            drafts::ensure_imap_message_id(conn, draft.id, &candidate)?;
             if let Some(msg_id) = draft.origin_message_id {
                 bodies::patch_local_draft(conn, msg_id, &draft.subject, &draft.body)?;
-                bodies::enqueue_op(
-                    conn,
-                    &draft.account_id,
-                    "save_draft",
-                    &json!({ "draftId": draft.id }),
-                )?;
             }
+            bodies::enqueue_op(
+                conn,
+                &draft.account_id,
+                "save_draft",
+                &json!({ "draftId": draft.id }),
+            )?;
             Ok(())
         })
         .await?;
 
-    if origin.is_some() {
-        let engines = state.engines.lock().await;
-        if let Some(handle) = engines.get(&account_id) {
-            handle.run_ops();
-        }
-        let _ = app.emit("drafts:updated", json!({}));
+    let engines = state.engines.lock().await;
+    if let Some(handle) = engines.get(&account_id) {
+        handle.run_ops();
     }
+    let _ = app.emit("drafts:updated", json!({}));
     Ok(())
 }
 

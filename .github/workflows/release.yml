@@ -38,8 +38,16 @@ jobs:
           SKIM_GOOGLE_CLIENT_ID: ${{ secrets.SKIM_GOOGLE_CLIENT_ID }}
           SKIM_GOOGLE_CLIENT_SECRET: ${{ secrets.SKIM_GOOGLE_CLIENT_SECRET }}
           SKIM_MICROSOFT_CLIENT_ID: ${{ secrets.SKIM_MICROSOFT_CLIENT_ID }}
+          # Updater artifact signing. With createUpdaterArtifacts enabled the
+          # build FAILS without these — forks must bring their own keypair or
+          # drop the updater config from tauri.conf.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Skim ${{ github.ref_name }}"
           releaseDraft: false
           prerelease: false
+          # latest.json must point auto-updaters at the NSIS installer; the
+          # default here is the MSI, which would silently migrate everyone.
+          updaterJsonPreferNsis: true

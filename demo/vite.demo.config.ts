@@ -20,6 +20,7 @@ export default defineConfig({
       { find: "@tauri-apps/api/app", replacement: mock("tauri-app.ts") },
       { find: "@tauri-apps/plugin-opener", replacement: mock("plugin-opener.ts") },
       { find: "@tauri-apps/plugin-autostart", replacement: mock("plugin-autostart.ts") },
+      { find: "@tauri-apps/plugin-updater", replacement: mock("plugin-updater.ts") },
     ],
   },
   server: { port: 1421, strictPort: true, host: false },

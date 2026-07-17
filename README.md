@@ -54,24 +54,26 @@ Email clients usually come in two flavors: a browser cosplaying as an app, or a 
 
 **Mail**
 - Gmail, Outlook, Yahoo, iCloud, or any IMAP/SMTP server (autoconfig for the big ones)
-- Google sign-in via OAuth (loopback + PKCE) or app password
+- Google and Microsoft sign-in via OAuth (loopback + PKCE) or app password
 - Conversation threading (References/In-Reply-To with subject fallback)
 - Archive, delete, star, read/unread — all optimistic with a durable offline queue: act instantly, Skim syncs when the network returns
 - IMAP IDLE push + periodic polling; new-mail notifications with a mark-read quick action
 - Lives in the tray: closing the window keeps mail syncing in the background; starts with Windows minimized (both optional)
 - Compose, reply, reply-all, forward with proper threading headers
 - Attachments: open, save; inline images served from the local cache
+- Calendar invites get an RSVP card — Yes / No / Maybe answers the organizer the standard way, and **Add to calendar** opens the `.ics` in whatever calendar you already use (Skim itself has none, on purpose)
+- One-click **Unsubscribe** for mailing lists — RFC 8058 one-click POST, unsubscribe e-mail, or the link in your browser, in that order
 
 **Speed**
 - Instant full-text search (SQLite FTS5) over subject, sender, recipients, and bodies
 - `Ctrl+K` command palette: search-as-you-type, jump to folders, every command
-- Keyboard shortcuts: `j`/`k` move · `e` archive · `#` delete · `s` star · `u` unread · `r` reply · `Ctrl+N` compose · `/` search
+- Keyboard shortcuts: `j`/`k` move · `e` archive · `#` delete · `s` star · `u` unread · `r` reply · `Ctrl+N` compose · `/` search — press `?` for the full list
 
 **AI (bring your own key)**
 
 There's no "Skim Pro" subscription and there never will be. Paste your own key and the ✦ violet buttons come alive:
 
-- **Drafts in your voice** — tell it what to say and get a finished, first-person email. Skim can analyze up to ~100 of your sent messages and match how you write — greetings, sentence length, punctuation. It replies in the *sender's* language, even one you don't speak
+- **Drafts in your voice** — tell it what to say and get a finished, first-person email. Skim can sift through your last 100 sent messages, pick the most representative ones, and match how you write — greetings, sentence length, punctuation. It replies in the *sender's* language, even one you don't speak
 - **Refine in dialogue** — “shorter”, “add a deadline”, “drop the exclamation marks”. Each tweak lands on the current draft, keeping everything you didn't ask to change; your hand-edits are respected too
 - **Ask about an email** — question one message or the whole thread (up to 25 emails in context), with follow-ups. Answers come only from the content — if it's not in the conversation, it says so
 - **Mailbox chat** — ask “which invoices are still unpaid this month?” in the palette; Skim retrieves the relevant mail (FTS5/bm25) and answers with the source emails cited as clickable chips
@@ -93,13 +95,15 @@ Download the latest installer from **[Releases](https://github.com/nikserg/skim/
 
 Requirements: Windows 10/11 with [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) (preinstalled on Windows 11).
 
+Skim keeps itself current: once a day it quietly asks GitHub for a new release and, if there is one, shows a small banner — one click downloads in the background, another restarts into the new version. Dismiss it and that version never nags again. No update, no banner, no background installer services.
+
 ## Connecting your mail
 
-### Gmail — one click
+### Gmail / Outlook — one click
 
-Press **Continue with Google** during onboarding. Skim opens your browser, you approve access, done. Skim never sees your password; the OAuth token is stored in Credential Manager.
+Press **Continue with Google** or **Continue with Microsoft** during onboarding. Skim opens your browser, you approve access, done. Skim never sees your password; the OAuth tokens live in Credential Manager. Microsoft sign-in covers Outlook.com, Hotmail, and Office 365 / Exchange Online accounts alike.
 
-> **Note for source builds:** Google requires each app distribution to register its own OAuth client. Official installers ship with the project's client ID. If you build from source, either bake in your own client ID at build time (see below) or use an app password.
+> **Note for source builds:** Google and Microsoft require each app distribution to register its own OAuth client. Official installers ship with the project's client IDs. If you build from source, either bake in your own at build time (see below) or use an app password — without a client ID the sign-in buttons simply stay hidden.
 
 ### Gmail / Yahoo / iCloud / Outlook — app password
 
@@ -113,9 +117,11 @@ These providers require an *app password* for IMAP:
 
 Enter your address and password; adjust the IMAP/SMTP hosts under “Server settings” if the guess is wrong. Implicit TLS (:993) for IMAP, STARTTLS (:587) or TLS (:465) for SMTP.
 
-### Registering your own Google client ID <a name="own-client-id"></a>
+### Registering your own OAuth clients <a name="own-client-id"></a>
 
-For forks and source builds (~15 minutes, free):
+For forks and source builds (~15 minutes per provider, free).
+
+**Google**
 
 1. [console.cloud.google.com](https://console.cloud.google.com) → create a project.
 2. *APIs & Services → Enable APIs* → enable **Gmail API**.
@@ -125,6 +131,15 @@ For forks and source builds (~15 minutes, free):
 6. Bake the client ID (and secret) into your build via the `SKIM_GOOGLE_CLIENT_ID` / `SKIM_GOOGLE_CLIENT_SECRET` env vars at compile time.
 
 While your Google app is unverified it runs in *testing* mode: only listed test users can sign in and refresh tokens expire weekly. App passwords have no such limits.
+
+**Microsoft**
+
+1. [portal.azure.com](https://portal.azure.com) → *App registrations* → **New registration**; allow **personal Microsoft accounts and any organizational directory**.
+2. Add a **Mobile and desktop applications** platform with the redirect URI `http://localhost`.
+3. Grant the delegated permissions `IMAP.AccessAsUser.All` and `SMTP.Send` (the Office 365 Exchange Online / `outlook.office.com` resource, not Microsoft Graph) plus `offline_access`, `openid`, `email`, `profile`.
+4. It's a public client — there is no secret. Bake the application (client) ID in via `SKIM_MICROSOFT_CLIENT_ID` at compile time.
+
+Until you verify a publisher domain, Microsoft's consent screen will call your app "unverified" — sign-in still works.
 
 ## Enabling AI
 
@@ -145,9 +160,13 @@ Your key, your bill: Skim talks to the provider's API directly and adds no marku
 | `j` / `k` | Next / previous conversation |
 | `e` | Archive |
 | `#` / `Delete` | Delete |
+| `!` | Mark as spam |
 | `s` | Star / unstar |
 | `u` | Mark unread |
-| `r` | Reply |
+| `r` / `a` / `f` | Reply / reply all / forward |
+| `q` | Ask AI about the email |
+| `.` | Toggle sidebar |
+| `?` | Shortcut cheat sheet |
 | `Esc` | Close / deselect |
 
 ## Building from source
@@ -170,6 +189,8 @@ npm install
 npm run tauri dev      # develop with hot reload
 npm run tauri build    # produce NSIS + MSI installers in src-tauri/target/release/bundle/
 ```
+
+> `tauri build` also produces signed auto-updater artifacts, which needs a keypair: generate one with `npm run tauri signer generate` and set `TAURI_SIGNING_PRIVATE_KEY` (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) before building — or, if your fork doesn't need auto-updates, drop `createUpdaterArtifacts` and the `plugins.updater` section from `src-tauri/tauri.conf.json`.
 
 ## Architecture
 
@@ -196,7 +217,7 @@ English, Русский, Srpski, Français, Deutsch, Español, Italiano, Polski,
 
 ## Deliberately not included
 
-Skim stays small on purpose: no calendar, no contacts manager, no rules/filters, no snooze, no read receipts, no tracking pixels of its own. One account per install for now (multi-account is on the roadmap). If you need everything, there are battleships; if you need speed, there's Skim.
+Skim stays small on purpose: no calendar (invites still get an RSVP card and an add-to-calendar button), no contacts manager, no rules/filters, no snooze, no read receipts, no tracking pixels of its own. One account per install for now (multi-account is on the roadmap). If you need everything, there are battleships; if you need speed, there's Skim.
 
 Known limitations: Windows Snap Layouts don't pop over the custom maximize button (Tauri frameless-window limitation); self-signed IMAP certificates are rejected rather than click-through-able — by design.
 
