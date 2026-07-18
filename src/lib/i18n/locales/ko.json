@@ -6,6 +6,7 @@
   "a11y.message": "메시지",
   "ai.step.search": "검색: {arg}",
   "ai.step.read": "'{arg}' 읽음",
+  "ai.step.fetch": "{arg} 열람",
   "ai.step.found_other": "이메일 {n}개",
   "palette.placeholder_ai": "검색 ✦ AI",
   "onb.tagline_1": "생각의 속도로",

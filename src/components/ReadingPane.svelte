@@ -16,9 +16,19 @@
   // A single continuable chat is the one AI surface for the open message: the
   // "Ask" button opens it, the quick-prompt buttons seed it. The completed
   // turns live in askTurns; the in-flight answer lives in aiPanel.text.
+  // A step in the reasoning trace — currently only `fetch` (opening a link the
+  // email contains) surfaces here; the email chat has no search/read tools.
+  interface ChatStep {
+    id: string;
+    kind: string;
+    arg: string;
+    count: number | null;
+    done: boolean;
+  }
   let aiPanel = $state<{
     status: "streaming" | "error";
     text: string;
+    steps: ChatStep[];
   } | null>(null);
   let askOpen = $state(false);
   let askExpanded = $state(false);
@@ -44,10 +54,24 @@
 
   function startAi(args: Record<string, unknown>) {
     cancelAi?.();
-    aiPanel = { status: "streaming", text: "" };
+    aiPanel = { status: "streaming", text: "", steps: [] };
     cancelAi = aiStream("ai_ask", args, {
       delta: (text) => {
         if (aiPanel) aiPanel = { ...aiPanel, text: aiPanel.text + text };
+      },
+      toolCall: (id, kind, arg) => {
+        if (aiPanel)
+          aiPanel = {
+            ...aiPanel,
+            steps: [...aiPanel.steps, { id, kind, arg, count: null, done: false }],
+          };
+      },
+      toolDone: (id, count) => {
+        if (aiPanel)
+          aiPanel = {
+            ...aiPanel,
+            steps: aiPanel.steps.map((s) => (s.id === id ? { ...s, count, done: true } : s)),
+          };
       },
       done: () => {
         if (!aiPanel) return;
@@ -63,6 +87,7 @@
         aiPanel = {
           status: "error",
           text: code === "ai_key" ? t("ai.needs_key") : message || t("ai.no_context"),
+          steps: [],
         };
       },
     });
@@ -71,6 +96,7 @@
   // Keep the dialog scrolled to the newest turn / streaming delta.
   $effect(() => {
     void aiPanel?.text;
+    void aiPanel?.steps.length;
     void askTurns.length;
     if (askThreadEl) askThreadEl.scrollTop = askThreadEl.scrollHeight;
   });
@@ -561,6 +587,21 @@
             {#if aiPanel}
               <div class="ai-card" class:error={aiPanel.status === "error"}>
                 <div class="ai-label microlabel">{t("ai.answer")}</div>
+                {#if aiPanel.steps.length > 0}
+                  <div class="ai-steps">
+                    {#each aiPanel.steps as step (step.id)}
+                      <div class="ai-step" class:done={step.done}>
+                        <span class="ai-step-icon">🌐</span>
+                        <span class="ai-step-label">{t("ai.step.fetch", { arg: step.arg })}</span>
+                        {#if step.done}
+                          <span class="ai-step-detail">✓</span>
+                        {:else}
+                          <span class="thinking">…</span>
+                        {/if}
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
                 {#if aiPanel.text === "" && aiPanel.status === "streaming"}
                   <span class="thinking">{t("ai.thinking")}</span>
                 {:else}
@@ -1248,6 +1289,33 @@
     white-space: pre-wrap;
     user-select: text;
     cursor: text;
+  }
+  .ai-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 8px;
+  }
+  .ai-step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+  .ai-step.done {
+    opacity: 0.7;
+  }
+  .ai-step-icon {
+    font-size: 11px;
+  }
+  .ai-step-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ai-step-detail {
+    color: var(--text-faint);
   }
   .thinking {
     color: var(--accent);

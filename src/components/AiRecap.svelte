@@ -1,12 +1,32 @@
 <script lang="ts">
   // AI Recap: a catch-up digest of the folder's unread mail. Occupies the
   // reading pane while open; covered messages are marked read on success.
+  // Once the digest lands, the user can keep the conversation going — follow-ups
+  // route through the mailbox chat (`ai_chat`), seeded with the recap's turns and
+  // citations, exactly like the Ctrl+K assistant.
   import { aiStream, api, type Citation } from "../lib/api";
   import { aiLinks } from "../lib/ai-links";
   import { t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
   import { mail } from "../lib/stores/mail.svelte";
   import { ui } from "../lib/stores/ui.svelte";
+
+  /** Synthetic opening turn so the digest reads as an assistant reply the user
+   * can follow up on. Sent to the model, never rendered. */
+  const RECAP_SEED = "Recap my unread inbox.";
+
+  interface ChatTurn {
+    role: "user" | "assistant";
+    content: string;
+    citations: Citation[];
+  }
+  interface ChatStep {
+    id: string;
+    kind: string;
+    arg: string;
+    count: number | null;
+    done: boolean;
+  }
 
   let status = $state<"scanning" | "streaming" | "done" | "error">("scanning");
   let text = $state("");
@@ -17,9 +37,32 @@
   let markedCount = $state(0);
   let cancel: (() => void) | null = null;
 
+  /** Follow-up conversation, seeded once the digest is done. */
+  let chat = $state<{
+    turns: ChatTurn[];
+    answer: string;
+    steps: ChatStep[];
+    status: "idle" | "streaming" | "done" | "error";
+    errorText: string;
+  } | null>(null);
+  let followup = $state("");
+  let cancelChat: (() => void) | null = null;
+  let bodyEl: HTMLDivElement | undefined = $state();
+
   $effect(() => {
     const folderId = mail.selectedFolderId;
     if (folderId === null) return;
+    // Fresh recap for this folder — drop any prior conversation and streams.
+    cancelChat?.();
+    cancelChat = null;
+    chat = null;
+    followup = "";
+    status = "scanning";
+    text = "";
+    citations = [];
+    progress = null;
+    scannedTotal = 0;
+    markedCount = 0;
     cancel = aiStream(
       "ai_recap",
       { folderId },
@@ -37,6 +80,18 @@
           status = "done";
           citations = cited;
           markRead(cited);
+          // The digest becomes the first assistant reply; its citations seed the
+          // [N] numbering so follow-ups can resolve those same emails.
+          chat = {
+            turns: [
+              { role: "user", content: RECAP_SEED, citations: [] },
+              { role: "assistant", content: text, citations: cited },
+            ],
+            answer: "",
+            steps: [],
+            status: "idle",
+            errorText: "",
+          };
         },
         error: (code, message) => {
           status = "error";
@@ -44,7 +99,19 @@
         },
       },
     );
-    return () => cancel?.();
+    return () => {
+      cancel?.();
+      cancelChat?.();
+    };
+  });
+
+  // Keep the panel pinned to the newest turn / streaming delta.
+  $effect(() => {
+    if (!chat) return;
+    void chat.answer;
+    void chat.turns.length;
+    void chat.steps.length;
+    if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
   });
 
   function markRead(cited: Citation[]) {
@@ -55,6 +122,71 @@
       if (c.threadId !== null) mail.patchThreadRow(c.threadId, { isRead: true });
     }
     void api.markRead(ids, true);
+  }
+
+  function askChat(question: string) {
+    if (!chat) return;
+    cancelChat?.();
+    chat.turns = [...chat.turns, { role: "user", content: question, citations: [] }];
+    chat.answer = "";
+    chat.steps = [];
+    chat.status = "streaming";
+    chat.errorText = "";
+    const history = chat.turns.map((tn) => ({ role: tn.role, content: tn.content }));
+    // Citations across all turns, deduped by their [N] number, so the agent can
+    // re-resolve/read those emails on a follow-up and keep numbers stable.
+    const byIndex = new Map<number, Citation>();
+    for (const tn of chat.turns) for (const c of tn.citations) byIndex.set(c.index, c);
+    const priorCitations = [...byIndex.values()];
+    cancelChat = aiStream(
+      "ai_chat",
+      { turns: history, priorCitations, contextMessageId: null },
+      {
+        delta: (chunk) => {
+          if (chat) chat.answer += chunk;
+        },
+        toolCall: (id, kind, arg) => {
+          if (chat) chat.steps = [...chat.steps, { id, kind, arg, count: null, done: false }];
+        },
+        toolDone: (id, count) => {
+          if (chat)
+            chat.steps = chat.steps.map((s) => (s.id === id ? { ...s, count, done: true } : s));
+        },
+        done: (cited) => {
+          if (!chat) return;
+          chat.turns = [...chat.turns, { role: "assistant", content: chat.answer, citations: cited }];
+          chat.answer = "";
+          chat.steps = [];
+          chat.status = "done";
+        },
+        error: (code, message) => {
+          if (!chat) return;
+          // Drop the unanswered question back into the box so it can be retried.
+          const last = chat.turns[chat.turns.length - 1];
+          if (last?.role === "user") {
+            followup = last.content;
+            chat.turns = chat.turns.slice(0, -1);
+          }
+          chat.answer = "";
+          chat.steps = [];
+          chat.status = "error";
+          chat.errorText =
+            code === "ai_no_context"
+              ? t("ai.no_context")
+              : code === "ai_key"
+                ? t("ai.needs_key")
+                : message;
+        },
+      },
+    );
+  }
+
+  function submitFollowup(e: SubmitEvent) {
+    e.preventDefault();
+    const q = followup.trim();
+    if (!q || chat?.status === "streaming") return;
+    followup = "";
+    askChat(q);
   }
 
   async function openCitation(c: Citation) {
@@ -74,7 +206,7 @@
     </button>
   </header>
 
-  <div class="body">
+  <div class="body" bind:this={bodyEl}>
     {#if status === "scanning"}
       <div class="progress">
         <span class="spinner"></span>
@@ -111,9 +243,93 @@
             </div>
           </div>
         {/if}
+
+        {#if chat}
+          <div class="followups">
+            {#each chat.turns.slice(2) as turn, ti (ti)}
+              {#if turn.role === "user"}
+                <div class="chat-question">{turn.content}</div>
+              {:else}
+                <div class="chat-answer">
+                  <div class="microlabel chat-label">✦ {t("ai.answer")}</div>
+                  <div class="chat-text md-body" use:aiLinks>{@html mdLite(turn.content)}</div>
+                </div>
+                {#if turn.citations.length > 0}
+                  <div class="sources">
+                    <span class="microlabel">{t("ai.sources")} · {turn.citations.length}</span>
+                    <div class="chips">
+                      {#each turn.citations as c (c.index)}
+                        <button class="chip" onclick={() => openCitation(c)}>
+                          <span class="index">{c.index}</span>
+                          {c.subject || c.from}
+                        </button>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+              {/if}
+            {/each}
+
+            {#if chat.status === "streaming"}
+              {#if chat.steps.length > 0}
+                <div class="steps">
+                  {#each chat.steps as step (step.id)}
+                    <div class="step" class:done={step.done}>
+                      <span class="step-icon"
+                        >{step.kind === "read" ? "📧" : step.kind === "fetch" ? "🌐" : "🔍"}</span
+                      >
+                      <span class="step-label"
+                        >{step.kind === "read"
+                          ? t("ai.step.read", { arg: step.arg })
+                          : step.kind === "fetch"
+                            ? t("ai.step.fetch", { arg: step.arg })
+                            : t("ai.step.search", { arg: step.arg })}</span
+                      >
+                      {#if step.done}
+                        {#if step.count !== null}
+                          <span class="step-detail">{t("ai.step.found", { n: step.count })}</span>
+                        {:else}
+                          <span class="step-detail">✓</span>
+                        {/if}
+                      {:else}
+                        <span class="step-spin thinking">…</span>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+              <div class="chat-answer">
+                <div class="microlabel chat-label">✦ {t("ai.answer")}</div>
+                {#if chat.answer === ""}
+                  <span class="thinking">{t("ai.thinking")}</span>
+                {:else}
+                  <div class="chat-text md-body" use:aiLinks>{@html mdLite(chat.answer)}</div>
+                {/if}
+              </div>
+            {/if}
+
+            {#if chat.status === "error"}
+              <div class="chat-answer error-turn">
+                <div class="chat-text">{chat.errorText}</div>
+              </div>
+            {/if}
+          </div>
+        {/if}
       {/if}
     {/if}
   </div>
+
+  {#if chat}
+    <form class="followup-form" onsubmit={submitFollowup}>
+      <span class="spark">✦</span>
+      <input
+        bind:value={followup}
+        placeholder={t("ai.ask_followup")}
+        spellcheck="false"
+        disabled={chat.status === "streaming"}
+      />
+    </form>
+  {/if}
 </section>
 
 <style>
@@ -292,5 +508,90 @@
     font-size: 10.5px;
     font-weight: 700;
     flex-shrink: 0;
+  }
+
+  /* ---- follow-up conversation ------------------------------------------- */
+  .followups {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-width: 640px;
+  }
+  .chat-question {
+    align-self: flex-end;
+    max-width: 85%;
+    padding: 8px 12px;
+    border-radius: var(--radius-m);
+    background: var(--accent-soft);
+    color: var(--text);
+    font-size: 13.5px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .chat-answer {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .chat-label {
+    color: var(--accent);
+  }
+  .chat-text {
+    font-size: 14px;
+    line-height: 1.65;
+  }
+  .chat-answer.error-turn .chat-text {
+    color: var(--danger);
+    font-size: 13px;
+  }
+  .thinking {
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .step {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .step.done {
+    color: var(--text);
+  }
+  .step-detail {
+    color: var(--text-dim);
+  }
+  .followup-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-top: 1px solid var(--accent-dim);
+    flex-shrink: 0;
+  }
+  .followup-form .spark {
+    color: var(--accent);
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .followup-form input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+  }
+  .followup-form input::placeholder {
+    color: var(--text-dim);
+  }
+  .followup-form input:disabled {
+    opacity: 0.5;
   }
 </style>

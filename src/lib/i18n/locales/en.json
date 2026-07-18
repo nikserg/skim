@@ -102,6 +102,7 @@
   "ai.collapse": "Collapse",
   "ai.step.search": "Searched: {arg}",
   "ai.step.read": "Read “{arg}”",
+  "ai.step.fetch": "Read {arg}",
   "ai.step.found_one": "{n} email",
   "ai.step.found_other": "{n} emails",
   "ai.sources": "Sources",

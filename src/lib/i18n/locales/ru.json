@@ -106,6 +106,7 @@
   "ai.collapse": "Свернуть",
   "ai.step.search": "Поиск: {arg}",
   "ai.step.read": "Читаю «{arg}»",
+  "ai.step.fetch": "Открыл {arg}",
   "ai.step.found_one": "{n} письмо",
   "ai.step.found_few": "{n} письма",
   "ai.step.found_many": "{n} писем",

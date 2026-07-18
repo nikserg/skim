@@ -6,6 +6,7 @@
   "a11y.message": "邮件",
   "ai.step.search": "已搜索：{arg}",
   "ai.step.read": "已阅读“{arg}”",
+  "ai.step.fetch": "已打开 {arg}",
   "ai.step.found_other": "{n} 封邮件",
   "palette.placeholder_ai": "搜索 ✦ AI",
   "onb.tagline_1": "邮件，",

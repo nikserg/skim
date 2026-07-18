@@ -6,6 +6,7 @@
   "a11y.message": "Messaggio",
   "ai.step.search": "Cercato: {arg}",
   "ai.step.read": "Letto «{arg}»",
+  "ai.step.fetch": "Aperto {arg}",
   "ai.step.found_one": "{n} email",
   "ai.step.found_other": "{n} email",
   "palette.placeholder_ai": "Cerca ✦ AI",

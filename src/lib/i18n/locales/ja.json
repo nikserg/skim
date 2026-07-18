@@ -6,6 +6,7 @@
   "a11y.message": "メッセージ",
   "ai.step.search": "検索: {arg}",
   "ai.step.read": "「{arg}」を読みました",
+  "ai.step.fetch": "{arg} を開きました",
   "ai.step.found_other": "{n} 件のメール",
   "palette.placeholder_ai": "検索 ✦ AI",
   "onb.tagline_1": "メールを、",

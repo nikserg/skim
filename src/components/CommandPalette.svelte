@@ -350,11 +350,15 @@
               <div class="steps">
                 {#each chat.steps as step (step.id)}
                   <div class="step" class:done={step.done}>
-                    <span class="step-icon">{step.kind === "read" ? "📧" : "🔍"}</span>
+                    <span class="step-icon"
+                      >{step.kind === "read" ? "📧" : step.kind === "fetch" ? "🌐" : "🔍"}</span
+                    >
                     <span class="step-label"
                       >{step.kind === "read"
                         ? t("ai.step.read", { arg: step.arg })
-                        : t("ai.step.search", { arg: step.arg })}</span
+                        : step.kind === "fetch"
+                          ? t("ai.step.fetch", { arg: step.arg })
+                          : t("ai.step.search", { arg: step.arg })}</span
                     >
                     {#if step.done}
                       {#if step.count !== null}

@@ -6,6 +6,7 @@
   "a11y.message": "Poruka",
   "ai.step.search": "Pretraženo: {arg}",
   "ai.step.read": "Pročitano „{arg}“",
+  "ai.step.fetch": "Otvoreno {arg}",
   "ai.step.found_one": "{n} poruka",
   "ai.step.found_few": "{n} poruke",
   "ai.step.found_other": "{n} poruka",

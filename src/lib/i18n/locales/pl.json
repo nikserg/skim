@@ -6,6 +6,7 @@
   "a11y.message": "Wiadomość",
   "ai.step.search": "Wyszukano: {arg}",
   "ai.step.read": "Przeczytano „{arg}”",
+  "ai.step.fetch": "Otwarto {arg}",
   "ai.step.found_one": "{n} wiadomość",
   "ai.step.found_few": "{n} wiadomości",
   "ai.step.found_many": "{n} wiadomości",

@@ -444,24 +444,84 @@ pub async fn ai_ask(
     turns: Vec<AiTurn>,
     channel: Channel<AiEvent>,
 ) -> Result<()> {
-    let ctx = ai_context(&state.db).await?;
-    let (chain, media) = reply_chain(&state, message_id, 25, Some(&ctx)).await?;
-    let (system, preamble) = prompts::ask_session(&chain, &ctx.now, &ctx.locale);
-    let messages = session_messages(&turns, &preamble);
-    if messages.is_empty() {
+    let history: Vec<(String, String)> = turns
+        .into_iter()
+        .map(|t| (t.role, t.content))
+        .filter(|(_, content)| !content.trim().is_empty())
+        .collect();
+    if history.is_empty() {
         return Err(SkimError::other("ai", "no question provided"));
     }
-    spawn_stream(
-        &state,
-        request_id,
-        ctx,
-        system,
-        messages,
-        media,
-        2048,
-        Vec::new(),
-        channel,
-    );
+    let ctx = ai_context(&state.db).await?;
+    // The whole thread (plus native attachments) is folded into the first turn;
+    // the model can't search the mailbox — it only answers about this
+    // conversation, optionally opening links the thread contains via `fetch_url`.
+    let (chain, media) = reply_chain(&state, message_id, 25, Some(&ctx)).await?;
+    let (system, preamble) = prompts::ask_session(&chain, &ctx.now, &ctx.locale);
+    let provider = match ctx.provider {
+        Provider::Anthropic => agent::Provider::Anthropic,
+        Provider::OpenRouter => agent::Provider::OpenRouter,
+    };
+    let deps = agent::AgentDeps {
+        db: state.db.clone(),
+        engines: state.engines.lock().await.clone(),
+    };
+
+    let channel = std::sync::Arc::new(channel);
+    let ch_delta = channel.clone();
+    let ch_call = channel.clone();
+    let ch_done_tool = channel.clone();
+
+    let task = tokio::spawn(async move {
+        let mut on_delta = move |d: &str| {
+            let _ = ch_delta.send(AiEvent::Delta {
+                text: d.to_string(),
+            });
+        };
+        let on_tool_call = move |id: &str, kind: &str, arg: &str| {
+            let _ = ch_call.send(AiEvent::ToolCall {
+                id: id.to_string(),
+                kind: kind.to_string(),
+                arg: arg.to_string(),
+            });
+        };
+        let on_tool_done = move |id: &str, count: Option<u32>| {
+            let _ = ch_done_tool.send(AiEvent::ToolDone {
+                id: id.to_string(),
+                count,
+            });
+        };
+        let result = agent::run(
+            provider,
+            ctx.key,
+            ctx.model,
+            system,
+            history,
+            Vec::new(),
+            agent::Context::Thread { preamble, media },
+            agent::ToolSet::FETCH_ONLY,
+            deps,
+            &mut on_delta,
+            &on_tool_call,
+            &on_tool_done,
+        )
+        .await;
+        match result {
+            Ok(citations) => {
+                let _ = channel.send(AiEvent::Done { citations });
+            }
+            Err(e) => {
+                let _ = channel.send(AiEvent::Error {
+                    code: e.code().to_string(),
+                    message: e.to_string(),
+                });
+            }
+        }
+    });
+    if let Ok(mut tasks) = state.ai_tasks.lock() {
+        tasks.retain(|_, h| !h.is_finished());
+        tasks.insert(request_id, task.abort_handle());
+    }
     Ok(())
 }
 
@@ -530,7 +590,8 @@ pub async fn ai_chat(
             system,
             history,
             prior_citations,
-            context_message_id,
+            agent::Context::OpenMessage(context_message_id),
+            agent::ToolSet::MAILBOX,
             deps,
             &mut on_delta,
             &on_tool_call,

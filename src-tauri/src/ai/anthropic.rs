@@ -22,8 +22,9 @@ pub struct Request {
     pub max_tokens: u32,
 }
 
-/// One attachment as an Anthropic content block.
-fn media_block_json(mb: &MediaBlock) -> Value {
+/// One attachment as an Anthropic content block. Shared with the agent loop,
+/// which folds media into the first user turn of a tool-calling request.
+pub(crate) fn media_block_json(mb: &MediaBlock) -> Value {
     match mb.kind {
         MediaKind::Pdf => json!({
             "type": "document",

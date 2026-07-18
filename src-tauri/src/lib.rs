@@ -3,6 +3,7 @@ pub mod commands;
 pub mod db;
 pub mod error;
 pub mod mail;
+pub mod net;
 pub mod notify;
 pub mod secrets;
 pub mod state;
