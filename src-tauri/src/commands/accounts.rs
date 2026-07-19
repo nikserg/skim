@@ -4,7 +4,7 @@ use crate::error::{Result, SkimError};
 use crate::mail::{autoconfig, imap_client, oauth, sync};
 use crate::secrets;
 use crate::state::AppState;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
 
@@ -26,14 +26,32 @@ pub fn autoconfig_lookup(email: String) -> Option<autoconfig::ServerPreset> {
     autoconfig::lookup(&email)
 }
 
-#[tauri::command]
-pub fn google_oauth_available() -> bool {
-    oauth::baked_in_config(oauth::OauthProvider::Google).is_some()
+/// Whether a provider's one-click OAuth is offered, and whether its app has
+/// cleared provider-side verification. `verified` is only meaningful when
+/// `available`; when false, the UI shows an honest "limited sign-in" caveat.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OauthAvailability {
+    pub available: bool,
+    pub verified: bool,
+}
+
+fn oauth_availability(provider: oauth::OauthProvider) -> OauthAvailability {
+    let available = oauth::baked_in_config(provider).is_some();
+    OauthAvailability {
+        available,
+        verified: available && oauth::oauth_verified(provider),
+    }
 }
 
 #[tauri::command]
-pub fn microsoft_oauth_available() -> bool {
-    oauth::baked_in_config(oauth::OauthProvider::Microsoft).is_some()
+pub fn google_oauth_available() -> OauthAvailability {
+    oauth_availability(oauth::OauthProvider::Google)
+}
+
+#[tauri::command]
+pub fn microsoft_oauth_available() -> OauthAvailability {
+    oauth_availability(oauth::OauthProvider::Microsoft)
 }
 
 #[tauri::command]

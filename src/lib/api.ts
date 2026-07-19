@@ -23,12 +23,19 @@ export interface AddAccountInput {
   smtpSecurity: string;
 }
 
+/** Whether a provider's one-click OAuth is offered, and whether its app has
+ *  cleared provider-side verification (`verified` matters only when `available`). */
+export interface OauthAvailability {
+  available: boolean;
+  verified: boolean;
+}
+
 export const api = {
   // accounts
   autoconfigLookup: (email: string) =>
     invoke<ServerPreset | null>("autoconfig_lookup", { email }),
-  googleOauthAvailable: () => invoke<boolean>("google_oauth_available"),
-  microsoftOauthAvailable: () => invoke<boolean>("microsoft_oauth_available"),
+  googleOauthAvailable: () => invoke<OauthAvailability>("google_oauth_available"),
+  microsoftOauthAvailable: () => invoke<OauthAvailability>("microsoft_oauth_available"),
   listAccounts: () => invoke<Account[]>("list_accounts"),
   addAccount: (input: AddAccountInput, password: string) =>
     invoke<Account>("add_account", { input, password }),

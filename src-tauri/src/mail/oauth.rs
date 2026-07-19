@@ -86,6 +86,23 @@ pub fn baked_in_config(provider: OauthProvider) -> Option<OauthConfig> {
     })
 }
 
+/// Whether this provider's OAuth app has cleared provider-side verification.
+///
+/// This does **not** change the flow — it only tells the UI whether to show the
+/// "unverified/limited sign-in" caveat. Baked in at build time via an env flag
+/// (`"1"`/`"true"`) so official installers can flip it without a code change:
+/// - Google stays unverified until a (paid) CASA assessment for the restricted
+///   `https://mail.google.com/` scope, so its one-click sign-in is limited
+///   (testing mode: weekly re-auth, 100-user cap).
+/// - Microsoft flips to verified once the free publisher verification is done.
+pub fn oauth_verified(provider: OauthProvider) -> bool {
+    let flag = match provider {
+        OauthProvider::Google => option_env!("SKIM_GOOGLE_OAUTH_VERIFIED"),
+        OauthProvider::Microsoft => option_env!("SKIM_MICROSOFT_OAUTH_VERIFIED"),
+    };
+    matches!(flag, Some("1") | Some("true"))
+}
+
 #[derive(Debug, Clone)]
 pub struct OauthOutcome {
     pub email: String,

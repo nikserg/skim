@@ -99,19 +99,27 @@ Skim keeps itself current: once a day it quietly asks GitHub for a new release a
 
 ## Connecting your mail
 
-### Gmail / Outlook — one click
+Onboarding is **email-first**: type your address and Skim leads with the sign-in method that actually works best for your provider — no wall of buttons to pick from.
 
-Press **Continue with Google** or **Continue with Microsoft** during onboarding. Skim opens your browser, you approve access, done. Skim never sees your password; the OAuth tokens live in Credential Manager. Microsoft sign-in covers Outlook.com, Hotmail, and Office 365 / Exchange Online accounts alike.
+### Gmail — app password (recommended)
 
-> **Note for source builds:** Google and Microsoft require each app distribution to register its own OAuth client. Official installers ship with the project's client IDs. If you build from source, either bake in your own at build time (see below) or use an app password — without a client ID the sign-in buttons simply stay hidden.
+Gmail's one-click OAuth needs a paid annual security assessment we don't do, so a Google-signed-in session gets logged out every few days. An **app password** has no such limit and is the reliable path:
 
-### Gmail / Yahoo / iCloud / Outlook — app password
+1. Enable 2-step verification on your Google account.
+2. Create a 16-character app password at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
+3. Paste your address and the app password into Skim — server settings fill themselves in.
 
-These providers require an *app password* for IMAP:
+One-click **Continue with Google** is still offered as a secondary option (with an honest note about the weekly re-sign-in) when the build ships a Google client ID.
 
-1. Enable 2-step verification on your account.
-2. Create an app password ([Gmail](https://myaccount.google.com/apppasswords) · [Yahoo](https://login.yahoo.com/account/security) · [iCloud](https://account.apple.com/account/manage) · [Outlook](https://account.live.com/proofs/AppPassword)).
-3. Enter your address and the app password in Skim. Server settings fill themselves in.
+### Outlook / Office 365 — one click
+
+Press **Continue with Microsoft**. Skim opens your browser, you approve access, done — Skim never sees your password, and the OAuth tokens live in Credential Manager. This covers Outlook.com, Hotmail, and Office 365 / Exchange Online alike. Microsoft is retiring Basic Auth (app passwords) for Exchange Online in 2026, so OAuth is the way in.
+
+### Yahoo / iCloud — app password
+
+Same three steps as Gmail, using each provider's app-password page ([Yahoo](https://login.yahoo.com/account/security) · [iCloud](https://account.apple.com/account/manage)).
+
+> **Note for source builds:** Google and Microsoft require each app distribution to register its own OAuth client. Official installers ship with the project's client IDs. Build from source without one and the OAuth buttons simply stay hidden — the app-password path still works.
 
 ### Any other server
 
@@ -130,7 +138,7 @@ For forks and source builds (~15 minutes per provider, free).
 5. *Clients* → create an **OAuth client ID** of type **Desktop app**.
 6. Bake the client ID (and secret) into your build via the `SKIM_GOOGLE_CLIENT_ID` / `SKIM_GOOGLE_CLIENT_SECRET` env vars at compile time.
 
-While your Google app is unverified it runs in *testing* mode: only listed test users can sign in and refresh tokens expire weekly. App passwords have no such limits.
+While your Google app is unverified it runs in *testing* mode: only listed test users can sign in and refresh tokens expire weekly. App passwords have no such limits — which is why Skim leads with them for Gmail and demotes one-click Google to a clearly-labelled secondary.
 
 **Microsoft**
 
@@ -139,7 +147,9 @@ While your Google app is unverified it runs in *testing* mode: only listed test 
 3. Grant the delegated permissions `IMAP.AccessAsUser.All` and `SMTP.Send` (the Office 365 Exchange Online / `outlook.office.com` resource, not Microsoft Graph) plus `offline_access`, `openid`, `email`, `profile`.
 4. It's a public client — there is no secret. Bake the application (client) ID in via `SKIM_MICROSOFT_CLIENT_ID` at compile time.
 
-Until you verify a publisher domain, Microsoft's consent screen will call your app "unverified" — sign-in still works.
+Until you verify a publisher, Microsoft's consent screen calls the app "unverified" and users in *other* organizations' tenants can be blocked from consenting. **Publisher verification is free:** join the [Microsoft AI Cloud Partner Program](https://partner.microsoft.com) (formerly MPN), verify a domain you control, then associate the Partner ID under *App registrations → Branding & properties → Verify publisher*.
+
+**Clearing the in-app caveat.** Skim shows an honest "may be unverified / limited sign-in" note next to each OAuth button until you tell the build the app is verified. Set `SKIM_MICROSOFT_OAUTH_VERIFIED=1` (and `SKIM_GOOGLE_OAUTH_VERIFIED=1`, once you ever complete Google's CASA) at compile time to drop the respective note.
 
 ## Enabling AI
 

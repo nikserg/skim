@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getVersion } from "@tauri-apps/api/app";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { aiApi, api, errorMessage, errorCode, type AddAccountInput, type AiProvider } from "../../lib/api";
+  import { aiApi, api, errorMessage, errorCode, type AddAccountInput, type AiProvider, type OauthAvailability } from "../../lib/api";
   import { getLocale, LOCALES, setLocale, t, type Locale } from "../../lib/i18n/index.svelte";
   import { mail } from "../../lib/stores/mail.svelte";
   import type { Account, ServerPreset } from "../../lib/types";
@@ -59,11 +59,19 @@
   }
 
   // connect form
-  let oauthAvailable = $state(false);
-  let msOauthAvailable = $state(false);
+  let google = $state<OauthAvailability>({ available: false, verified: false });
+  let microsoft = $state<OauthAvailability>({ available: false, verified: false });
   let email = $state("");
   let password = $state("");
   let preset = $state<ServerPreset | null>(null);
+  // The connect screen is email-first: the method zone stays hidden until the
+  // user has entered an address we can detect a provider for.
+  let touched = $state(false);
+  let emailInput = $state<HTMLInputElement | null>(null);
+  // Secondary reveals: Google one-click (limited) under the Gmail app-password
+  // block, and a password fallback under the Microsoft button.
+  let showGoogleOauth = $state(false);
+  let showOutlookPassword = $state(false);
   let showAdvanced = $state(false);
   let imapHost = $state("");
   let imapPort = $state(993);
@@ -88,11 +96,14 @@
 
   async function toConnect() {
     step = "connect";
-    oauthAvailable = await api.googleOauthAvailable().catch(() => false);
-    msOauthAvailable = await api.microsoftOauthAvailable().catch(() => false);
+    const unavailable = { available: false, verified: false };
+    google = await api.googleOauthAvailable().catch(() => unavailable);
+    microsoft = await api.microsoftOauthAvailable().catch(() => unavailable);
+    queueMicrotask(() => emailInput?.focus());
   }
 
   async function onEmailChange() {
+    touched = email.includes("@");
     preset = await api.autoconfigLookup(email).catch(() => null);
     if (preset) {
       imapHost = preset.imapHost;
@@ -106,6 +117,20 @@
       if (!smtpHost) smtpHost = `smtp.${domain}`;
       showAdvanced = true;
     }
+  }
+
+  // The detected provider drives which sign-in method the screen leads with.
+  const provider = $derived(preset?.provider ?? null);
+
+  // Where each provider lets users create an app password.
+  const APP_PW_LINKS: Record<string, string> = {
+    gmail: "https://myaccount.google.com/apppasswords",
+    yahoo: "https://login.yahoo.com/account/security",
+    icloud: "https://account.apple.com/account/manage",
+  };
+  function openAppPasswords() {
+    const url = APP_PW_LINKS[provider ?? ""];
+    if (url) void openUrl(url);
   }
 
   async function connectGoogle() {
@@ -148,6 +173,14 @@
 
   async function connectPassword(ev: SubmitEvent) {
     ev.preventDefault();
+    if (!email.trim()) return;
+    // Enter from the email field (before a password exists) should reveal the
+    // provider's method zone — the same thing blurring the field does — instead
+    // of silently doing nothing.
+    if (!password) {
+      await onEmailChange();
+      return;
+    }
     busy = "password";
     error = "";
     imapSetupNeeded = false;
@@ -303,73 +336,13 @@
       <h2>{t("onb.connect_title")}</h2>
       <p class="subtitle">{t("onb.connect_subtitle")}</p>
 
-      {#if oauthAvailable}
-        <button class="primary google" onclick={connectGoogle} disabled={busy !== "none"}>
-          {#if busy === "google"}
-            {t("onb.waiting_google")}
-          {:else}
-            <span class="g-badge">G</span>
-            {t("onb.continue_google")} →
-          {/if}
-        </button>
-      {/if}
-      {#if msOauthAvailable}
-        <button class="primary microsoft" onclick={connectMicrosoft} disabled={busy !== "none"}>
-          {#if busy === "microsoft"}
-            {t("onb.waiting_microsoft")}
-          {:else}
-            <span class="ms-badge" aria-hidden="true">
-              <span></span><span></span><span></span><span></span>
-            </span>
-            {t("onb.continue_microsoft")} →
-          {/if}
-        </button>
-      {/if}
-
-      {#if imapSetupNeeded}
-        <div class="imap-setup">
-          <div class="imap-setup-title">{t("onb.imap_off_title")}</div>
-          <p>{t("onb.imap_off_body")}</p>
-          <div class="imap-setup-actions">
-            <button type="button" class="primary" onclick={openOutlookSettings}>
-              {t("onb.open_outlook_settings")} ↗
-            </button>
-            <button
-              type="button"
-              class="linkish"
-              onclick={connectMicrosoft}
-              disabled={busy !== "none"}
-            >
-              {busy === "microsoft" ? t("onb.connecting") : t("onb.retry")}
-            </button>
-          </div>
-        </div>
-      {/if}
-
-      {#if oauthAvailable || msOauthAvailable}
-        <div class="oauth-note microlabel">🔒 {t("onb.oauth_note")}</div>
-      {/if}
-
-      <div class="divider"><span class="microlabel">{t("onb.or_password")}</span></div>
-
-      <form onsubmit={connectPassword}>
-        <label>
-          <span class="microlabel">{t("onb.email")}</span>
-          <input
-            type="email"
-            bind:value={email}
-            onblur={onEmailChange}
-            required
-            spellcheck="false"
-            autocomplete="off"
-          />
-        </label>
+      {#snippet passwordFields(showHint: boolean)}
         <label>
           <span class="microlabel">{t("onb.password")}</span>
           <input type="password" bind:value={password} required autocomplete="off" />
         </label>
 
-        {#if preset?.needsAppPassword}
+        {#if showHint && preset?.needsAppPassword}
           <div class="hint">{t("onb.app_password_hint", { provider: providerLabel })}</div>
         {/if}
 
@@ -404,6 +377,120 @@
         <button class="primary" type="submit" disabled={busy !== "none" || !email || !password}>
           {busy === "password" ? t("onb.connecting") : t("onb.connect_btn")}
         </button>
+      {/snippet}
+
+      {#snippet imapSetupPanel()}
+        <div class="imap-setup">
+          <div class="imap-setup-title">{t("onb.imap_off_title")}</div>
+          <p>{t("onb.imap_off_body")}</p>
+          <div class="imap-setup-actions">
+            <button type="button" class="primary" onclick={openOutlookSettings}>
+              {t("onb.open_outlook_settings")} ↗
+            </button>
+            <button type="button" class="linkish" onclick={connectMicrosoft} disabled={busy !== "none"}>
+              {busy === "microsoft" ? t("onb.connecting") : t("onb.retry")}
+            </button>
+          </div>
+        </div>
+      {/snippet}
+
+      <form onsubmit={connectPassword}>
+        <label>
+          <span class="microlabel">{t("onb.email")}</span>
+          <input
+            type="email"
+            bind:this={emailInput}
+            bind:value={email}
+            onblur={onEmailChange}
+            required
+            spellcheck="false"
+            autocomplete="off"
+          />
+        </label>
+
+        {#if !touched}
+          <p class="email-prompt">{t("onb.email_prompt")}</p>
+        {:else if provider === "gmail"}
+          <!-- Gmail: app password leads (reliable). One-click Google is offered
+               only as a limited secondary — our restricted-scope app is
+               unverified, so Google signs users out ~weekly. -->
+          <div class="app-pw">
+            <div class="app-pw-title">{t("onb.gmail_pw_title")}</div>
+            <ol class="app-pw-steps">
+              <li>{t("onb.gmail_pw_step_2fa")}</li>
+              <li>{t("onb.gmail_pw_step_create")}</li>
+              <li>{t("onb.gmail_pw_step_paste")}</li>
+            </ol>
+            <button type="button" class="linkish" onclick={openAppPasswords}>
+              {t("onb.open_google_app_passwords")} ↗
+            </button>
+          </div>
+          {@render passwordFields(false)}
+
+          {#if google.available}
+            <div class="divider"><span class="microlabel">{t("onb.or")}</span></div>
+            {#if showGoogleOauth}
+              <button class="primary google" onclick={connectGoogle} disabled={busy !== "none"}>
+                {#if busy === "google"}
+                  {t("onb.waiting_google")}
+                {:else}
+                  <span class="g-badge">G</span>
+                  {t("onb.continue_google")} →
+                {/if}
+              </button>
+              {#if !google.verified}
+                <div class="caveat">{t("onb.google_unverified_note")}</div>
+              {/if}
+            {:else}
+              <button type="button" class="linkish center" onclick={() => (showGoogleOauth = true)}>
+                {t("onb.prefer_one_click_google")}
+              </button>
+            {/if}
+          {/if}
+        {:else if provider === "outlook"}
+          <!-- Outlook/O365: OAuth is the only reliable path — Microsoft is
+               retiring Basic Auth (app passwords) for Exchange Online. -->
+          {#if microsoft.available}
+            <button class="primary microsoft" onclick={connectMicrosoft} disabled={busy !== "none"}>
+              {#if busy === "microsoft"}
+                {t("onb.waiting_microsoft")}
+              {:else}
+                <span class="ms-badge" aria-hidden="true">
+                  <span></span><span></span><span></span><span></span>
+                </span>
+                {t("onb.continue_microsoft")} →
+              {/if}
+            </button>
+            {#if !microsoft.verified}
+              <div class="caveat">{t("onb.ms_unverified_note")}</div>
+            {/if}
+            <div class="oauth-note microlabel">🔒 {t("onb.oauth_note")}</div>
+
+            {#if imapSetupNeeded}
+              {@render imapSetupPanel()}
+            {/if}
+
+            {#if showOutlookPassword}
+              <div class="divider"><span class="microlabel">{t("onb.or")}</span></div>
+              {@render passwordFields(true)}
+            {:else}
+              <button type="button" class="linkish center" onclick={() => (showOutlookPassword = true)}>
+                {t("onb.use_password_instead")}
+              </button>
+            {/if}
+          {:else}
+            {@render passwordFields(true)}
+          {/if}
+        {:else if provider === "yahoo" || provider === "icloud"}
+          {#if APP_PW_LINKS[provider]}
+            <button type="button" class="linkish" onclick={openAppPasswords}>
+              {t("onb.open_app_passwords")} ↗
+            </button>
+          {/if}
+          {@render passwordFields(true)}
+        {:else}
+          {@render passwordFields(false)}
+        {/if}
       </form>
     </div>
   {/if}
@@ -528,6 +615,49 @@
     text-underline-offset: 3px;
     font-size: 13px;
   }
+  .linkish.center {
+    align-self: center;
+  }
+
+  /* Email-first connect: prompt shown before a provider is detected. */
+  .email-prompt {
+    font-size: 12.5px;
+    color: var(--text-faint);
+    line-height: 1.5;
+  }
+
+  /* App-password guidance (Gmail leads with this). */
+  .app-pw {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--hover);
+    border-radius: var(--radius-s);
+    padding: 12px 14px;
+  }
+  .app-pw-title {
+    font-weight: 600;
+    font-size: 13.5px;
+  }
+  .app-pw-steps {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+  .app-pw .linkish {
+    align-self: flex-start;
+    font-size: 12.5px;
+  }
+
+  /* Honest, self-clearing caveat under a limited/unverified OAuth button. */
+  .caveat {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    padding-left: 2px;
+  }
 
   .divider {
     display: flex;
@@ -547,6 +677,9 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
+    /* The form now sits directly under the subtitle (no OAuth buttons above),
+       so it needs its own breathing room before the email field. */
+    margin-top: 24px;
   }
   label {
     display: flex;
