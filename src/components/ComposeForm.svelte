@@ -300,6 +300,34 @@
     sendInstruction(t(`ai.${kind}`));
   }
 
+  /** Restore an earlier variant and drop every iteration after it (linear history —
+   *  no branching). `i` indexes userTurns; its variant is the matching assistant turn. */
+  function revertTo(i: number) {
+    if (!draft || aiBusy) return;
+    // userTurns[i] pairs with the i-th assistant turn. convo is strictly
+    // alternating (turns are pushed as user+assistant pairs in `done`), so the
+    // assistant turn sits at 2*i+1. Guard defensively rather than trust the index.
+    const ai = 2 * i + 1;
+    const turn = convo[ai];
+    if (!turn || turn.role !== "assistant") return;
+
+    // Preserve whatever quoted original is currently below the editable text.
+    const [, tail] = splitQuote(draft.body);
+    quotedTail = tail;
+
+    let body = turn.content;
+    if (!isReply) {
+      const parsed = parseDraft(turn.content);
+      body = parsed.body;
+      if (subjectAuto && parsed.subject !== null) draft.subject = parsed.subject;
+    }
+    draft.body = tail ? `${body}\n${tail}` : body;
+
+    // Truncate: keep this variant as the new head, discard all following iterations.
+    convo = convo.slice(0, ai + 1);
+    scheduleSave();
+  }
+
   function stopAi() {
     cancelAi?.();
     aiBusy = false;
@@ -510,7 +538,18 @@
                this is one ongoing conversation about the draft. -->
           <div class="ai-thread">
             {#each userTurns as turn, i (i)}
-              <div class="ai-turn">{turn.content}</div>
+              <button
+                type="button"
+                class="ai-turn"
+                class:current={i === userTurns.length - 1}
+                disabled={aiBusy}
+                title={t("ai.revert")}
+                aria-label={t("ai.revert")}
+                onclick={() => revertTo(i)}
+              >
+                <span class="label">{turn.content}</span>
+                <span class="revert" aria-hidden="true">↩</span>
+              </button>
             {/each}
           </div>
         {/if}
@@ -547,7 +586,8 @@
             <button type="button" class="ai-chip" onclick={stopAi}>{t("ai.stop")}</button>
           {:else}
             <button type="submit" class="ai-chip solid" disabled={!instruction.trim()}>
-              ✦ {hasDraft ? t("ai.refine") : t("ai.generate")}
+              <span class="label">✦ {hasDraft ? t("ai.refine") : t("ai.generate")}</span>
+              <kbd>Ctrl ↵</kbd>
             </button>
           {/if}
         </form>
@@ -748,15 +788,51 @@
   }
   .ai-turn {
     align-self: flex-start;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
     max-width: 100%;
     padding: 4px 10px;
+    border: 0;
     border-radius: var(--radius-s);
     background: var(--accent-soft);
     color: var(--text);
     font-size: 12.5px;
     line-height: 1.4;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.12s ease;
+  }
+  .ai-turn .label {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+  .ai-turn:hover,
+  .ai-turn:focus-visible {
+    background: var(--accent-dim);
+  }
+  .ai-turn.current {
+    opacity: 0.7;
+  }
+  .ai-turn .revert {
+    flex: none;
+    color: var(--accent);
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+  .ai-turn:hover .revert,
+  .ai-turn:focus-visible .revert {
+    opacity: 0.7;
+  }
+  .ai-turn:disabled {
+    cursor: default;
+    opacity: 0.55;
+  }
+  .ai-turn:disabled:hover {
+    background: var(--accent-soft);
+  }
+  .ai-turn:disabled:hover .revert {
+    opacity: 0;
   }
   .ai-thinking {
     align-self: flex-start;
@@ -813,6 +889,24 @@
     background: var(--accent);
     color: var(--on-accent);
     border-color: var(--accent);
+    /* Stack the label over the Ctrl+Enter shortcut hint, centered. */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    line-height: 1.15;
+  }
+  /* Quiet shortcut caption under the label. Deliberately NOT the mono keycap
+     treatment here: the UI font keeps the "Ctrl ↵" gap tight and optically
+     centered, and small + faded so it hints without pulling focus from the
+     label. (A bare <kbd> otherwise defaults to the UA monospace font.) */
+  .ai-chip.solid kbd {
+    font-family: inherit;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    color: var(--on-accent);
+    opacity: 0.45;
   }
   .ai-chip.solid:hover:not(:disabled) {
     background: var(--accent);

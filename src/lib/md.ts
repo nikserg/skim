@@ -13,11 +13,12 @@ export function mdLite(text: string): string {
     .replace(/"/g, "&quot;");
   // Autolink http(s)/www URLs and schemeless domains that carry a path (the
   // path requirement keeps "config.json" or "e.g." from becoming links).
-  // Runs before the emphasis passes: URLs don't contain ** * or `, so the
-  // anchors they produce are left untouched by them.
+  // Runs before the emphasis passes: the URL body class excludes * and `, so a
+  // URL wrapped in **bold** or `code` stops before the marker instead of eating
+  // it — the anchors it produces are left untouched by those later passes.
   const linkify = (s: string) =>
     s.replace(
-      /(?:https?:\/\/|www\.)[^\s<]+|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}\/[^\s<]+/gi,
+      /(?:https?:\/\/|www\.)[^\s<*`]+|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}\/[^\s<*`]+/gi,
       (m) => {
         // Trailing punctuation usually belongs to the sentence, not the URL.
         const trail = m.match(/[.,;:!?)\]}'"]+$/)?.[0] ?? "";
