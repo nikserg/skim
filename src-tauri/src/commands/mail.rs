@@ -328,6 +328,9 @@ async fn queue_op(
         }
     }
     let _ = app.emit("mail:updated", json!({}));
+    // Reflect the optimistic read/archive/delete on the taskbar & tray badge
+    // right away, without waiting for the next sync.
+    crate::badge::refresh(app).await;
     Ok(())
 }
 

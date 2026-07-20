@@ -205,7 +205,10 @@ impl Engine {
     async fn run_sync(&mut self) {
         self.emit_status("syncing", None);
         match self.sync_all_folders().await {
-            Ok(()) => self.emit_status("idle", None),
+            Ok(()) => {
+                self.emit_status("idle", None);
+                crate::badge::refresh(&self.app).await;
+            }
             Err(e) => {
                 tracing::warn!(error = %e, "sync failed");
                 self.reset_session();

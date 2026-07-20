@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod badge;
 pub mod commands;
 pub mod db;
 pub mod error;
@@ -196,6 +197,13 @@ pub fn run() {
                 }
             });
 
+            // Paint the unread badge from cached counts so the taskbar/tray
+            // icon is correct immediately, before the first sync lands.
+            let badge_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                badge::refresh(&badge_handle).await;
+            });
+
             // A successful self-update leaves the installer behind in
             // `%TEMP%\Skim-{version}-updater-{rand}\` — the updater plugin
             // keeps that dir alive across its own process::exit and never
@@ -278,6 +286,15 @@ fn show_main_window(app: &tauri::AppHandle) {
         let _ = window.unminimize();
         let _ = window.set_focus();
     }
+    // Hiding the window to the tray destroys its taskbar button, and Windows
+    // does not restore the overlay icon when the button is recreated on show —
+    // so re-apply the unread badge. A short delay lets the shell register the
+    // new taskbar button before we set the overlay on it.
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        badge::refresh(&app).await;
+    });
 }
 
 fn tray_labels(locale: &str) -> (&'static str, &'static str) {

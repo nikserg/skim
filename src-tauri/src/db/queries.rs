@@ -180,6 +180,17 @@ pub fn recompute_folder_unread(conn: &Connection, folder_id: i64) -> rusqlite::R
     Ok(())
 }
 
+/// Unread across every inbox (all accounts) — the number shown on the taskbar
+/// and tray badge. Spam/promo/other folders are deliberately excluded so they
+/// don't inflate the count.
+pub fn total_inbox_unread(conn: &Connection) -> rusqlite::Result<i64> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(unread_count), 0) FROM folders WHERE role = 'inbox'",
+        [],
+        |r| r.get(0),
+    )
+}
+
 pub fn list_folders(conn: &Connection, account_id: &str) -> rusqlite::Result<Vec<Folder>> {
     let mut stmt = conn.prepare_cached(
         "SELECT id, account_id, imap_name, role, display_name, unread_count, sort_order
