@@ -23,6 +23,15 @@ Minimalist, native, fast. Bring your own AI key for the assistant and co-writer.
 <sub><b>Free & open source · ~5 MB installer · no admin rights needed</b><br>
 Grab <code>Skim_x.y.z_x64-setup.exe</code> from the latest release</sub>
 
+<br>
+
+<a href="https://www.producthunt.com/products/skim-5?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-skim-7" target="_blank" rel="noopener noreferrer">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1201330&theme=dark&t=1784560252686">
+    <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1201330&theme=light&t=1784560252686" alt="Skim - Free, open-source AI email client for Windows | Product Hunt" width="250" height="54">
+  </picture>
+</a>
+
 <br><br>
 
 <a href="https://skim-tech.com">Website</a> · <a href="https://github.com/nikserg/skim/releases/latest">Download</a> · <a href="https://github.com/nikserg/skim/issues">Report a bug</a> · <a href="CONTRIBUTING.md">Contribute</a>

@@ -133,6 +133,16 @@ a { color: inherit; text-decoration: none; }
   transform: rotate(1deg); transition: color .15s, border-color .15s;
 }
 .link-marker:hover { color: var(--pink); border-color: var(--pink); }
+.cta-side {
+  display: inline-flex; flex-direction: column;
+  align-items: flex-start; gap: 10px;
+}
+.ph-badge {
+  display: inline-flex;
+  transform: rotate(-2deg); transition: transform .12s ease;
+}
+.ph-badge img { display: block; width: 205px; height: auto; }
+.ph-badge:hover { transform: rotate(0deg) scale(1.03); }
 
 /* ============================ RANSOM-NOTE SYSTEM ============================ */
 .rn {
