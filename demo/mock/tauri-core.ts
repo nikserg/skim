@@ -18,6 +18,15 @@ function num(key: string, fallback: number): number {
 const TYPING_MS = () => num("skimdemo.typingMs", 24); // per token
 const THINK_MS = () => num("skimdemo.thinkMs", 420); // pause before first token
 const STEP_MS = () => num("skimdemo.stepMs", 650); // tool-step dwell
+// Second mailbox + unified view on demand — off by default so the classic
+// single-account shots stay reproducible.
+const MULTI = () => {
+  try {
+    return (globalThis as any).localStorage?.getItem("skimdemo.multiaccount") === "on";
+  } catch {
+    return false;
+  }
+};
 
 // ---- AI streaming --------------------------------------------------------
 export class Channel<T = unknown> {
@@ -138,7 +147,9 @@ export function invoke<T = any>(cmd: string, args: any = {}): Promise<T> {
   switch (cmd) {
     // accounts
     case "list_accounts":
-      return ok([db.ACCOUNT]);
+      return ok(MULTI() ? [db.ACCOUNT, db.ACCOUNT2] : [db.ACCOUNT]);
+    case "inbox_unread_counts":
+      return ok(MULTI() ? { "acc-1": 3, "acc-2": 2 } : { "acc-1": 3 });
     case "google_oauth_available":
       return ok(false);
     case "microsoft_oauth_available":
@@ -160,7 +171,14 @@ export function invoke<T = any>(cmd: string, args: any = {}): Promise<T> {
 
     // mail
     case "list_folders":
-      return ok(db.FOLDERS);
+      return ok(MULTI() && args.accountId === "acc-2" ? db.FOLDERS2 : db.FOLDERS);
+    case "list_unified_folders":
+      return ok(db.UNIFIED_FOLDERS);
+    case "list_unified_threads":
+    case "list_unified_messages":
+      return ok(args.offset > 0 ? [] : db.unifiedList(args.role ?? null));
+    case "folder_ref":
+      return ok(db.folderRef(args.folderId));
     // Threads vs. flat messages: the app picks one based on the group_threads
     // setting. The fixtures serve for both.
     case "list_threads":

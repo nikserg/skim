@@ -5,7 +5,7 @@
   import { onDestroy } from "svelte";
   import { aiApi, aiStream, api, errorMessage } from "../lib/api";
   import { t } from "../lib/i18n/index.svelte";
-  import type { Draft, DraftAttachment } from "../lib/types";
+  import type { Account, Draft, DraftAttachment } from "../lib/types";
   import AddressInput from "./AddressInput.svelte";
 
   let {
@@ -46,6 +46,27 @@
   // Set once the draft has been committed to the Drafts folder, so closing the
   // window keeps it instead of dropping the (now real) draft.
   let committed = $state(false);
+
+  // For the From picker (several mailboxes, fresh compose only). Replies keep
+  // the account of the message they answer; once a draft is committed to a
+  // server Drafts folder, moving it would orphan that copy — picker hides.
+  let accounts = $state<Account[]>([]);
+  const canPickFrom = $derived(
+    accounts.length > 1 &&
+      draft?.mode === "new" &&
+      draft?.originMessageId === null &&
+      !committed,
+  );
+
+  async function changeFrom(accountId: string) {
+    if (!draft || accountId === draft.accountId) return;
+    try {
+      await api.setDraftAccount(draft.id, accountId);
+      draft.accountId = accountId;
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
 
   /** Mark an edit: guards the inline write-back and drives the window Save state. */
   function markDirty() {
@@ -342,6 +363,7 @@
         draft = d;
         showCc = d.cc.length > 0 || d.bcc.length > 0;
         attachments = await api.listDraftAttachments(draftId);
+        accounts = await api.listAccounts();
       } catch (e) {
         error = errorMessage(e);
       }
@@ -396,6 +418,8 @@
       await api.updateDraft($state.snapshot(draft) as Draft);
       await api.sendDraft(draft.id);
       settled = true;
+      // Remember the mailbox for the next fresh compose in the unified view.
+      void api.setSetting("last_from_account", draft.accountId).catch(() => {});
       onSent?.();
     } catch (e) {
       error = errorMessage(e);
@@ -510,6 +534,20 @@
 
   {#if draft}
     <div class="fields">
+      {#if canPickFrom}
+        <label class="field">
+          <span class="microlabel">{t("compose.from")}</span>
+          <select
+            class="from-select"
+            value={draft.accountId}
+            onchange={(e) => void changeFrom(e.currentTarget.value)}
+          >
+            {#each accounts as a (a.id)}
+              <option value={a.id}>{a.email}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
       <label class="field">
         <span class="microlabel">{t("compose.to")}</span>
         <AddressInput bind:value={draft.to} onchange={scheduleSave} />
@@ -754,6 +792,14 @@
   }
   .subject {
     font-weight: 600;
+  }
+  .from-select {
+    flex: 1;
+    font-size: 13.5px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
   }
   .cc-toggle {
     color: var(--text-faint);

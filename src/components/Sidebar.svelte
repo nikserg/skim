@@ -9,7 +9,7 @@
   import Settings from "./settings/Settings.svelte";
 
   async function compose() {
-    const draft = await api.createDraft(mail.account?.id);
+    const draft = await api.createDraft(await mail.composeAccountId());
     await api.openComposeWindow(draft.id);
   }
 
@@ -179,7 +179,7 @@
       </button>
     {/if}
     <button class="item" onclick={() => ui.openSettings()} title={collapsed ? t("nav.settings") : undefined}>
-      <span class="avatar">{(mail.account?.email ?? "?").charAt(0).toUpperCase()}</span>
+      <span class="avatar">{((mail.account ?? mail.accounts[0])?.email ?? "?").charAt(0).toUpperCase()}</span>
       <span class="name">{t("nav.settings")}</span>
     </button>
   </div>

@@ -190,10 +190,9 @@
   }
 
   async function openCitation(c: Citation) {
-    if (c.folderId !== mail.selectedFolderId) {
-      await mail.selectFolder(c.folderId);
-    }
-    if (c.threadId !== null) mail.selectedThreadId = c.threadId;
+    // openLocation maps the real folder onto the current scope — in the
+    // unified view that's the virtual counterpart, not the folder itself.
+    await mail.openLocation(c.folderId, c.threadId, c.messageId);
     ui.closeRecap();
   }
 </script>

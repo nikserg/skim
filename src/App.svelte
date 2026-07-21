@@ -11,7 +11,7 @@
   import { api } from "./lib/api";
   import { setLocale } from "./lib/i18n/index.svelte";
   import { ai } from "./lib/stores/ai.svelte";
-  import { mail } from "./lib/stores/mail.svelte";
+  import { mail, UNIFIED } from "./lib/stores/mail.svelte";
   import { palette } from "./lib/stores/palette.svelte";
   import { ui } from "./lib/stores/ui.svelte";
   import { updater } from "./lib/stores/update.svelte";
@@ -187,12 +187,12 @@
   }
 
   async function composeNew() {
-    const draft = await api.createDraft(mail.account?.id);
+    const draft = await api.createDraft(await mail.composeAccountId());
     await api.openComposeWindow(draft.id);
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (!mail.account) return;
+    if (mail.accounts.length === 0) return;
 
     // Letter shortcuts match the physical key (e.code), not the produced
     // character (e.key): in a Cyrillic (or any non-Latin) layout the K key
@@ -207,12 +207,14 @@
       void composeNew();
       return;
     }
-    // Ctrl+1..9 jumps straight to the Nth mailbox (only when several exist).
+    // Ctrl+1 is "All inboxes", Ctrl+2..9 the Nth mailbox — matching the
+    // switcher's order (only when several accounts exist).
     if ((e.ctrlKey || e.metaKey) && mail.accounts.length > 1 && /^Digit[1-9]$/.test(e.code)) {
-      const target = mail.accounts[Number(e.code.slice(5)) - 1];
+      const n = Number(e.code.slice(5));
+      const target = n === 1 ? UNIFIED : mail.accounts[n - 2]?.id;
       if (target) {
         e.preventDefault();
-        void mail.switchAccount(target.id);
+        void mail.switchAccount(target);
       }
       return;
     }
@@ -298,7 +300,7 @@
 <div class="app">
   <Titlebar />
   {#if ready}
-    {#if mail.account}
+    {#if mail.accounts.length > 0}
       <main class="panes">
         <Sidebar />
         <MessageList />

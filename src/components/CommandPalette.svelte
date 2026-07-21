@@ -162,7 +162,7 @@
         label: t("palette.compose"),
         hint: "Ctrl N",
         run: async () => {
-          const draft = await api.createDraft(mail.account?.id);
+          const draft = await api.createDraft(await mail.composeAccountId());
           await api.openComposeWindow(draft.id);
         },
       },

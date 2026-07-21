@@ -239,7 +239,7 @@ pub fn list_threads(
                              WHERE m3.thread_id = t.id AND m3.folder_id = ?1
                                AND m3.is_read = 0)),
                 t.starred,
-                max(m.has_attachments), t.message_count
+                max(m.has_attachments), t.message_count, t.account_id
          FROM threads t
          JOIN messages m ON m.thread_id = t.id
          WHERE m.folder_id = ?1
@@ -256,6 +256,7 @@ pub fn list_threads(
             Ok(ThreadRow {
                 id: r.get(0)?,
                 message_id: None,
+                account_id: r.get(10)?,
                 from_name: from_name
                     .filter(|s| !s.is_empty())
                     .or_else(|| from_addr.clone())
@@ -287,7 +288,7 @@ pub fn list_messages(
     let mut stmt = conn.prepare_cached(
         "SELECT m.thread_id, m.id,
                 m.from_name, m.from_addr, m.subject, m.snippet, m.date,
-                m.is_read, m.is_starred, m.has_attachments
+                m.is_read, m.is_starred, m.has_attachments, m.account_id
          FROM messages m
          WHERE m.folder_id = ?1
          ORDER BY m.date DESC, m.id DESC
@@ -300,6 +301,174 @@ pub fn list_messages(
             Ok(ThreadRow {
                 id: r.get(0)?,
                 message_id: Some(r.get(1)?),
+                account_id: r.get(10)?,
+                from_name: from_name
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| from_addr.clone())
+                    .unwrap_or_default(),
+                from_addr: from_addr.unwrap_or_default(),
+                subject: r.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                snippet: r.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                date: r.get(6)?,
+                is_read: r.get(7)?,
+                is_starred: r.get(8)?,
+                has_attachments: r.get::<_, i64>(9)? != 0,
+                message_count: 1,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Stable synthetic id for a virtual (cross-account) folder. Negative so it can
+/// never collide with a real `folders.id`; deterministic so the frontend's
+/// selection survives refreshes. Known roles get fixed small ids, user labels
+/// (and any future role) hash their lowercased name.
+pub fn virtual_folder_id(role: Option<&str>, display_name: &str) -> i64 {
+    match role {
+        Some("inbox") => -1,
+        Some("starred") => -2,
+        Some("sent") => -3,
+        Some("drafts") => -4,
+        Some("archive") => -5,
+        Some("trash") => -6,
+        Some("junk") => -7,
+        Some("all") => -8,
+        _ => {
+            let key = match role {
+                Some(r) => format!("r:{r}"),
+                None => format!("l:{}", display_name.to_lowercase()),
+            };
+            // FNV-1a, folded to 31 bits — plenty for a handful of labels.
+            let mut hash: u32 = 0x811c_9dc5;
+            for b in key.as_bytes() {
+                hash ^= u32::from(*b);
+                hash = hash.wrapping_mul(0x0100_0193);
+            }
+            -(1000 + i64::from(hash & 0x7fff_ffff))
+        }
+    }
+}
+
+/// One logical folder set spanning every account: role-counterparts merge into
+/// a single virtual folder (unread summed), user labels merge by name
+/// (ASCII case-insensitive). Virtual folders carry synthetic negative ids and
+/// `account_id = "*"`.
+pub fn list_unified_folders(conn: &Connection) -> rusqlite::Result<Vec<Folder>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT role, MIN(display_name), COALESCE(SUM(unread_count), 0), MIN(sort_order)
+         FROM folders
+         GROUP BY COALESCE('r:' || role, 'l:' || lower(display_name))
+         ORDER BY MIN(sort_order), MIN(display_name)",
+    )?;
+    let rows = stmt
+        .query_map([], |r| {
+            let role: Option<String> = r.get(0)?;
+            let display_name: String = r.get(1)?;
+            Ok(Folder {
+                id: virtual_folder_id(role.as_deref(), &display_name),
+                account_id: "*".into(),
+                imap_name: String::new(),
+                role,
+                display_name,
+                unread_count: r.get(2)?,
+                sort_order: r.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// The `WHERE` half shared by the unified list queries: all real folders that
+/// make up one virtual folder — by role, or by label name when `role` is None.
+const UNIFIED_SEL: &str = "SELECT id FROM folders
+     WHERE (?1 IS NOT NULL AND role = ?1)
+        OR (?1 IS NULL AND role IS NULL AND display_name = ?2 COLLATE NOCASE)";
+
+/// Threads visible in a virtual folder (all accounts), newest first. Threads
+/// never span accounts, so this interleaves per-account threads by date.
+pub fn list_unified_threads(
+    conn: &Connection,
+    role: Option<&str>,
+    label: Option<&str>,
+    offset: i64,
+    limit: i64,
+) -> rusqlite::Result<Vec<ThreadRow>> {
+    let sql = format!(
+        "WITH sel(id) AS ({UNIFIED_SEL})
+         SELECT t.id,
+                m.from_name, m.from_addr, m.subject, m.snippet, t.last_date,
+                (NOT EXISTS (SELECT 1 FROM messages m3
+                             WHERE m3.thread_id = t.id
+                               AND m3.folder_id IN (SELECT id FROM sel)
+                               AND m3.is_read = 0)),
+                t.starred,
+                max(m.has_attachments), t.message_count, t.account_id
+         FROM threads t
+         JOIN messages m ON m.thread_id = t.id
+         WHERE m.folder_id IN (SELECT id FROM sel)
+           AND m.date = (SELECT max(m2.date) FROM messages m2
+                         WHERE m2.thread_id = t.id
+                           AND m2.folder_id IN (SELECT id FROM sel))
+         GROUP BY t.id
+         ORDER BY t.last_date DESC
+         LIMIT ?3 OFFSET ?4"
+    );
+    let mut stmt = conn.prepare_cached(&sql)?;
+    let rows = stmt
+        .query_map(params![role, label, limit, offset], |r| {
+            let from_name: Option<String> = r.get(1)?;
+            let from_addr: Option<String> = r.get(2)?;
+            Ok(ThreadRow {
+                id: r.get(0)?,
+                message_id: None,
+                account_id: r.get(10)?,
+                from_name: from_name
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| from_addr.clone())
+                    .unwrap_or_default(),
+                from_addr: from_addr.unwrap_or_default(),
+                subject: r.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                snippet: r.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                date: r.get(5)?,
+                is_read: r.get(6)?,
+                is_starred: r.get(7)?,
+                has_attachments: r.get::<_, i64>(8)? != 0,
+                message_count: r.get(9)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Individual messages in a virtual folder (all accounts), newest first — the
+/// flat (ungrouped) unified view.
+pub fn list_unified_messages(
+    conn: &Connection,
+    role: Option<&str>,
+    label: Option<&str>,
+    offset: i64,
+    limit: i64,
+) -> rusqlite::Result<Vec<ThreadRow>> {
+    let sql = format!(
+        "WITH sel(id) AS ({UNIFIED_SEL})
+         SELECT m.thread_id, m.id,
+                m.from_name, m.from_addr, m.subject, m.snippet, m.date,
+                m.is_read, m.is_starred, m.has_attachments, m.account_id
+         FROM messages m
+         WHERE m.folder_id IN (SELECT id FROM sel)
+         ORDER BY m.date DESC, m.id DESC
+         LIMIT ?3 OFFSET ?4"
+    );
+    let mut stmt = conn.prepare_cached(&sql)?;
+    let rows = stmt
+        .query_map(params![role, label, limit, offset], |r| {
+            let from_name: Option<String> = r.get(2)?;
+            let from_addr: Option<String> = r.get(3)?;
+            Ok(ThreadRow {
+                id: r.get(0)?,
+                message_id: Some(r.get(1)?),
+                account_id: r.get(10)?,
                 from_name: from_name
                     .filter(|s| !s.is_empty())
                     .or_else(|| from_addr.clone())
@@ -334,4 +503,221 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> rusqlite::Resul
         params![key, value],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Db;
+
+    /// Two accounts, each with an inbox; a case-variant "Receipts" label pair
+    /// and a label only the second account has.
+    fn seed(conn: &Connection) -> rusqlite::Result<()> {
+        for (id, email) in [("a1", "work@example.com"), ("a2", "nikita@example.com")] {
+            conn.execute(
+                "INSERT INTO accounts (id, email, provider, imap_host, smtp_host, created_at)
+                 VALUES (?1, ?2, 'custom', 'imap.example.com', 'smtp.example.com', 0)",
+                params![id, email],
+            )?;
+        }
+        for (account, imap_name, role, name, sort) in [
+            ("a1", "INBOX", Some("inbox"), "Inbox", 0),
+            ("a2", "INBOX", Some("inbox"), "Inbox", 0),
+            ("a1", "Receipts", None, "Receipts", 50),
+            ("a2", "receipts", None, "receipts", 50),
+            ("a2", "Solo", None, "Solo", 50),
+        ] {
+            conn.execute(
+                "INSERT INTO folders (account_id, imap_name, role, display_name, unread_count, sort_order)
+                 VALUES (?1, ?2, ?3, ?4, 0, ?5)",
+                params![account, imap_name, role, name, sort],
+            )?;
+        }
+        Ok(())
+    }
+
+    fn folder_id(conn: &Connection, account: &str, imap_name: &str) -> i64 {
+        conn.query_row(
+            "SELECT id FROM folders WHERE account_id = ?1 AND imap_name = ?2",
+            params![account, imap_name],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    fn add_message(
+        conn: &mut Connection,
+        account: &str,
+        folder: i64,
+        uid: u32,
+        subject: &str,
+        date: i64,
+        read: bool,
+    ) {
+        insert_message(
+            conn,
+            &NewMessage {
+                account_id: account.into(),
+                folder_id: folder,
+                uid,
+                message_id: Some(format!("<{account}-{uid}@example.com>")),
+                subject: Some(subject.into()),
+                from_addr: Some("sender@example.com".into()),
+                date,
+                is_read: read,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn unified_folders_merge_roles_and_labels() {
+        let db = Db::open_in_memory().unwrap();
+        db.with(|conn| {
+            seed(conn)?;
+            conn.execute_batch(
+                "UPDATE folders SET unread_count = 2 WHERE account_id = 'a1' AND role = 'inbox';
+                 UPDATE folders SET unread_count = 3 WHERE account_id = 'a2' AND role = 'inbox';",
+            )?;
+            let folders = list_unified_folders(conn)?;
+
+            // One inbox row summing both accounts, at the fixed virtual id.
+            let inboxes: Vec<_> = folders
+                .iter()
+                .filter(|f| f.role.as_deref() == Some("inbox"))
+                .collect();
+            assert_eq!(inboxes.len(), 1);
+            assert_eq!(inboxes[0].id, -1);
+            assert_eq!(inboxes[0].account_id, "*");
+            assert_eq!(inboxes[0].unread_count, 5);
+
+            // "Receipts"/"receipts" merge case-insensitively; "Solo" survives.
+            let labels: Vec<_> = folders.iter().filter(|f| f.role.is_none()).collect();
+            assert_eq!(labels.len(), 2);
+            assert!(labels
+                .iter()
+                .any(|f| f.display_name.eq_ignore_ascii_case("receipts")));
+            assert!(labels.iter().any(|f| f.display_name == "Solo"));
+            // Virtual label ids are stable, deterministic, and out of the
+            // fixed-role range.
+            assert_eq!(
+                virtual_folder_id(None, "Receipts"),
+                virtual_folder_id(None, "receipts")
+            );
+            assert!(labels.iter().all(|f| f.id <= -1000));
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn unified_messages_sort_globally_and_paginate() {
+        let db = Db::open_in_memory().unwrap();
+        db.with(|conn| {
+            seed(conn)?;
+            Ok(())
+        })
+        .unwrap();
+        db.with(|conn| {
+            let inbox1 = folder_id(conn, "a1", "INBOX");
+            let inbox2 = folder_id(conn, "a2", "INBOX");
+            // Interleave dates across the two inboxes.
+            add_message(conn, "a1", inbox1, 1, "one", 100, true);
+            add_message(conn, "a2", inbox2, 1, "two", 200, false);
+            add_message(conn, "a1", inbox1, 2, "three", 300, false);
+            add_message(conn, "a2", inbox2, 2, "four", 400, true);
+
+            let rows = list_unified_messages(conn, Some("inbox"), None, 0, 10)?;
+            assert_eq!(
+                rows.iter().map(|r| r.subject.as_str()).collect::<Vec<_>>(),
+                ["four", "three", "two", "one"]
+            );
+            assert_eq!(
+                rows.iter()
+                    .map(|r| r.account_id.as_str())
+                    .collect::<Vec<_>>(),
+                ["a2", "a1", "a2", "a1"]
+            );
+
+            // Offset pagination continues the same global order.
+            let page2 = list_unified_messages(conn, Some("inbox"), None, 2, 2)?;
+            assert_eq!(
+                page2.iter().map(|r| r.subject.as_str()).collect::<Vec<_>>(),
+                ["two", "one"]
+            );
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn unified_threads_interleave_accounts() {
+        let db = Db::open_in_memory().unwrap();
+        db.with(|conn| {
+            seed(conn)?;
+            Ok(())
+        })
+        .unwrap();
+        db.with(|conn| {
+            let inbox1 = folder_id(conn, "a1", "INBOX");
+            let inbox2 = folder_id(conn, "a2", "INBOX");
+            add_message(conn, "a1", inbox1, 1, "Alpha", 100, false);
+            add_message(conn, "a2", inbox2, 1, "Gamma", 200, false);
+            add_message(conn, "a1", inbox1, 2, "Beta", 300, true);
+
+            let rows = list_unified_threads(conn, Some("inbox"), None, 0, 10)?;
+            assert_eq!(
+                rows.iter().map(|r| r.subject.as_str()).collect::<Vec<_>>(),
+                ["Beta", "Gamma", "Alpha"]
+            );
+            assert_eq!(
+                rows.iter()
+                    .map(|r| r.account_id.as_str())
+                    .collect::<Vec<_>>(),
+                ["a1", "a2", "a1"]
+            );
+            assert_eq!(
+                rows.iter().map(|r| r.is_read).collect::<Vec<_>>(),
+                [true, false, false]
+            );
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn unified_label_selector_matches_case_insensitively() {
+        let db = Db::open_in_memory().unwrap();
+        db.with(|conn| {
+            seed(conn)?;
+            Ok(())
+        })
+        .unwrap();
+        db.with(|conn| {
+            let rec1 = folder_id(conn, "a1", "Receipts");
+            let rec2 = folder_id(conn, "a2", "receipts");
+            let solo = folder_id(conn, "a2", "Solo");
+            add_message(conn, "a1", rec1, 1, "r-one", 100, false);
+            add_message(conn, "a2", rec2, 1, "r-two", 200, false);
+            add_message(conn, "a2", solo, 1, "s-one", 300, false);
+
+            // The case-variant labels merge into one virtual folder…
+            let receipts = list_unified_messages(conn, None, Some("Receipts"), 0, 10)?;
+            assert_eq!(
+                receipts
+                    .iter()
+                    .map(|r| r.subject.as_str())
+                    .collect::<Vec<_>>(),
+                ["r-two", "r-one"]
+            );
+            // …while a single-account label lists only its owner's mail.
+            let solo_rows = list_unified_messages(conn, None, Some("Solo"), 0, 10)?;
+            assert_eq!(solo_rows.len(), 1);
+            assert_eq!(solo_rows[0].subject, "s-one");
+            assert_eq!(solo_rows[0].account_id, "a2");
+            Ok(())
+        })
+        .unwrap();
+    }
 }

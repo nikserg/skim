@@ -43,6 +43,8 @@ pub struct ThreadRow {
     /// In flat (ungrouped) mode this row represents a single message; carries
     /// its message id. `None` in grouped mode, where the row is a whole thread.
     pub message_id: Option<i64>,
+    /// The mailbox this row belongs to — the unified view badges rows by it.
+    pub account_id: String,
     pub from_name: String,
     pub from_addr: String,
     pub subject: String,

@@ -208,10 +208,10 @@
     return latest;
   });
 
-  // A message is outgoing if it's from the account owner (his own reply).
+  // A message is outgoing if it's from the account owner (his own reply). The
+  // unified view owns every connected address.
   function isOutgoing(m: MessageMeta): boolean {
-    const me = mail.account?.email?.toLowerCase();
-    return !!me && m.from.addr.toLowerCase() === me;
+    return mail.myEmails.includes(m.from.addr.toLowerCase());
   }
 
   // The message reply/AI actions target: focused in conversation, else shown.
@@ -222,11 +222,11 @@
   const canReplyAll = $derived.by(() => {
     const m = replyTarget;
     if (!m) return false;
-    const me = mail.account?.email?.toLowerCase();
+    const mine = mail.myEmails;
     const others = new Set<string>();
     for (const a of [m.from, ...m.to, ...m.cc]) {
       const addr = a.addr?.toLowerCase();
-      if (addr && addr !== me) others.add(addr);
+      if (addr && !mine.includes(addr)) others.add(addr);
     }
     return others.size > 1;
   });

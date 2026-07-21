@@ -110,6 +110,34 @@ pub async fn update_draft(state: State<'_, AppState>, draft: Draft) -> Result<()
         .await
 }
 
+/// Move a draft to another mailbox — the From picker in the unified view.
+/// Only allowed while the draft is local-only: once it mirrors a server copy
+/// (reply chain or saved to a Drafts folder), moving it would orphan that copy.
+#[tauri::command]
+pub async fn set_draft_account(
+    state: State<'_, AppState>,
+    draft_id: i64,
+    account_id: String,
+) -> Result<()> {
+    let changed = state
+        .db
+        .call(move |conn| {
+            conn.execute(
+                "UPDATE drafts SET account_id = ?2
+                 WHERE id = ?1 AND origin_message_id IS NULL AND imap_message_id IS NULL",
+                rusqlite::params![draft_id, account_id],
+            )
+        })
+        .await?;
+    if changed == 0 {
+        return Err(SkimError::other(
+            "compose",
+            "draft is already tied to a mailbox",
+        ));
+    }
+    Ok(())
+}
+
 /// Persist edits to a draft and queue the write-back to the IMAP Drafts folder so
 /// the draft becomes a real, reopenable message there. A server-backed draft
 /// (opened from Drafts) already mirrors a local `messages` row, patched

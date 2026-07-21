@@ -1,16 +1,26 @@
 <script lang="ts">
   import { api } from "../lib/api";
   import { t } from "../lib/i18n/index.svelte";
-  import { mail } from "../lib/stores/mail.svelte";
+  import { mail, UNIFIED } from "../lib/stores/mail.svelte";
 
   const inTauri = "__TAURI_INTERNALS__" in window;
 
   let maximized = $state(false);
 
+  // Scope label: the active mailbox, or "All inboxes" when unified. The full
+  // address list goes in the tooltip.
+  const scopeLabel = $derived(
+    mail.unified ? t("accounts.all_inboxes") : (mail.account?.email ?? ""),
+  );
+  const scopeTitle = $derived(
+    mail.unified ? mail.accounts.map((a) => a.email).join(", ") : (mail.account?.email ?? ""),
+  );
+
   // Account switcher — only rendered when more than one mailbox is connected.
   let switcherOpen = $state(false);
   let unread = $state<Record<string, number>>({});
   let brandEl = $state<HTMLElement | null>(null);
+  const totalUnread = $derived(Object.values(unread).reduce((sum, n) => sum + n, 0));
 
   function toggleSwitcher() {
     switcherOpen = !switcherOpen;
@@ -64,22 +74,43 @@
           class="account microlabel switcher"
           aria-label={t("accounts.switch")}
           aria-expanded={switcherOpen}
+          title={scopeTitle}
           onclick={toggleSwitcher}
         >
-          {mail.account?.email}
+          {scopeLabel}
           <svg class="chev" width="8" height="8" viewBox="0 0 8 8" aria-hidden="true">
             <path d="M1 2.5L4 5.5L7 2.5" fill="none" stroke="currentColor" stroke-width="1.2" />
           </svg>
         </button>
         {#if switcherOpen}
           <div class="accounts-pop" role="listbox">
-            {#each mail.accounts as a (a.id)}
+            <button
+              class="account-row"
+              role="option"
+              aria-selected={mail.unified}
+              onclick={() => pick(UNIFIED)}
+            >
+              <span class="addr">{t("accounts.all_inboxes")}</span>
+              {#if mail.unified}
+                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                  <path d="M1.5 5.5L4 8L8.5 2.5" fill="none" stroke="currentColor" stroke-width="1.4" />
+                </svg>
+              {:else if totalUnread}
+                <span class="count">{totalUnread}</span>
+              {/if}
+              <kbd class="key">Ctrl 1</kbd>
+            </button>
+            {#each mail.accounts as a, i (a.id)}
+              {@const badge = mail.accountBadge(a.id)}
               <button
                 class="account-row"
                 role="option"
                 aria-selected={a.id === mail.account?.id}
                 onclick={() => pick(a.id)}
               >
+                {#if badge}
+                  <span class="acct" style:background="var(--acct-{badge.color})">{badge.letter}</span>
+                {/if}
                 <span class="addr">{a.email}</span>
                 {#if a.id === mail.account?.id}
                   <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
@@ -87,6 +118,9 @@
                   </svg>
                 {:else if unread[a.id]}
                   <span class="count">{unread[a.id]}</span>
+                {/if}
+                {#if i < 8}
+                  <kbd class="key">Ctrl {i + 2}</kbd>
                 {/if}
               </button>
             {/each}
@@ -171,7 +205,6 @@
   .account-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 16px;
     padding: 8px 10px;
     border-radius: calc(var(--radius-s) - 2px);
@@ -181,7 +214,26 @@
   .account-row:hover {
     background: var(--hover);
   }
+  /* The account's color mark — same letter-in-disc as the message list, so
+     the association color ↔ mailbox is learnable from the switcher itself. */
+  .account-row .acct {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    margin-right: -6px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--surface);
+    flex-shrink: 0;
+  }
   .account-row .addr {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -190,6 +242,14 @@
     font-family: var(--font-mono);
     font-size: 11.5px;
     color: var(--text-dim);
+    flex-shrink: 0;
+  }
+  /* Which Ctrl+digit jumps to this row — visible whenever the list is open. */
+  .account-row .key {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-faint);
+    flex-shrink: 0;
   }
   .controls {
     display: flex;

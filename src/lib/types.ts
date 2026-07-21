@@ -38,6 +38,8 @@ export interface ThreadRow {
   id: number;
   /** Set only in flat (ungrouped) mode: the specific message this row is. */
   messageId?: number | null;
+  /** The mailbox this row belongs to — the unified view badges rows by it. */
+  accountId: string;
   fromName: string;
   fromAddr: string;
   subject: string;

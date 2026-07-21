@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getLocale } from "../lib/i18n/index.svelte";
+  import { mail } from "../lib/stores/mail.svelte";
   import type { ThreadRow } from "../lib/types";
 
   let {
@@ -11,6 +12,10 @@
     selected?: boolean;
     onselect?: (id: number) => void;
   } = $props();
+
+  // Which mailbox this row came from — shown only in the unified view, where
+  // rows from every account interleave.
+  const badge = $derived(mail.unified ? mail.accountBadge(thread.accountId) : null);
 
   function formatDate(unix: number): string {
     const locale = getLocale();
@@ -35,6 +40,9 @@
   <div class="line1">
     <span class="from">
       {#if !thread.isRead}<span class="unread-dot"></span>{/if}
+      {#if badge}
+        <span class="acct" style:background="var(--acct-{badge.color})">{badge.letter}</span>
+      {/if}
       {thread.fromName}
       {#if thread.messageCount > 1}<span class="mcount">{thread.messageCount}</span>{/if}
     </span>
@@ -94,6 +102,23 @@
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-faint);
+  }
+  /* The mailbox mark: the address's first letter in a colored disc. The letter
+     is inked in --surface (white on light themes, near-black on dark), which
+     reads against the mid-tone light / pastel dark --acct-* fills. */
+  .acct {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--surface);
+    flex-shrink: 0;
   }
   .date {
     font-family: var(--font-mono);

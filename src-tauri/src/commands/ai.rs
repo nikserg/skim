@@ -627,27 +627,32 @@ pub async fn ai_recap(
     channel: Channel<AiEvent>,
 ) -> Result<()> {
     const RECAP_LIMIT: usize = 20;
-    /// (message id, thread id, subject, from)
-    type RecapRow = (i64, Option<i64>, String, String);
+    /// (message id, thread id, real folder id, subject, from)
+    type RecapRow = (i64, Option<i64>, i64, String, String);
 
     let ctx = ai_context(&state.db).await?;
+    // A negative folder id is the virtual "All inboxes" folder — recap every
+    // account's inbox. Citations always carry the message's real folder id so
+    // clicking one can navigate in either scope.
+    const RECAP_FILTER: &str = "((?1 >= 0 AND folder_id = ?1)
+          OR (?1 < 0 AND folder_id IN (SELECT id FROM folders WHERE role = 'inbox')))";
     let (rows, unread_total): (Vec<RecapRow>, usize) = state
         .db
         .call(move |conn| {
-            let mut stmt = conn.prepare_cached(
-                "SELECT id, thread_id, COALESCE(subject, ''),
+            let mut stmt = conn.prepare_cached(&format!(
+                "SELECT id, thread_id, folder_id, COALESCE(subject, ''),
                         COALESCE(NULLIF(from_name, ''), COALESCE(from_addr, ''))
                  FROM messages
-                 WHERE folder_id = ?1 AND is_read = 0
-                 ORDER BY date DESC LIMIT ?2",
-            )?;
+                 WHERE {RECAP_FILTER} AND is_read = 0
+                 ORDER BY date DESC LIMIT ?2"
+            ))?;
             let rows = stmt
                 .query_map(rusqlite::params![folder_id, RECAP_LIMIT as i64], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
                 })?
                 .collect::<std::result::Result<Vec<_>, _>>()?;
             let total: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM messages WHERE folder_id = ?1 AND is_read = 0",
+                &format!("SELECT COUNT(*) FROM messages WHERE {RECAP_FILTER} AND is_read = 0"),
                 rusqlite::params![folder_id],
                 |r| r.get(0),
             )?;
@@ -661,7 +666,7 @@ pub async fn ai_recap(
     let total = rows.len();
     let mut context: Vec<(usize, prompts::EmailBlock)> = Vec::with_capacity(total);
     let mut citations: Vec<Citation> = Vec::with_capacity(total);
-    for (i, (id, thread_id, subject, from)) in rows.into_iter().enumerate() {
+    for (i, (id, thread_id, real_folder_id, subject, from)) in rows.into_iter().enumerate() {
         let _ = channel.send(AiEvent::Progress {
             current: i + 1,
             total,
@@ -674,7 +679,7 @@ pub async fn ai_recap(
             index,
             message_id: id,
             thread_id,
-            folder_id,
+            folder_id: real_folder_id,
             subject,
             from,
         });

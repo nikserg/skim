@@ -51,6 +51,13 @@ export const api = {
     invoke<ThreadRow[]>("list_threads", { folderId, offset, limit }),
   listMessages: (folderId: number, offset = 0, limit = 100) =>
     invoke<ThreadRow[]>("list_messages", { folderId, offset, limit }),
+  listUnifiedFolders: () => invoke<Folder[]>("list_unified_folders"),
+  listUnifiedThreads: (role: string | null, label: string | null, offset = 0, limit = 100) =>
+    invoke<ThreadRow[]>("list_unified_threads", { role, label, offset, limit }),
+  listUnifiedMessages: (role: string | null, label: string | null, offset = 0, limit = 100) =>
+    invoke<ThreadRow[]>("list_unified_messages", { role, label, offset, limit }),
+  folderRef: (folderId: number) =>
+    invoke<{ role: string | null; displayName: string }>("folder_ref", { folderId }),
   getThread: (threadId: number) => invoke<ThreadDetail>("get_thread", { threadId }),
   getMessageBody: (messageId: number, showImages?: boolean) =>
     invoke<RenderedBody>("get_message_body", { messageId, showImages: showImages ?? null }),
@@ -86,6 +93,8 @@ export const api = {
     invoke<Draft>("create_draft", { accountId: accountId ?? null }),
   getDraft: (draftId: number) => invoke<Draft>("get_draft", { draftId }),
   updateDraft: (draft: Draft) => invoke<void>("update_draft", { draft }),
+  setDraftAccount: (draftId: number, accountId: string) =>
+    invoke<void>("set_draft_account", { draftId, accountId }),
   saveServerDraft: (draft: Draft) => invoke<void>("save_server_draft", { draft }),
   editDraft: (messageId: number) => invoke<Draft>("edit_draft", { messageId }),
   deleteDraft: (draftId: number) => invoke<void>("delete_draft", { draftId }),

@@ -141,6 +141,101 @@ export const THREADS_BY_FOLDER: Record<number, typeof INBOX_THREADS> = {
   6: [],
 };
 
+// --- Second mailbox (unified-inbox demo; served only when the recorder sets
+// localStorage "skimdemo.multiaccount" = "on") -------------------------------
+export const ACCOUNT2 = {
+  id: "acc-2",
+  email: "morgan.alex@fastmail.example",
+  displayName: "Alex Morgan",
+  provider: "generic",
+  imapHost: "imap.fastmail.example",
+  imapPort: 993,
+  smtpHost: "smtp.fastmail.example",
+  smtpPort: 465,
+  smtpSecurity: "ssl",
+  authKind: "password",
+};
+
+export const FOLDERS2 = [
+  { id: 11, accountId: "acc-2", imapName: "INBOX", role: "inbox", displayName: "Inbox", unreadCount: 2, sortOrder: 0 },
+  { id: 13, accountId: "acc-2", imapName: "Sent", role: "sent", displayName: "Sent", unreadCount: 0, sortOrder: 2 },
+  { id: 16, accountId: "acc-2", imapName: "Trash", role: "trash", displayName: "Trash", unreadCount: 0, sortOrder: 5 },
+];
+
+const ACC2_INBOX_THREADS = [
+  {
+    id: 201,
+    accountId: "acc-2",
+    fromName: "Lena Kovač",
+    fromAddr: "lena@studio-k.example",
+    subject: "Ceramics class — spot opened up for Saturday",
+    snippet: "You're off the waitlist! The wheel-throwing intro has a free spot this Saturday at…",
+    date: NOW - 3 * H,
+    isRead: false,
+    isStarred: false,
+    hasAttachments: false,
+    messageCount: 1,
+  },
+  {
+    id: 202,
+    accountId: "acc-2",
+    fromName: "City Utilities",
+    fromAddr: "billing@cityutilities.example",
+    subject: "Your March statement is ready",
+    snippet: "Your statement for March is now available. Amount due: $84.20 by April 15…",
+    date: NOW - 7 * H,
+    isRead: false,
+    isStarred: false,
+    hasAttachments: true,
+    messageCount: 1,
+  },
+  {
+    id: 203,
+    accountId: "acc-2",
+    fromName: "Tomas Rivera",
+    fromAddr: "tomas.r@gmail.example",
+    subject: "Re: Climbing on Sunday?",
+    snippet: "The forecast looks perfect. Meet at the north wall around 9, then coffee after?",
+    date: NOW - 1 * D - 5 * H,
+    isRead: true,
+    isStarred: false,
+    hasAttachments: false,
+    messageCount: 2,
+  },
+];
+
+// Drilling into the second mailbox lists its inbox by real folder id.
+THREADS_BY_FOLDER[11] = ACC2_INBOX_THREADS;
+
+// The one logical folder set the unified view shows. Virtual ids mirror the
+// backend's fixed role ids (inbox −1, starred −2, sent −3, …).
+export const UNIFIED_FOLDERS = [
+  { id: -1, accountId: "*", imapName: "", role: "inbox", displayName: "Inbox", unreadCount: 5, sortOrder: 0 },
+  { id: -2, accountId: "*", imapName: "", role: "starred", displayName: "Starred", unreadCount: 0, sortOrder: 1 },
+  { id: -3, accountId: "*", imapName: "", role: "sent", displayName: "Sent", unreadCount: 0, sortOrder: 2 },
+  { id: -4, accountId: "*", imapName: "", role: "drafts", displayName: "Drafts", unreadCount: 0, sortOrder: 3 },
+  { id: -5, accountId: "*", imapName: "", role: "archive", displayName: "Archive", unreadCount: 0, sortOrder: 4 },
+  { id: -6, accountId: "*", imapName: "", role: "trash", displayName: "Trash", unreadCount: 0, sortOrder: 5 },
+];
+
+/** Rows for a virtual folder: both mailboxes' counterparts merged by date. */
+export function unifiedList(role: string | null): typeof INBOX_THREADS {
+  const tag = (rows: typeof INBOX_THREADS, accountId: string) =>
+    rows.map((t) => ({ accountId, ...t }));
+  const byRole: Record<string, typeof INBOX_THREADS> = {
+    inbox: [...tag(INBOX_THREADS, "acc-1"), ...ACC2_INBOX_THREADS],
+    starred: tag([INBOX_THREADS[4]], "acc-1"),
+    sent: tag(THREADS_BY_FOLDER[3], "acc-1"),
+  };
+  return (byRole[role ?? ""] ?? []).slice().sort((a, b) => b.date - a.date);
+}
+
+/** Role + name of a real folder — the unified view maps citations through it. */
+export function folderRef(folderId: number): { role: string | null; displayName: string } {
+  const f = [...FOLDERS, ...FOLDERS2].find((f) => f.id === folderId);
+  return { role: f?.role ?? null, displayName: f?.displayName ?? "" };
+}
+
 // --- Message bodies (the reading pane) ------------------------------------
 const HERO_BODY = `
 <p>Hi Alex,</p>
@@ -294,6 +389,7 @@ export function createDraft() {
     bcc: "",
     subject: "",
     body: "",
+    originMessageId: null,
   };
   DRAFTS[id] = d;
   return d;
@@ -314,6 +410,7 @@ export function replyTemplate(messageId: number, mode: string) {
     bcc: "",
     subject: (t?.subject ?? "").startsWith("Re:") ? t!.subject : `Re: ${t?.subject ?? "Q3 launch"}`,
     body: quoted,
+    originMessageId: null,
   };
   DRAFTS[id] = d;
   return d;
@@ -323,7 +420,7 @@ export function getDraft(id: number) {
   return DRAFTS[id] ?? createDraftWithId(id);
 }
 function createDraftWithId(id: number) {
-  const d = { id, accountId: "acc-1", replyToMessageId: null, mode: "new", to: "", cc: "", bcc: "", subject: "", body: "" };
+  const d = { id, accountId: "acc-1", replyToMessageId: null, mode: "new", to: "", cc: "", bcc: "", subject: "", body: "", originMessageId: null };
   DRAFTS[id] = d;
   return d;
 }
@@ -346,6 +443,7 @@ DRAFTS[7001] = {
   subject: "Re: Q3 launch — final checklist & open questions",
   body: "\n\nOn " + new Date((NOW - 2 * H) * 1000).toDateString() +
     ", Anna Weber <anna.weber@northwind.example> wrote:\n> Pulling the last threads together before Thursday…",
+  originMessageId: null,
 };
 DRAFTS[7002] = {
   id: 7002,
@@ -357,6 +455,7 @@ DRAFTS[7002] = {
   bcc: "",
   subject: "",
   body: "",
+  originMessageId: null,
 };
 
 // --- Scripted AI output ---------------------------------------------------

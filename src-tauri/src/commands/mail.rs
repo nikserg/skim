@@ -130,6 +130,93 @@ pub async fn list_messages(
         .await
 }
 
+/// The one logical folder set spanning every account — the "All inboxes" view.
+#[tauri::command]
+pub async fn list_unified_folders(state: State<'_, AppState>) -> Result<Vec<Folder>> {
+    state
+        .db
+        .call(|conn| queries::list_unified_folders(conn))
+        .await
+}
+
+/// Threads in a virtual folder (all accounts), newest first. The folder is
+/// addressed by role, or by label display name when it has no role.
+#[tauri::command]
+pub async fn list_unified_threads(
+    state: State<'_, AppState>,
+    role: Option<String>,
+    label: Option<String>,
+    offset: i64,
+    limit: i64,
+) -> Result<Vec<ThreadRow>> {
+    state
+        .db
+        .call(move |conn| {
+            queries::list_unified_threads(
+                conn,
+                role.as_deref(),
+                label.as_deref(),
+                offset,
+                limit.clamp(1, 200),
+            )
+        })
+        .await
+}
+
+/// Flat (ungrouped) unified view: one row per message across all accounts.
+#[tauri::command]
+pub async fn list_unified_messages(
+    state: State<'_, AppState>,
+    role: Option<String>,
+    label: Option<String>,
+    offset: i64,
+    limit: i64,
+) -> Result<Vec<ThreadRow>> {
+    state
+        .db
+        .call(move |conn| {
+            queries::list_unified_messages(
+                conn,
+                role.as_deref(),
+                label.as_deref(),
+                offset,
+                limit.clamp(1, 200),
+            )
+        })
+        .await
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderRef {
+    pub role: Option<String>,
+    pub display_name: String,
+}
+
+/// Role + name of a real folder — lets the unified view map a concrete folder
+/// (from a search hit, toast, or AI citation) onto its virtual counterpart.
+#[tauri::command]
+pub async fn folder_ref(state: State<'_, AppState>, folder_id: i64) -> Result<FolderRef> {
+    state
+        .db
+        .call(move |conn| {
+            use rusqlite::OptionalExtension;
+            conn.query_row(
+                "SELECT role, display_name FROM folders WHERE id = ?1",
+                rusqlite::params![folder_id],
+                |r| {
+                    Ok(FolderRef {
+                        role: r.get(0)?,
+                        display_name: r.get(1)?,
+                    })
+                },
+            )
+            .optional()
+        })
+        .await?
+        .ok_or_else(|| SkimError::other("mail", "folder not found"))
+}
+
 #[tauri::command]
 pub async fn get_thread(state: State<'_, AppState>, thread_id: i64) -> Result<ThreadDetail> {
     state
