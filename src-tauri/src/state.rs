@@ -11,8 +11,9 @@ pub struct AppState {
     /// In-flight AI requests, cancellable by request id.
     pub ai_tasks: std::sync::Mutex<HashMap<String, tokio::task::AbortHandle>>,
     /// Thread to open once the frontend is ready, set when the app is
-    /// cold-launched by a `skim://open` toast click. `(folder_id, thread_id)`.
-    pub pending_open: std::sync::Mutex<Option<(i64, i64)>>,
+    /// cold-launched by a `skim://open` toast click.
+    /// `(folder_id, thread_id, message_id)`.
+    pub pending_open: std::sync::Mutex<Option<(i64, i64, i64)>>,
 }
 
 impl AppState {

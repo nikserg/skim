@@ -137,6 +137,7 @@ pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
     // Newest of the batch shapes the toast (and is what a body click opens).
     let pks = message_pks.to_vec();
     type NewestRow = (
+        i64,
         Option<String>,
         Option<String>,
         Option<String>,
@@ -151,21 +152,31 @@ pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
                 pks.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
             conn.query_row(
                 &format!(
-                    "SELECT from_name, from_addr, subject, folder_id, thread_id FROM messages
+                    "SELECT id, from_name, from_addr, subject, folder_id, thread_id FROM messages
                      WHERE id IN ({placeholders}) ORDER BY date DESC LIMIT 1"
                 ),
                 params.as_slice(),
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                    ))
+                },
             )
             .optional()
         })
         .await
         .ok()
         .flatten();
-    let Some((from_name, from_addr, subject, folder_id, thread_id)) = newest else {
+    let Some((message_id, from_name, from_addr, subject, folder_id, thread_id)) = newest else {
         return;
     };
-    let open_target = thread_id.map(|tid| (folder_id, tid));
+    // A body click opens the newest message's thread and highlights that message.
+    let open_target = thread_id.map(|tid| (folder_id, tid, message_id));
 
     let title = from_name
         .filter(|s| !s.is_empty())
@@ -182,8 +193,8 @@ pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
         .collect::<Vec<_>>()
         .join(",");
     let open_uri = match open_target {
-        Some((folder_id, thread_id)) => {
-            format!("skim://open?folder={folder_id}&thread={thread_id}")
+        Some((folder_id, thread_id, message_id)) => {
+            format!("skim://open?folder={folder_id}&thread={thread_id}&message={message_id}")
         }
         None => "skim://open".to_string(),
     };
@@ -261,14 +272,16 @@ pub fn handle_skim_uri(app: &AppHandle, uri: &str, frontend_ready: bool) {
             }
             let folder = query_value(query, "folder").and_then(|v| v.parse::<i64>().ok());
             let thread = query_value(query, "thread").and_then(|v| v.parse::<i64>().ok());
-            if let (Some(folder_id), Some(thread_id)) = (folder, thread) {
+            let message = query_value(query, "message").and_then(|v| v.parse::<i64>().ok());
+            if let (Some(folder_id), Some(thread_id), Some(message_id)) = (folder, thread, message)
+            {
                 if frontend_ready {
                     let _ = app.emit(
                         "mail:open-thread",
-                        json!({ "folderId": folder_id, "threadId": thread_id }),
+                        json!({ "folderId": folder_id, "threadId": thread_id, "messageId": message_id }),
                     );
                 } else if let Some(state) = app.try_state::<AppState>() {
-                    *state.pending_open.lock().unwrap() = Some((folder_id, thread_id));
+                    *state.pending_open.lock().unwrap() = Some((folder_id, thread_id, message_id));
                 }
             }
         }

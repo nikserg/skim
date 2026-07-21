@@ -266,6 +266,7 @@ pub async fn apply_read(
 pub struct PendingOpen {
     pub folder_id: i64,
     pub thread_id: i64,
+    pub message_id: i64,
 }
 
 /// One-shot handoff: on cold start a toast click stashes its target in
@@ -278,9 +279,10 @@ pub fn take_pending_open(state: State<'_, AppState>) -> Option<PendingOpen> {
         .lock()
         .unwrap()
         .take()
-        .map(|(folder_id, thread_id)| PendingOpen {
+        .map(|(folder_id, thread_id, message_id)| PendingOpen {
             folder_id,
             thread_id,
+            message_id,
         })
 }
 

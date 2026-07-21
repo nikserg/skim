@@ -49,12 +49,19 @@ async function attachListeners() {
     void refreshFolders();
   });
   // Toast body click: jump to the message's thread.
-  await listen<{ folderId: number; threadId: number }>("mail:open-thread", async (e) => {
-    if (e.payload.folderId !== state.selectedFolderId) {
-      await selectFolder(e.payload.folderId);
-    }
-    state.selectedThreadId = e.payload.threadId;
-  });
+  await listen<{ folderId: number; threadId: number; messageId: number }>(
+    "mail:open-thread",
+    async (e) => {
+      if (e.payload.folderId !== state.selectedFolderId) {
+        await selectFolder(e.payload.folderId);
+      }
+      state.selectedThreadId = e.payload.threadId;
+      // Match a normal click: in flat mode the list highlights by message id, so
+      // point it at the opened message; grouped mode highlights by thread and
+      // wants a null message id to keep the conversation view.
+      state.selectedMessageId = state.groupThreads ? null : e.payload.messageId;
+    },
+  );
   await listen<{ state: SyncState; message: string | null }>("sync:status", (e) => {
     state.syncState = e.payload.state;
     state.syncMessage = e.payload.message ?? null;
@@ -225,6 +232,7 @@ export const mail = {
     if (pending) {
       if (pending.folderId !== state.selectedFolderId) await selectFolder(pending.folderId);
       state.selectedThreadId = pending.threadId;
+      state.selectedMessageId = state.groupThreads ? null : pending.messageId;
     }
   },
 
