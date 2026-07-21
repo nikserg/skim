@@ -8,7 +8,8 @@
   import { ai } from "../../lib/stores/ai.svelte";
   import { mail } from "../../lib/stores/mail.svelte";
   import { ui } from "../../lib/stores/ui.svelte";
-  import type { Lightness, Temperature } from "../../lib/types";
+  import type { Account, Lightness, Temperature } from "../../lib/types";
+  import ConnectForm from "../onboarding/ConnectForm.svelte";
 
   let { onclose }: { onclose: () => void } = $props();
 
@@ -86,7 +87,11 @@
   let notifications = $state("on");
   let groupThreads = $state("on");
   let autostart = $state(true);
-  let confirmingRemove = $state(false);
+  // Which account's disconnect button is in its "confirm?" state.
+  let confirmingRemoveId = $state<string | null>(null);
+  // Settings-hosted "add another mailbox": swaps the panel body for the
+  // connect form.
+  let addingAccount = $state(false);
   let appVersion = $state("");
 
   // AI writer profile
@@ -354,10 +359,17 @@
     await ai.refresh();
   }
 
-  async function removeAccount() {
-    if (!mail.account) return;
-    await api.removeAccount(mail.account.id);
-    window.location.reload();
+  async function removeAccount(id: string) {
+    confirmingRemoveId = null;
+    await api.removeAccount(id);
+    // Reloads to onboarding when the last mailbox is gone; otherwise the view
+    // switches (or stays) in place.
+    await mail.accountRemoved(id);
+  }
+
+  async function accountConnected(account: Account) {
+    addingAccount = false;
+    await mail.accountAdded(account);
   }
 </script>
 
@@ -391,27 +403,46 @@
     </header>
 
     <div class="body">
-      {#if mail.account}
+      {#if addingAccount}
+      <section class="add-account">
+        <button class="ghost" onclick={() => (addingAccount = false)}>
+          ← {t("settings.back")}
+        </button>
+        <h3 class="add-title">{t("onb.connect_title")}</h3>
+        <ConnectForm onconnected={(account) => void accountConnected(account)} />
+      </section>
+      {:else}
+      {#if mail.accounts.length > 0}
         <section>
           <div class="microlabel">{t("settings.account")}</div>
-          <div class="row">
-            <span class="avatar">{mail.account.email.charAt(0).toUpperCase()}</span>
-            <div class="grow">
-              <div class="strong">{mail.account.email}</div>
-              <div class="dim">{mail.account.imapHost}</div>
+          {#each mail.accounts as account (account.id)}
+            <div class="row">
+              <span class="avatar">{account.email.charAt(0).toUpperCase()}</span>
+              <div class="grow">
+                <div class="strong">
+                  {account.email}
+                  {#if mail.accounts.length > 1 && account.id === mail.account?.id}
+                    <span class="active-mark microlabel">{t("settings.active")}</span>
+                  {/if}
+                </div>
+                <div class="dim">{account.imapHost}</div>
+              </div>
+              {#if confirmingRemoveId === account.id}
+                <button class="danger" onclick={() => removeAccount(account.id)}>{t("settings.confirm_remove")}</button>
+                <button class="ghost" onclick={() => (confirmingRemoveId = null)}>{t("settings.cancel")}</button>
+              {:else}
+                <button class="ghost" onclick={() => (confirmingRemoveId = account.id)}>
+                  {t("settings.remove_account")}
+                </button>
+              {/if}
             </div>
-            {#if confirmingRemove}
-              <button class="danger" onclick={removeAccount}>{t("settings.confirm_remove")}</button>
-              <button class="ghost" onclick={() => (confirmingRemove = false)}>{t("settings.cancel")}</button>
-            {:else}
-              <button class="ghost" onclick={() => (confirmingRemove = true)}>
-                {t("settings.remove_account")}
-              </button>
+            {#if confirmingRemoveId === account.id}
+              <div class="warn">{t("settings.remove_confirm")}</div>
             {/if}
-          </div>
-          {#if confirmingRemove}
-            <div class="warn">{t("settings.remove_confirm")}</div>
-          {/if}
+          {/each}
+          <button class="ghost add-btn" onclick={() => (addingAccount = true)}>
+            + {t("settings.add_account")}
+          </button>
         </section>
       {/if}
 
@@ -719,6 +750,7 @@
           GitHub
         </button>
       </div>
+      {/if}
     </div>
   </div>
 </div>
@@ -809,6 +841,22 @@
     place-items: center;
     font-weight: 700;
     font-size: 13px;
+  }
+  /* "Active" tag on the mailbox the app currently shows (≥2 accounts only). */
+  .active-mark {
+    margin-left: 6px;
+    color: var(--text-faint);
+  }
+  .add-btn {
+    align-self: flex-start;
+  }
+  .add-account .ghost {
+    align-self: flex-start;
+  }
+  .add-title {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
   }
 
   .chips {

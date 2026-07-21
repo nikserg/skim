@@ -187,7 +187,7 @@
   }
 
   async function composeNew() {
-    const draft = await api.createDraft();
+    const draft = await api.createDraft(mail.account?.id);
     await api.openComposeWindow(draft.id);
   }
 
@@ -205,6 +205,15 @@
     if ((e.ctrlKey || e.metaKey) && e.code === "KeyN") {
       e.preventDefault();
       void composeNew();
+      return;
+    }
+    // Ctrl+1..9 jumps straight to the Nth mailbox (only when several exist).
+    if ((e.ctrlKey || e.metaKey) && mail.accounts.length > 1 && /^Digit[1-9]$/.test(e.code)) {
+      const target = mail.accounts[Number(e.code.slice(5)) - 1];
+      if (target) {
+        e.preventDefault();
+        void mail.switchAccount(target.id);
+      }
       return;
     }
     // Escape leaves the in-pane draft editor (its teardown writes edits back),

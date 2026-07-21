@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from "../lib/i18n/index.svelte";
+  import { mail } from "../lib/stores/mail.svelte";
   import { ui } from "../lib/stores/ui.svelte";
 
   interface Row {
@@ -45,6 +46,10 @@
       rows: [
         { label: t("nav.search"), keys: ["Ctrl K", "/"] },
         { label: t("nav.compose"), keys: ["Ctrl N"] },
+        // Only meaningful (and only active) with several mailboxes connected.
+        ...(mail.accounts.length > 1
+          ? [{ label: t("accounts.switch"), keys: ["Ctrl 1…9"] }]
+          : []),
         { label: t("palette.toggle_sidebar"), keys: ["."] },
         { label: t("shortcuts.title"), keys: ["?"] },
       ],

@@ -53,6 +53,7 @@ pub async fn search_messages(
     state: State<'_, AppState>,
     query: String,
     limit: i64,
+    account_id: Option<String>,
 ) -> Result<Vec<SearchHit>> {
     let Some(fts_query) = build_fts_query(&query) else {
         return Ok(Vec::new());
@@ -67,11 +68,12 @@ pub async fn search_messages(
                  FROM messages_fts
                  JOIN messages m ON m.id = messages_fts.rowid
                  WHERE messages_fts MATCH ?1
+                   AND (?3 IS NULL OR m.account_id = ?3)
                  ORDER BY bm25(messages_fts)
                  LIMIT ?2",
             )?;
             let rows = stmt
-                .query_map(rusqlite::params![fts_query, limit], |r| {
+                .query_map(rusqlite::params![fts_query, limit, account_id], |r| {
                     let from_name: Option<String> = r.get(4)?;
                     let from_addr: Option<String> = r.get(5)?;
                     Ok(SearchHit {

@@ -6,6 +6,7 @@ use tauri::State;
 
 /// Keys the frontend may read/write. Everything else lives in Rust only.
 const ALLOWED: &[&str] = &[
+    "active_account",
     "locale",
     "theme",
     "images_policy",

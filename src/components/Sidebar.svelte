@@ -9,7 +9,7 @@
   import Settings from "./settings/Settings.svelte";
 
   async function compose() {
-    const draft = await api.createDraft();
+    const draft = await api.createDraft(mail.account?.id);
     await api.openComposeWindow(draft.id);
   }
 

@@ -191,6 +191,18 @@ pub fn total_inbox_unread(conn: &Connection) -> rusqlite::Result<i64> {
     )
 }
 
+/// Inbox unread per account — shown next to each account in the switcher.
+pub fn inbox_unread_by_account(conn: &Connection) -> rusqlite::Result<Vec<(String, i64)>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT account_id, COALESCE(SUM(unread_count), 0)
+         FROM folders WHERE role = 'inbox' GROUP BY account_id",
+    )?;
+    let rows = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 pub fn list_folders(conn: &Connection, account_id: &str) -> rusqlite::Result<Vec<Folder>> {
     let mut stmt = conn.prepare_cached(
         "SELECT id, account_id, imap_name, role, display_name, unread_count, sort_order

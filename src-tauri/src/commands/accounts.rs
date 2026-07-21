@@ -59,12 +59,38 @@ pub async fn list_accounts(state: State<'_, AppState>) -> Result<Vec<Account>> {
     state.db.call(|conn| db_accounts::list(conn)).await
 }
 
+/// Inbox unread count per account id — fetched when the account switcher
+/// opens, so the dropdown can hint where the new mail is.
+#[tauri::command]
+pub async fn inbox_unread_counts(
+    state: State<'_, AppState>,
+) -> Result<std::collections::HashMap<String, i64>> {
+    let rows = state
+        .db
+        .call(|conn| crate::db::queries::inbox_unread_by_account(conn))
+        .await?;
+    Ok(rows.into_iter().collect())
+}
+
 async fn finish_add_account(
     app: &AppHandle,
     state: &State<'_, AppState>,
     account: Account,
     secret: &str,
 ) -> Result<Account> {
+    // Refuse a mailbox that is already connected — before any secret is
+    // written, so a duplicate attempt leaves the existing account untouched.
+    let existing = state.db.call(|conn| db_accounts::list(conn)).await?;
+    if existing
+        .iter()
+        .any(|a| a.email.eq_ignore_ascii_case(&account.email))
+    {
+        return Err(SkimError::other(
+            "account_exists",
+            "this account is already connected",
+        ));
+    }
+
     secrets::set(&secrets::mail_key(&account.id), secret)?;
     let acc = account.clone();
     state

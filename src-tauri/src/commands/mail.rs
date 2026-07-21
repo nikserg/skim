@@ -83,6 +83,26 @@ pub async fn list_folders(state: State<'_, AppState>, account_id: String) -> Res
         .await
 }
 
+/// Which account a folder belongs to — lets the frontend switch the active
+/// account before opening a location that lives in another mailbox (toast
+/// clicks, cold-start pending opens, AI citations).
+#[tauri::command]
+pub async fn folder_account_id(state: State<'_, AppState>, folder_id: i64) -> Result<String> {
+    state
+        .db
+        .call(move |conn| {
+            use rusqlite::OptionalExtension;
+            conn.query_row(
+                "SELECT account_id FROM folders WHERE id = ?1",
+                rusqlite::params![folder_id],
+                |r| r.get(0),
+            )
+            .optional()
+        })
+        .await?
+        .ok_or_else(|| SkimError::other("mail", "folder not found"))
+}
+
 #[tauri::command]
 pub async fn list_threads(
     state: State<'_, AppState>,

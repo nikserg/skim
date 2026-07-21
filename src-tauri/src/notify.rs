@@ -135,6 +135,8 @@ pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
     }
 
     // Newest of the batch shapes the toast (and is what a body click opens).
+    // With several mailboxes connected, the toast also names the receiving
+    // account (a batch always belongs to one account — one engine sent it).
     let pks = message_pks.to_vec();
     type NewestRow = (
         i64,
@@ -143,6 +145,7 @@ pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
         Option<String>,
         i64,
         Option<i64>,
+        Option<String>,
     );
     let newest: Option<NewestRow> = db
         .call(move |conn| {
@@ -152,8 +155,12 @@ pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
                 pks.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
             conn.query_row(
                 &format!(
-                    "SELECT id, from_name, from_addr, subject, folder_id, thread_id FROM messages
-                     WHERE id IN ({placeholders}) ORDER BY date DESC LIMIT 1"
+                    "SELECT m.id, m.from_name, m.from_addr, m.subject, m.folder_id, m.thread_id,
+                            CASE WHEN (SELECT count(*) FROM accounts) > 1
+                                 THEN (SELECT email FROM accounts WHERE id = m.account_id)
+                            END
+                     FROM messages m
+                     WHERE m.id IN ({placeholders}) ORDER BY m.date DESC LIMIT 1"
                 ),
                 params.as_slice(),
                 |r| {
@@ -164,6 +171,7 @@ pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
                         r.get(3)?,
                         r.get(4)?,
                         r.get(5)?,
+                        r.get(6)?,
                     ))
                 },
             )
@@ -172,7 +180,9 @@ pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
         .await
         .ok()
         .flatten();
-    let Some((message_id, from_name, from_addr, subject, folder_id, thread_id)) = newest else {
+    let Some((message_id, from_name, from_addr, subject, folder_id, thread_id, account_email)) =
+        newest
+    else {
         return;
     };
     // A body click opens the newest message's thread and highlights that message.
@@ -207,12 +217,22 @@ pub async fn notify_new_mail(app: &AppHandle, db: &Db, message_pks: &[i64]) {
     // pump is needed — which is why the old in-process callback never fired.
     // The header logo comes from the AUMID (Start Menu shortcut + IconUri),
     // so no image goes inside the toast body.
+    // The third <text> renders as the toast's attribution line — used to name
+    // the receiving mailbox, but only when more than one account is connected.
+    let attribution = account_email
+        .map(|email| {
+            format!(
+                "\n            <text placement=\"attribution\">{}</text>",
+                xml_escape(&email)
+            )
+        })
+        .unwrap_or_default();
     let xml = format!(
         r#"<toast activationType="protocol" launch="{launch}">
     <visual>
         <binding template="ToastGeneric">
             <text>{title}</text>
-            <text>{body}</text>
+            <text>{body}</text>{attribution}
         </binding>
     </visual>
     <actions>

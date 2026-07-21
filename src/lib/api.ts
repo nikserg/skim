@@ -42,9 +42,11 @@ export const api = {
   startGoogleOauth: () => invoke<Account>("start_google_oauth"),
   startMicrosoftOauth: () => invoke<Account>("start_microsoft_oauth"),
   removeAccount: (accountId: string) => invoke<void>("remove_account", { accountId }),
+  inboxUnreadCounts: () => invoke<Record<string, number>>("inbox_unread_counts"),
 
   // mail
   listFolders: (accountId: string) => invoke<Folder[]>("list_folders", { accountId }),
+  folderAccountId: (folderId: number) => invoke<string>("folder_account_id", { folderId }),
   listThreads: (folderId: number, offset = 0, limit = 100) =>
     invoke<ThreadRow[]>("list_threads", { folderId, offset, limit }),
   listMessages: (folderId: number, offset = 0, limit = 100) =>
@@ -74,13 +76,14 @@ export const api = {
   openInviteIcs: (messageId: number) => invoke<void>("open_invite_ics", { messageId }),
 
   // search
-  searchMessages: (query: string, limit = 20) =>
-    invoke<SearchHit[]>("search_messages", { query, limit }),
+  searchMessages: (query: string, limit = 20, accountId?: string) =>
+    invoke<SearchHit[]>("search_messages", { query, limit, accountId: accountId ?? null }),
   threadMessageIds: (threadId: number) =>
     invoke<number[]>("thread_message_ids", { threadId }),
 
   // compose
-  createDraft: () => invoke<Draft>("create_draft"),
+  createDraft: (accountId?: string) =>
+    invoke<Draft>("create_draft", { accountId: accountId ?? null }),
   getDraft: (draftId: number) => invoke<Draft>("get_draft", { draftId }),
   updateDraft: (draft: Draft) => invoke<void>("update_draft", { draft }),
   saveServerDraft: (draft: Draft) => invoke<void>("save_server_draft", { draft }),

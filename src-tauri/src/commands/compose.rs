@@ -79,13 +79,13 @@ pub async fn suggest_addresses(
 }
 
 #[tauri::command]
-pub async fn create_draft(state: State<'_, AppState>) -> Result<Draft> {
+pub async fn create_draft(state: State<'_, AppState>, account_id: Option<String>) -> Result<Draft> {
     let account = state
         .db
         .call(|conn| db_accounts::list(conn))
         .await?
         .into_iter()
-        .next()
+        .find(|a| account_id.as_ref().is_none_or(|id| *id == a.id))
         .ok_or_else(|| SkimError::other("mail", "no account configured"))?;
     state
         .db

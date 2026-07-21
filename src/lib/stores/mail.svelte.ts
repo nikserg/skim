@@ -9,7 +9,8 @@ const PAGE = 100;
 
 const state = $state({
   booted: false,
-  account: null as Account | null,
+  accounts: [] as Account[],
+  activeAccountId: null as string | null,
   folders: [] as Folder[],
   threads: [] as ThreadRow[],
   selectedFolderId: null as number | null,
@@ -51,22 +52,19 @@ async function attachListeners() {
   // Toast body click: jump to the message's thread.
   await listen<{ folderId: number; threadId: number; messageId: number }>(
     "mail:open-thread",
-    async (e) => {
-      if (e.payload.folderId !== state.selectedFolderId) {
-        await selectFolder(e.payload.folderId);
-      }
-      state.selectedThreadId = e.payload.threadId;
-      // Match a normal click: in flat mode the list highlights by message id, so
-      // point it at the opened message; grouped mode highlights by thread and
-      // wants a null message id to keep the conversation view.
-      state.selectedMessageId = state.groupThreads ? null : e.payload.messageId;
+    (e) => void openLocation(e.payload.folderId, e.payload.threadId, e.payload.messageId),
+  );
+  // Every account's engine reports here — only the active one drives the
+  // sync indicator, so a background mailbox can't clobber it.
+  await listen<{ state: SyncState; message: string | null; accountId?: string }>(
+    "sync:status",
+    (e) => {
+      if (e.payload.accountId && e.payload.accountId !== state.activeAccountId) return;
+      state.syncState = e.payload.state;
+      state.syncMessage = e.payload.message ?? null;
+      if (e.payload.state !== "syncing") state.syncProgress = null;
     },
   );
-  await listen<{ state: SyncState; message: string | null }>("sync:status", (e) => {
-    state.syncState = e.payload.state;
-    state.syncMessage = e.payload.message ?? null;
-    if (e.payload.state !== "syncing") state.syncProgress = null;
-  });
   await listen<{ folderId: number; done: number; total: number }>("sync:progress", (e) => {
     if (e.payload.folderId === state.selectedFolderId) {
       state.syncProgress = { done: e.payload.done, total: e.payload.total };
@@ -84,14 +82,62 @@ async function attachListeners() {
   });
 }
 
+function activeAccount(): Account | null {
+  return state.accounts.find((a) => a.id === state.activeAccountId) ?? null;
+}
+
 async function refreshFolders() {
-  if (!state.account) return;
-  state.folders = await api.listFolders(state.account.id);
+  const accountId = state.activeAccountId;
+  if (accountId === null) return;
+  const folders = await api.listFolders(accountId);
+  // The user may have switched accounts mid-fetch — these folders belong to
+  // the previous mailbox.
+  if (state.activeAccountId !== accountId) return;
+  state.folders = folders;
   // Auto-select inbox once it appears.
   if (state.selectedFolderId === null) {
     const inbox = state.folders.find((f) => f.role === "inbox");
     if (inbox) await selectFolder(inbox.id);
   }
+}
+
+/** Make another mailbox the active one: reset the view, load its folders
+ *  (auto-selecting the inbox), and remember the choice across restarts. */
+async function switchAccount(id: string) {
+  if (id === state.activeAccountId || !state.accounts.some((a) => a.id === id)) return;
+  state.activeAccountId = id;
+  state.selectedFolderId = null;
+  state.selectedThreadId = null;
+  state.selectedMessageId = null;
+  state.folders = [];
+  state.threads = [];
+  state.syncState = "idle";
+  state.syncMessage = null;
+  state.syncProgress = null;
+  void api.setSetting("active_account", id);
+  await refreshFolders();
+}
+
+/** Open a folder/thread/message wherever it lives — switching the active
+ *  account first when the target belongs to another mailbox (toast clicks,
+ *  cold-start pending opens, AI citations, search hits). */
+async function openLocation(folderId: number, threadId: number | null, messageId: number) {
+  if (!state.folders.some((f) => f.id === folderId)) {
+    let owner: string;
+    try {
+      owner = await api.folderAccountId(folderId);
+    } catch {
+      return; // the folder is gone (stale hit) — nothing to open
+    }
+    await switchAccount(owner);
+  }
+  if (folderId !== state.selectedFolderId) await selectFolder(folderId);
+  if (threadId === null) return;
+  state.selectedThreadId = threadId;
+  // Match a normal click: in flat mode the list highlights by message id, so
+  // point it at the opened message; grouped mode highlights by thread and
+  // wants a null message id to keep the conversation view.
+  state.selectedMessageId = state.groupThreads ? null : messageId;
 }
 
 /** One page of rows for a folder — threads when grouping is on, else messages. */
@@ -160,8 +206,12 @@ export const mail = {
   get booted() {
     return state.booted;
   },
+  /** The active account — the mailbox the whole UI currently shows. */
   get account() {
-    return state.account;
+    return activeAccount();
+  },
+  get accounts() {
+    return state.accounts;
   },
   get folders() {
     return state.folders;
@@ -216,37 +266,52 @@ export const mail = {
     return state.threadsLoading;
   },
 
-  /** App start: find the account and begin listening. */
+  /** App start: find the accounts and begin listening. */
   async boot() {
     await attachListeners();
     // Thread grouping preference (default on when the key is absent).
     const settings = await api.getSettings();
     state.groupThreads = settings.group_threads !== "off";
-    const accounts = await api.listAccounts();
-    state.account = accounts[0] ?? null;
-    if (state.account) await refreshFolders();
+    state.accounts = await api.listAccounts();
+    // Restore the last active account; self-heal a stale id.
+    const saved = settings.active_account;
+    state.activeAccountId =
+      state.accounts.find((a) => a.id === saved)?.id ?? state.accounts[0]?.id ?? null;
+    if (state.activeAccountId) await refreshFolders();
     state.booted = true;
     // A cold-start toast click may have queued a thread to open (the
     // mail:open-thread event fired before listeners were attached).
     const pending = await api.takePendingOpen();
-    if (pending) {
-      if (pending.folderId !== state.selectedFolderId) await selectFolder(pending.folderId);
-      state.selectedThreadId = pending.threadId;
-      state.selectedMessageId = state.groupThreads ? null : pending.messageId;
-    }
+    if (pending) await openLocation(pending.folderId, pending.threadId, pending.messageId);
   },
 
-  /** Called right after onboarding adds the account. */
+  /** Called right after onboarding or settings connects a mailbox. */
   async accountAdded(account: Account) {
-    state.account = account;
-    await refreshFolders();
+    state.accounts = [...state.accounts, account];
+    await switchAccount(account.id);
+  },
+
+  /** Called right after settings disconnects a mailbox. */
+  async accountRemoved(id: string) {
+    state.accounts = state.accounts.filter((a) => a.id !== id);
+    if (state.accounts.length === 0) {
+      // Last mailbox gone — a clean reload lands on onboarding.
+      window.location.reload();
+      return;
+    }
+    if (state.activeAccountId === id) {
+      state.activeAccountId = null;
+      await switchAccount(state.accounts[0].id);
+    }
   },
 
   selectFolder,
   loadMoreThreads,
   refreshThreads,
   setGroupThreads,
-  syncNow: () => api.syncNow(state.account?.id),
+  switchAccount,
+  openLocation,
+  syncNow: () => api.syncNow(activeAccount()?.id),
 
   /** Optimistically drop a thread from the visible list (archive/delete). */
   removeThreadFromList(threadId: number) {

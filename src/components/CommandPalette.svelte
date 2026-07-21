@@ -143,12 +143,9 @@
   async function openCitation(citation: Citation) {
     palette.hide();
     exitChat();
-    if (citation.folderId !== mail.selectedFolderId) {
-      await mail.selectFolder(citation.folderId);
-    }
-    if (citation.threadId !== null) {
-      mail.selectedThreadId = citation.threadId;
-    }
+    // AI answers cite mail from any connected account — openLocation switches
+    // the active one first when needed.
+    await mail.openLocation(citation.folderId, citation.threadId, citation.messageId);
   }
 
   interface Command {
@@ -165,7 +162,7 @@
         label: t("palette.compose"),
         hint: "Ctrl N",
         run: async () => {
-          const draft = await api.createDraft();
+          const draft = await api.createDraft(mail.account?.id);
           await api.openComposeWindow(draft.id);
         },
       },
@@ -243,19 +240,15 @@
       return;
     }
     searchTimer = setTimeout(async () => {
-      const result = await api.searchMessages(q, 12).catch(() => []);
+      // Search the mailbox the user is looking at — the active account.
+      const result = await api.searchMessages(q, 12, mail.account?.id).catch(() => []);
       if (input.trim() === q) hits = result;
     }, 140);
   }
 
   async function openHit(hit: SearchHit) {
     palette.hide();
-    if (hit.folderId !== mail.selectedFolderId) {
-      await mail.selectFolder(hit.folderId);
-    }
-    if (hit.threadId !== null) {
-      mail.selectedThreadId = hit.threadId;
-    }
+    await mail.openLocation(hit.folderId, hit.threadId, hit.messageId);
   }
 
   async function activate(index: number) {
