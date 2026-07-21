@@ -61,17 +61,41 @@ fn filter_style(value: &str) -> Option<String> {
             continue;
         };
         let prop = prop.trim().to_lowercase();
-        let val = val.trim();
-        let val_lower = val.to_lowercase();
         if !STYLE_ALLOWED.contains(&prop.as_str()) {
             continue;
         }
+        // Drop an `!important` flag but KEEP the declaration. Bulk-mail
+        // preheaders hide themselves with `display:none !important`; discarding
+        // the whole declaration (as we used to) un-hid them, turning a screenful
+        // of zero-width spacer glyphs into a giant blank scroll area. Inline
+        // `!important` only maxes out specificity — which inline styles already
+        // do — so it can't reach or override our iframe's protective stylesheet.
+        let val = match val.find('!') {
+            Some(i) => val[..i].trim(),
+            None => val.trim(),
+        };
+        if val.is_empty() {
+            continue;
+        }
+        let val_lower = val.to_lowercase();
         // No external fetches or layout escapes through CSS.
         if val_lower.contains("url(")
             || val_lower.contains("expression(")
             || val_lower.contains("fixed")
             || val_lower.contains("absolute")
-            || val_lower.contains("important")
+        {
+            continue;
+        }
+        // A viewport- or percentage-relative height lets email content size
+        // itself to the iframe viewport, which our auto-height measurement then
+        // grows — a feedback loop that ratchets the frame up to its cap. Email
+        // bodies never legitimately need one (images use height:auto).
+        if prop == "height"
+            && (val_lower.contains('%')
+                || val_lower.contains("vh")
+                || val_lower.contains("vw")
+                || val_lower.contains("vmin")
+                || val_lower.contains("vmax"))
         {
             continue;
         }
@@ -307,6 +331,41 @@ mod tests {
             Some("color:red".to_string())
         );
         assert_eq!(filter_style("position: fixed"), None);
+    }
+
+    #[test]
+    fn style_filter_keeps_declaration_minus_important() {
+        // `!important` is stripped, not the whole declaration — otherwise
+        // `display:none !important` preheaders un-hide into a giant blank area.
+        assert_eq!(
+            filter_style("display: none !important"),
+            Some("display:none".to_string())
+        );
+        assert_eq!(
+            filter_style("color: red !important"),
+            Some("color:red".to_string())
+        );
+    }
+
+    #[test]
+    fn style_filter_rejects_viewport_relative_height() {
+        // Viewport/percentage heights feed the iframe auto-height loop.
+        assert_eq!(filter_style("height: 100vh"), None);
+        assert_eq!(filter_style("height: 100%"), None);
+        assert_eq!(
+            filter_style("height: 40px"),
+            Some("height:40px".to_string())
+        );
+    }
+
+    #[test]
+    fn preheader_stays_hidden() {
+        let s = sanitize_email_html(
+            "<div style=\"display: none !important; max-width: 0px; overflow: hidden;\">spacer</div>",
+            1,
+            true,
+        );
+        assert!(s.html.contains("display:none"));
     }
 
     #[test]
