@@ -113,11 +113,16 @@ pub async fn list_models(base_url: &str) -> Result<Vec<Model>> {
         .collect::<Vec<_>>()
         .await;
 
+    let total = tags.models.len();
+    let mut reached = 0usize;
     let mut models = Vec::new();
     for (tag, resp) in tags.models.into_iter().zip(shows) {
-        let resp =
-            resp.map_err(|_| SkimError::other("ai_unreachable", "Ollama is not responding"))?;
-        // A model that errors on /api/show just doesn't get listed.
+        // A model that errors on /api/show (network or parse) just doesn't
+        // get listed; one flaky request shouldn't drop the whole picker.
+        let Ok(resp) = resp else {
+            continue;
+        };
+        reached += 1;
         let Ok(show) = resp.json::<ShowResponse>().await else {
             continue;
         };
@@ -127,6 +132,15 @@ pub async fn list_models(base_url: &str) -> Result<Vec<Model>> {
                 name: tag.name,
             });
         }
+    }
+    // Skipping is for individual flakes. If the server listed models but then
+    // answered none of the /api/show requests, it vanished mid-listing: that
+    // is "unreachable", not "no tool-capable models installed".
+    if total > 0 && reached == 0 {
+        return Err(SkimError::other(
+            "ai_unreachable",
+            "Ollama is not responding",
+        ));
     }
     Ok(models)
 }
