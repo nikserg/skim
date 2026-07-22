@@ -335,6 +335,9 @@ mod pdf {
         let mut encoding: Option<&Encoding> = None;
         let mut font_size: f32 = 12.0;
         let mut tm_pos: Option<(f32, f32)> = None;
+        // Chars shown since the line matrix last moved — a cheap stand-in for
+        // the width of the text drawn on the current line segment.
+        let mut seg_chars: usize = 0;
         for op in operations {
             match op.operator.as_ref() {
                 "Tf" => {
@@ -347,28 +350,45 @@ mod pdf {
                         font_size = size.abs().max(1.0);
                     }
                 }
-                "Tj" | "TJ" => show_text(out, encoding, &op.operands),
+                "Tj" | "TJ" => {
+                    let before = out.len();
+                    show_text(out, encoding, &op.operands);
+                    seg_chars += out[before..].chars().count();
+                }
                 // `'` and `"` show a string on the *next* line (PDF 32000-1 §9.4.3).
                 "'" => {
                     newline(out);
+                    let before = out.len();
                     show_text(out, encoding, &op.operands);
+                    seg_chars = out[before..].chars().count();
                 }
                 "\"" => {
                     newline(out);
+                    let before = out.len();
                     if let Some(s) = op.operands.get(2) {
                         show_text(out, encoding, std::slice::from_ref(s));
                     }
+                    seg_chars = out[before..].chars().count();
                 }
-                // Vertical line moves start a new line. Purely horizontal `Td`
-                // moves are usually kerning splits inside a word (Chromium
-                // prints "Дог" Td "овор"), so they add nothing.
+                // Vertical line moves start a new line. A horizontal `Td` is a
+                // kerning split inside a word (Chromium prints "Дог" Td
+                // "овор") — unless it jumps clearly past anything the shown
+                // chars could have covered (1 em each is a safe upper bound),
+                // which makes it a column gap.
                 "Td" | "TD" => {
+                    let tx = op.operands.first().and_then(|o| o.as_float().ok());
                     let ty = op.operands.get(1).and_then(|o| o.as_float().ok());
                     if ty.is_some_and(|ty| ty != 0.0) {
                         newline(out);
+                    } else if tx.is_some_and(|tx| tx > (seg_chars as f32 + 0.5) * font_size) {
+                        space(out);
                     }
+                    seg_chars = 0;
                 }
-                "T*" => newline(out),
+                "T*" => {
+                    newline(out);
+                    seg_chars = 0;
+                }
                 // A text matrix reset on the same baseline is a new text
                 // region when it jumps further than one em; smaller nudges are
                 // per-glyph positioning and must not split words.
@@ -383,9 +403,16 @@ mod pdf {
                         }
                     }
                     tm_pos = x.zip(y);
+                    seg_chars = 0;
                 }
-                "BT" => tm_pos = None,
-                "ET" => newline(out),
+                "BT" => {
+                    tm_pos = None;
+                    seg_chars = 0;
+                }
+                "ET" => {
+                    newline(out);
+                    seg_chars = 0;
+                }
                 // Text may live inside a Form XObject rather than the page's
                 // own stream (letterheads, some invoice generators).
                 "Do" if depth < MAX_FORM_DEPTH => {
@@ -585,7 +612,10 @@ mod tests {
                 // Horizontal kerning split must not become a space…
                 Operation::new("Td", vec![30.into(), 0.into()]),
                 Operation::new("Tj", vec![Object::string_literal("!")]),
-                // …but a vertical move is a line break.
+                // …a horizontal jump past the drawn text is a column gap…
+                Operation::new("Td", vec![200.into(), 0.into()]),
+                Operation::new("Tj", vec![Object::string_literal("Col2")]),
+                // …and a vertical move is a line break.
                 Operation::new("T*", vec![]),
                 Operation::new("Tj", vec![Object::string_literal("Second line")]),
                 Operation::new("ET", vec![]),
@@ -615,7 +645,7 @@ mod tests {
 
         assert_eq!(
             pdf::extract_text(&doc, 100).as_deref(),
-            Some("Hello Skim!\nSecond line")
+            Some("Hello Skim! Col2\nSecond line")
         );
         // Truncation respects the char budget.
         assert_eq!(
