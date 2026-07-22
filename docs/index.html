@@ -42,7 +42,6 @@
     "description": "A fast, free, open-source email client for Windows with a built-in AI copilot. Native Rust core, ~5 MB installer, offline-first, instant full-text search.",
     "url": "https://skim-tech.com/",
     "downloadUrl": "https://github.com/nikserg/skim/releases/latest",
-    "softwareVersion": "0.1.6",
     "screenshot": [
       "https://skim-tech.com/skim-light.jpg",
       "https://skim-tech.com/skim-dark.jpg"
@@ -70,7 +69,7 @@
       {
         "@type": "Question",
         "name": "Does the AI read my email?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Only when you ask it to. AI features stay off until you paste your own Anthropic or OpenRouter key, and every request goes directly from your machine to the provider — no middleman servers. The key is stored in Windows Credential Manager." }
+        "acceptedAnswer": { "@type": "Answer", "text": "Only when you ask it to. AI features stay off until you paste your own key — Anthropic, OpenRouter, or any OpenAI-compatible endpoint (a local model via Ollama, LM Studio or vLLM included) — and every request goes directly from your machine to the provider, no middleman servers. The key is stored in Windows Credential Manager." }
       },
       {
         "@type": "Question",
@@ -259,7 +258,7 @@
       <img class="decal decal-ai" src="stickers/star_circle.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:1170px;right:64px;transform:rotate(4deg);">
       <div class="ai-eyebrow" data-i18n="ai_eyebrow">✦ Your key, your bill</div>
       <div class="ai-h2" data-i18n-html="ai_h2">AI that knows it's <span class="tip" data-tip="thu">Thursday</span> and writes like you</div>
-      <p class="zine-lead" data-i18n="ai_lead">There is no “Skim Pro” subscription, and there never will be. Paste your own Anthropic (Claude) or OpenRouter key (Claude, GPT, Gemini, Grok and hundreds more models) and the violet ✦ buttons come alive. Requests go straight from your machine to the provider — no proxy of ours, no markup. You pay the provider at cost; the key lives in Windows Credential Manager. No key? Skim just works as a fast email client (not amazing, but why not?).</p>
+      <p class="zine-lead" data-i18n="ai_lead">There is no “Skim Pro” subscription, and there never will be. Paste your own Anthropic (Claude) or OpenRouter key (Claude, GPT, Gemini, Grok and hundreds more models) — or point Skim at any OpenAI-compatible endpoint, a local model via Ollama, LM Studio or vLLM included — and the violet ✦ buttons come alive. Requests go straight from your machine to the provider — no proxy of ours, no markup. You pay the provider at cost; the key lives in Windows Credential Manager. No key? Skim just works as a fast email client (not amazing, but why not?).</p>
 
       <ul class="ai-list">
         <li><span class="num">[01]</span><p data-i18n-html="ai_1"><b>Drafts in your voice</b> — tell it what to say and get a finished, first-person email. Skim can analyze up to a hundred of your sent messages and write the way you write: the same greetings, sentence length, punctuation. It replies in the sender's language, even one you don't speak.</p></li>
@@ -323,7 +322,7 @@
         </details>
         <details>
           <summary data-i18n="faq_3_q">Does the AI read my email?</summary>
-          <p data-i18n="faq_3_a">Only when you ask it to. AI features stay off until you paste your own Anthropic or OpenRouter key, and every request goes directly from your machine to the provider — no middleman servers. The key is stored in Windows Credential Manager.</p>
+          <p data-i18n="faq_3_a">Only when you ask it to. AI features stay off until you paste your own key — Anthropic, OpenRouter, or any OpenAI-compatible endpoint (a local model via Ollama, LM Studio or vLLM included) — and every request goes directly from your machine to the provider, no middleman servers. The key is stored in Windows Credential Manager.</p>
         </details>
         <details>
           <summary data-i18n="faq_4_q">Does Skim run on Windows 10 and Windows 11?</summary>
