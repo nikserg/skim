@@ -108,6 +108,7 @@
   "ai.prompt_summarize": "Résume cet e-mail.",
   "ai.prompt_translate": "Traduis cet e-mail en français.",
   "ai.thinking": "Réflexion…",
+  "ai.loading_model": "Le modèle se charge…",
   "ai.expand": "Agrandir",
   "ai.collapse": "Réduire",
   "ai.sources": "Sources",

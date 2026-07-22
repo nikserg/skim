@@ -108,6 +108,7 @@
   "ai.prompt_summarize": "Resume este correo.",
   "ai.prompt_translate": "Traduce este correo al español.",
   "ai.thinking": "Pensando…",
+  "ai.loading_model": "Cargando el modelo…",
   "ai.expand": "Ampliar",
   "ai.collapse": "Reducir",
   "ai.sources": "Fuentes",

@@ -105,6 +105,7 @@
   "ai.prompt_summarize": "このメールを要約して。",
   "ai.prompt_translate": "このメールを日本語に翻訳して。",
   "ai.thinking": "考え中…",
+  "ai.loading_model": "モデルを読み込み中…",
   "ai.expand": "拡大",
   "ai.collapse": "縮小",
   "ai.sources": "出典",

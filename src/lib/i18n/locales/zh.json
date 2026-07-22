@@ -105,6 +105,7 @@
   "ai.prompt_summarize": "总结这封邮件。",
   "ai.prompt_translate": "把这封邮件翻译成中文。",
   "ai.thinking": "思考中…",
+  "ai.loading_model": "正在加载模型…",
   "ai.expand": "展开",
   "ai.collapse": "收起",
   "ai.sources": "来源",

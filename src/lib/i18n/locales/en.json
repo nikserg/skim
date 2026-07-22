@@ -110,6 +110,7 @@
   "ai.prompt_summarize": "Summarize this email.",
   "ai.prompt_translate": "Translate this email into English.",
   "ai.thinking": "Thinking…",
+  "ai.loading_model": "The model is loading…",
   "ai.expand": "Expand",
   "ai.collapse": "Collapse",
   "ai.step.search": "Searched: {arg}",

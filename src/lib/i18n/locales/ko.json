@@ -105,6 +105,7 @@
   "ai.prompt_summarize": "이 이메일을 요약해 줘.",
   "ai.prompt_translate": "이 이메일을 한국어로 번역해 줘.",
   "ai.thinking": "생각 중…",
+  "ai.loading_model": "모델을 불러오는 중…",
   "ai.expand": "확대",
   "ai.collapse": "축소",
   "ai.sources": "출처",

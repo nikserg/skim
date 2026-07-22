@@ -108,6 +108,7 @@
   "ai.prompt_summarize": "Fasse diese E-Mail zusammen.",
   "ai.prompt_translate": "Übersetze diese E-Mail ins Deutsche.",
   "ai.thinking": "Denke nach…",
+  "ai.loading_model": "Das Modell wird geladen…",
   "ai.expand": "Vergrößern",
   "ai.collapse": "Verkleinern",
   "ai.sources": "Quellen",

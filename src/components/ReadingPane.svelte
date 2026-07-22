@@ -40,6 +40,20 @@
   let askInput: HTMLInputElement | undefined = $state();
   let askThreadEl: HTMLDivElement | undefined = $state();
   let cancelAi: (() => void) | null = null;
+  // A custom endpoint's cold start can stall the first token for many seconds
+  // — after 5s of silence, say what is actually happening.
+  let slowStart = $state(false);
+  let slowTimer: ReturnType<typeof setTimeout> | undefined;
+  function armSlowStart() {
+    clearTimeout(slowTimer);
+    slowStart = false;
+    if (ai.provider !== "custom") return;
+    slowTimer = setTimeout(() => (slowStart = true), 5000);
+  }
+  function clearSlowStart() {
+    clearTimeout(slowTimer);
+    slowStart = false;
+  }
 
   // Close the dock. The completed turns stay in askTurns (and the cache), so
   // reopening — for this email or after hopping to another and back — restores
@@ -50,16 +64,20 @@
     askOpen = false;
     askExpanded = false;
     askQuestion = "";
+    clearSlowStart();
   }
 
   function startAi(args: Record<string, unknown>) {
     cancelAi?.();
     aiPanel = { status: "streaming", text: "", steps: [] };
+    armSlowStart();
     cancelAi = aiStream("ai_ask", args, {
       delta: (text) => {
+        clearSlowStart();
         if (aiPanel) aiPanel = { ...aiPanel, text: aiPanel.text + text };
       },
       toolCall: (id, kind, arg) => {
+        clearSlowStart();
         if (aiPanel)
           aiPanel = {
             ...aiPanel,
@@ -74,12 +92,14 @@
           };
       },
       done: () => {
+        clearSlowStart();
         if (!aiPanel) return;
         askTurns.push({ role: "assistant", content: aiPanel.text });
         aiPanel = null;
         queueMicrotask(() => askInput?.focus());
       },
       error: (code, message) => {
+        clearSlowStart();
         // Put the failed question back into the input so it can be retried.
         if (askTurns[askTurns.length - 1]?.role === "user") {
           askQuestion = askTurns.pop()!.content;
@@ -117,6 +137,7 @@
     cancelAi?.();
     aiPanel = null;
     askQuestion = "";
+    clearSlowStart();
     askKey = id;
     askTurns = id === null ? [] : aiChat.get(id);
   });
@@ -603,7 +624,7 @@
                   </div>
                 {/if}
                 {#if aiPanel.text === "" && aiPanel.status === "streaming"}
-                  <span class="thinking">{t("ai.thinking")}</span>
+                  <span class="thinking">{slowStart ? t("ai.loading_model") : t("ai.thinking")}</span>
                 {:else}
                   <div class="ai-text md-body" use:aiLinks>{@html mdLite(aiPanel.text)}</div>
                 {/if}

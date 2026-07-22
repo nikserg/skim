@@ -111,6 +111,7 @@
   "ai.prompt_summarize": "Ukratko sažmi ovu poruku.",
   "ai.prompt_translate": "Prevedi ovu poruku na srpski.",
   "ai.thinking": "Razmišljam…",
+  "ai.loading_model": "Učitavanje modela…",
   "ai.expand": "Proširi",
   "ai.collapse": "Skupi",
   "ai.sources": "Izvori",

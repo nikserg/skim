@@ -114,6 +114,7 @@
   "ai.prompt_summarize": "Streść tę wiadomość.",
   "ai.prompt_translate": "Przetłumacz tę wiadomość na polski.",
   "ai.thinking": "Myślę…",
+  "ai.loading_model": "Ładowanie modelu…",
   "ai.expand": "Powiększ",
   "ai.collapse": "Zmniejsz",
   "ai.sources": "Źródła",
