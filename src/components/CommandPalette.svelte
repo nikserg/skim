@@ -294,6 +294,13 @@
       } else {
         palette.hide();
       }
+      return;
+    }
+    // While a chat is open, repurpose Ctrl/Cmd+K to toggle the expanded view
+    // instead of closing the palette (App keeps it open via palette.show()).
+    if (chat && (e.ctrlKey || e.metaKey) && e.code === "KeyK") {
+      e.preventDefault();
+      ui.togglePaletteExpanded();
     }
   }
 
@@ -311,8 +318,26 @@
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="overlay" onclick={() => palette.hide()}>
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-    <div class="panel" onclick={(e) => e.stopPropagation()}>
+    <div class="panel" class:expanded={chat && ui.paletteExpanded} onclick={(e) => e.stopPropagation()}>
       {#if chat}
+        <button
+          class="expand-toggle"
+          onclick={() => ui.togglePaletteExpanded()}
+          aria-label={ui.paletteExpanded ? t("ai.collapse") : t("ai.expand")}
+          title={ui.paletteExpanded ? t("ai.collapse") : t("ai.expand")}
+        >
+          {#if ui.paletteExpanded}
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3">
+              <path d="M6.5 5.5L10 2M10 2H7.5M10 2V4.5" />
+              <path d="M5.5 6.5L2 10M2 10H4.5M2 10V7.5" />
+            </svg>
+          {:else}
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3">
+              <path d="M7 5L10.5 1.5M10.5 1.5H8M10.5 1.5V4" />
+              <path d="M5 7L1.5 10.5M1.5 10.5H4M1.5 10.5V8" />
+            </svg>
+          {/if}
+        </button>
         <div class="chat" bind:this={chatThreadEl}>
           {#each chat.turns as turn, ti (ti)}
             {#if turn.role === "user"}
@@ -484,6 +509,7 @@
     z-index: 100;
   }
   .panel {
+    position: relative;
     width: 620px;
     max-width: calc(100vw - 48px);
     max-height: 60vh;
@@ -495,6 +521,48 @@
     flex-direction: column;
     overflow: hidden;
     height: fit-content;
+  }
+  /* Expand/collapse is an instant state swap (like the sidebar rail), not an
+     animated resize — cheaper and jank-free for a full-height panel. */
+  .panel.expanded {
+    width: min(1100px, calc(100vw - 64px));
+    max-height: calc(100vh - 12vh - 48px);
+    height: calc(100vh - 12vh - 48px);
+  }
+  /* Keep answer text in a readable column instead of stretching it edge-to-edge. */
+  .panel.expanded .chat,
+  .panel.expanded .chat-followup {
+    padding-inline: max(20px, calc((100% - 760px) / 2));
+  }
+
+  .expand-toggle {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-s);
+    background: transparent;
+    color: var(--text-faint);
+    cursor: pointer;
+    transition:
+      background 0.12s ease,
+      color 0.12s ease;
+  }
+  .expand-toggle:hover {
+    background: var(--hover);
+    color: var(--accent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .expand-toggle {
+      transition: none;
+    }
   }
 
   .input-row {
@@ -602,7 +670,9 @@
   .chat {
     flex: 1;
     min-height: 0;
-    padding: 18px;
+    /* Extra top padding reserves room for the floating expand toggle so it
+       never overlaps the first (right-aligned) message bubble. */
+    padding: 40px 18px 18px;
     display: flex;
     flex-direction: column;
     gap: 14px;

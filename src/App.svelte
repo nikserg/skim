@@ -107,6 +107,7 @@
           const normalized = ui.hydrate(settings.theme);
           if (settings.theme !== normalized) void api.setSetting("theme", normalized).catch(() => {});
           if (settings.sidebar_collapsed) ui.setSidebarCollapsed(settings.sidebar_collapsed === "on");
+          if (settings.palette_expanded) ui.setPaletteExpanded(settings.palette_expanded === "on");
         } catch {
           // settings are best-effort at boot
         }
@@ -197,9 +198,12 @@
     // Letter shortcuts match the physical key (e.code), not the produced
     // character (e.key): in a Cyrillic (or any non-Latin) layout the K key
     // emits "л", not "k", so an e.key check would only work in a US layout.
+    // Ctrl/Cmd+K opens the palette (idempotent — no-op when already open). When
+    // it's open and a chat is active, the palette's own window handler repurposes
+    // this chord to toggle the expanded view instead of closing.
     if ((e.ctrlKey || e.metaKey) && e.code === "KeyK") {
       e.preventDefault();
-      palette.toggle();
+      palette.show();
       return;
     }
     if ((e.ctrlKey || e.metaKey) && e.code === "KeyN") {

@@ -22,6 +22,8 @@ const state = $state({
   shortcutsOpen: false,
   /** Left menu collapsed to an icon-only rail. */
   sidebarCollapsed: false,
+  /** Command-palette AI chat expanded to near-fullscreen. */
+  paletteExpanded: false,
 });
 
 /** Parse a persisted theme string into the two axes, migrating legacy values.
@@ -133,6 +135,18 @@ export const ui = {
   toggleSidebar() {
     state.sidebarCollapsed = !state.sidebarCollapsed;
     void api.setSetting("sidebar_collapsed", state.sidebarCollapsed ? "on" : "off").catch(() => {});
+  },
+  get paletteExpanded() {
+    return state.paletteExpanded;
+  },
+  /** Apply the expanded state without persisting (boot path). */
+  setPaletteExpanded(expanded: boolean) {
+    state.paletteExpanded = expanded;
+  },
+  /** Toggle the palette's expanded chat view and persist the choice. */
+  togglePaletteExpanded() {
+    state.paletteExpanded = !state.paletteExpanded;
+    void api.setSetting("palette_expanded", state.paletteExpanded ? "on" : "off").catch(() => {});
   },
   get readingAi() {
     return readingAi;
