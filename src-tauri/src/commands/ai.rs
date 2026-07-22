@@ -1,6 +1,7 @@
 use crate::ai::retrieval::Citation;
 use crate::ai::{
-    agent, anthropic, attachments, openai_compat, openrouter, prompts, ChatMessage, MediaBlock,
+    agent, anthropic, attachments, ollama, openai_compat, openrouter, prompts, ChatMessage,
+    MediaBlock,
 };
 use crate::db::{queries, Db};
 use crate::error::{Result, SkimError};
@@ -182,6 +183,14 @@ pub async fn ai_clear_key(state: State<'_, AppState>, provider: String) -> Resul
 #[tauri::command]
 pub async fn openrouter_models() -> Result<Vec<openrouter::Model>> {
     openrouter::list_models().await
+}
+
+/// The models installed on an Ollama server reachable at the custom
+/// endpoint's base URL, narrowed to tool-capable ones. Any error means
+/// "not an Ollama server" to the caller.
+#[tauri::command]
+pub async fn ollama_models(url: String) -> Result<Vec<ollama::Model>> {
+    ollama::list_models(&url).await
 }
 
 // ---- shared plumbing -----------------------------------------------------

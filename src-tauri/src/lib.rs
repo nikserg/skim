@@ -279,6 +279,7 @@ pub fn run() {
             commands::ai::ai_key_status,
             commands::ai::ai_clear_key,
             commands::ai::openrouter_models,
+            commands::ai::ollama_models,
             commands::ai::ai_cancel,
             commands::ai::ai_compose,
             commands::ai::ai_ask,
