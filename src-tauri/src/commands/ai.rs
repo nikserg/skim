@@ -168,11 +168,15 @@ pub async fn ai_clear_key(state: State<'_, AppState>, provider: String) -> Resul
     let provider = Provider::parse(&provider);
     secrets::delete(provider.secret())?;
     // "Configured" for the custom endpoint means "base URL set" — clear it so
-    // the provider reads as removed, not just keyless.
+    // the provider reads as removed, not just keyless. The model goes with it:
+    // a removed endpoint should leave nothing behind to resurface later.
     if provider == Provider::Custom {
         state
             .db
-            .call(|conn| queries::set_setting(conn, "custom_base_url", ""))
+            .call(|conn| {
+                queries::set_setting(conn, "custom_base_url", "")?;
+                queries::set_setting(conn, "custom_model", "")
+            })
             .await?;
     }
     Ok(())
