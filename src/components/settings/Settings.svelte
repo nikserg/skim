@@ -83,6 +83,10 @@
   let orModels = $state<OrModel[]>([]);
   let orCustomOpen = $state(false);
   let orHighlight = $state(0);
+  // The user-supplied OpenAI-compatible endpoint.
+  let customBaseUrl = $state("");
+  let customKey = $state("");
+  let customModel = $state("");
   let imagesPolicy = $state("block");
   let notifications = $state("on");
   let groupThreads = $state("on");
@@ -109,10 +113,16 @@
   $effect(() => {
     void api.getSettings().then((s) => {
       if (s.ai_model) model = s.ai_model;
-      if (s.ai_provider === "openrouter" || s.ai_provider === "anthropic") {
+      if (
+        s.ai_provider === "openrouter" ||
+        s.ai_provider === "anthropic" ||
+        s.ai_provider === "custom"
+      ) {
         providerTab = s.ai_provider;
       }
       if (s.openrouter_model) orModel = s.openrouter_model;
+      if (s.custom_base_url) customBaseUrl = s.custom_base_url;
+      if (s.custom_model) customModel = s.custom_model;
       if (s.images_policy) imagesPolicy = s.images_policy;
       if (s.notifications) notifications = s.notifications;
       if (s.group_threads) groupThreads = s.group_threads;
@@ -214,14 +224,26 @@
   ];
   const orIsPreset = $derived(OR_MODELS.some((m) => m.id === orModel));
 
-  const tabHasKey = $derived(providerTab === "openrouter" ? ai.openrouter : ai.anthropic);
+  function providerConfigured(p: AiProvider): boolean {
+    return p === "custom" ? ai.custom : p === "openrouter" ? ai.openrouter : ai.anthropic;
+  }
+
+  const tabHasKey = $derived(providerConfigured(providerTab));
+
+  // The endpoint host, for the "connected" row — orientation, not config.
+  const customHost = $derived.by(() => {
+    try {
+      return new URL(customBaseUrl).host;
+    } catch {
+      return "";
+    }
+  });
 
   async function chooseProviderTab(p: AiProvider) {
     providerTab = p;
     aiError = "";
     // Switching to an already-configured provider activates it.
-    const hasKey = p === "openrouter" ? ai.openrouter : ai.anthropic;
-    if (hasKey && ai.provider !== p) {
+    if (providerConfigured(p) && ai.provider !== p) {
       await api.setSetting("ai_provider", p);
       await ai.refresh();
     }
@@ -356,7 +378,27 @@
 
   async function removeAiKey() {
     await aiApi.clearKey(providerTab);
+    if (providerTab === "custom") customBaseUrl = "";
     await ai.refresh();
+  }
+
+  async function saveCustom() {
+    aiBusy = true;
+    aiError = "";
+    try {
+      await aiApi.setCustom(customBaseUrl, customKey, customModel);
+      customKey = "";
+      await ai.refresh();
+    } catch (e) {
+      aiError = errorMessage(e);
+    } finally {
+      aiBusy = false;
+    }
+  }
+
+  function saveCustomModel() {
+    const v = customModel.trim();
+    if (v) void api.setSetting("custom_model", v);
   }
 
   async function removeAccount(id: string) {
@@ -553,15 +595,24 @@
           >
             OpenRouter
           </button>
+          <button
+            class="tab"
+            class:active={providerTab === "custom"}
+            onclick={() => chooseProviderTab("custom")}
+          >
+            {t("settings.provider_custom")}
+          </button>
         </div>
 
         {#if tabHasKey}
           <div class="row">
             <span class="ok">●</span>
             <span class="grow">
-              {providerTab === "openrouter"
-                ? t("settings.ai_key_present_or")
-                : t("settings.ai_key_present")}
+              {providerTab === "custom"
+                ? t("settings.ai_key_present_custom") + (customHost ? ` · ${customHost}` : "")
+                : providerTab === "openrouter"
+                  ? t("settings.ai_key_present_or")
+                  : t("settings.ai_key_present")}
             </span>
             <button class="ghost" onclick={removeAiKey}>{t("settings.ai_key_remove")}</button>
           </div>
@@ -573,6 +624,20 @@
                   {t(m.labelKey)}
                 </button>
               {/each}
+            </div>
+          {:else if providerTab === "custom"}
+            <div class="models">
+              <label class="writer-field">
+                <span class="microlabel">{t("settings.custom_model")}</span>
+                <input
+                  bind:value={customModel}
+                  onblur={saveCustomModel}
+                  onkeydown={(e) => e.key === "Enter" && saveCustomModel()}
+                  placeholder={t("settings.custom_model_ph")}
+                  spellcheck="false"
+                  autocomplete="off"
+                />
+              </label>
             </div>
           {:else}
             <div class="models">
@@ -708,8 +773,55 @@
           </div>
 
           <div class="dim note">
-            {providerTab === "openrouter" ? t("settings.ai_note_or") : t("settings.ai_note")}
+            {providerTab === "custom"
+              ? t("settings.ai_note_custom")
+              : providerTab === "openrouter"
+                ? t("settings.ai_note_or")
+                : t("settings.ai_note")}
           </div>
+        {:else if providerTab === "custom"}
+          <div class="custom-form">
+            <label class="writer-field">
+              <span class="microlabel">{t("settings.custom_base_url")}</span>
+              <input
+                bind:value={customBaseUrl}
+                placeholder={t("settings.custom_base_url_ph")}
+                spellcheck="false"
+                autocomplete="off"
+              />
+            </label>
+            <label class="writer-field">
+              <span class="microlabel">{t("settings.custom_key")}</span>
+              <input
+                bind:value={customKey}
+                placeholder="sk-…"
+                spellcheck="false"
+                autocomplete="off"
+              />
+            </label>
+            <label class="writer-field">
+              <span class="microlabel">{t("settings.custom_model")}</span>
+              <input
+                bind:value={customModel}
+                placeholder={t("settings.custom_model_ph")}
+                spellcheck="false"
+                autocomplete="off"
+              />
+            </label>
+            <div class="custom-save">
+              <button
+                class="ghost"
+                disabled={aiBusy || !customBaseUrl.trim() || !customModel.trim()}
+                onclick={saveCustom}
+              >
+                {t("onb.save")}
+              </button>
+            </div>
+          </div>
+          <div class="dim key-hint">{t("settings.custom_hint")}</div>
+          {#if aiError}
+            <div class="warn">{aiError}</div>
+          {/if}
         {:else}
           <div class="row">
             <input
@@ -1274,6 +1386,19 @@
   }
   .hint {
     font-size: 11.5px;
+  }
+  .custom-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .custom-form input {
+    font-family: var(--font-mono);
+  }
+  .custom-save {
+    display: flex;
+    justify-content: flex-end;
   }
   .key-hint {
     font-size: 12px;

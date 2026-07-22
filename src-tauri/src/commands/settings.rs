@@ -19,6 +19,8 @@ const ALLOWED: &[&str] = &[
     "ai_model",
     "ai_provider",
     "openrouter_model",
+    "custom_base_url",
+    "custom_model",
     "ai_user_name",
     "ai_style",
     "ai_style_profile",

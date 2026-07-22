@@ -1,5 +1,7 @@
 use crate::ai::retrieval::Citation;
-use crate::ai::{agent, anthropic, attachments, openrouter, prompts, ChatMessage, MediaBlock};
+use crate::ai::{
+    agent, anthropic, attachments, openai_compat, openrouter, prompts, ChatMessage, MediaBlock,
+};
 use crate::db::{queries, Db};
 use crate::error::{Result, SkimError};
 use crate::secrets;
@@ -45,14 +47,24 @@ pub enum AiEvent {
 enum Provider {
     Anthropic,
     OpenRouter,
+    /// A user-supplied OpenAI-compatible endpoint ("custom" in settings).
+    Custom,
 }
 
 impl Provider {
     fn parse(s: &str) -> Self {
-        if s == "openrouter" {
-            Provider::OpenRouter
-        } else {
-            Provider::Anthropic
+        match s {
+            "openrouter" => Provider::OpenRouter,
+            "custom" => Provider::Custom,
+            _ => Provider::Anthropic,
+        }
+    }
+
+    fn id(self) -> &'static str {
+        match self {
+            Provider::Anthropic => "anthropic",
+            Provider::OpenRouter => "openrouter",
+            Provider::Custom => "custom",
         }
     }
 
@@ -60,6 +72,7 @@ impl Provider {
         match self {
             Provider::Anthropic => secrets::ANTHROPIC_KEY,
             Provider::OpenRouter => secrets::OPENROUTER_KEY,
+            Provider::Custom => secrets::CUSTOM_KEY,
         }
     }
 }
@@ -73,16 +86,49 @@ pub async fn ai_set_key(state: State<'_, AppState>, provider: String, key: Strin
     match provider {
         Provider::Anthropic => anthropic::validate_key(&key).await?,
         Provider::OpenRouter => openrouter::validate_key(&key).await?,
+        // The custom endpoint is configured via `ai_set_custom` — there is no
+        // universal validation endpoint to call anyway.
+        Provider::Custom => {}
     }
     secrets::set(provider.secret(), &key)?;
     // Configuring a provider's key makes it the active one.
-    let name = match provider {
-        Provider::Anthropic => "anthropic",
-        Provider::OpenRouter => "openrouter",
-    };
+    let name = provider.id();
     state
         .db
         .call(move |conn| queries::set_setting(conn, "ai_provider", name))
+        .await
+}
+
+/// Configure the user-supplied OpenAI-compatible endpoint and make it the
+/// active provider. The key is optional (local servers need none) — an empty
+/// key clears any stored one. No connectivity check: there is no universal
+/// probe endpoint, so errors surface on the first real request instead.
+#[tauri::command]
+pub async fn ai_set_custom(
+    state: State<'_, AppState>,
+    base_url: String,
+    key: String,
+    model: String,
+) -> Result<()> {
+    let base_url = openai_compat::normalize_base_url(&base_url)
+        .ok_or_else(|| SkimError::other("ai", "enter a valid http(s) URL"))?;
+    let model = model.trim().to_string();
+    if model.is_empty() {
+        return Err(SkimError::other("ai", "enter a model id"));
+    }
+    let key = key.trim();
+    if key.is_empty() {
+        secrets::delete(secrets::CUSTOM_KEY)?;
+    } else {
+        secrets::set(secrets::CUSTOM_KEY, key)?;
+    }
+    state
+        .db
+        .call(move |conn| {
+            queries::set_setting(conn, "custom_base_url", &base_url)?;
+            queries::set_setting(conn, "custom_model", &model)?;
+            queries::set_setting(conn, "ai_provider", "custom")
+        })
         .await
 }
 
@@ -92,25 +138,43 @@ pub struct KeyStatus {
     pub provider: String,
     pub anthropic: bool,
     pub openrouter: bool,
+    /// The custom endpoint counts as configured once a base URL is set — its
+    /// key is optional.
+    pub custom: bool,
 }
 
 #[tauri::command]
 pub async fn ai_key_status(state: State<'_, AppState>) -> Result<KeyStatus> {
-    let provider = state
+    let (provider, custom_base_url) = state
         .db
-        .call(|conn| queries::get_setting(conn, "ai_provider"))
-        .await?
-        .unwrap_or_else(|| "anthropic".into());
+        .call(|conn| {
+            Ok((
+                queries::get_setting(conn, "ai_provider")?,
+                queries::get_setting(conn, "custom_base_url")?,
+            ))
+        })
+        .await?;
     Ok(KeyStatus {
-        provider,
+        provider: provider.unwrap_or_else(|| "anthropic".into()),
         anthropic: secrets::get(secrets::ANTHROPIC_KEY)?.is_some(),
         openrouter: secrets::get(secrets::OPENROUTER_KEY)?.is_some(),
+        custom: custom_base_url.is_some_and(|u| !u.trim().is_empty()),
     })
 }
 
 #[tauri::command]
-pub fn ai_clear_key(provider: String) -> Result<()> {
-    secrets::delete(Provider::parse(&provider).secret())
+pub async fn ai_clear_key(state: State<'_, AppState>, provider: String) -> Result<()> {
+    let provider = Provider::parse(&provider);
+    secrets::delete(provider.secret())?;
+    // "Configured" for the custom endpoint means "base URL set" — clear it so
+    // the provider reads as removed, not just keyless.
+    if provider == Provider::Custom {
+        state
+            .db
+            .call(|conn| queries::set_setting(conn, "custom_base_url", ""))
+            .await?;
+    }
+    Ok(())
 }
 
 /// OpenRouter's live catalog, so the model field can only ever be set to a
@@ -124,11 +188,22 @@ pub async fn openrouter_models() -> Result<Vec<openrouter::Model>> {
 
 struct AiContext {
     provider: Provider,
+    /// Where OpenAI-compatible traffic goes; `None` for Anthropic.
+    endpoint: Option<openai_compat::Endpoint>,
     key: String,
     model: String,
     locale: String,
     /// e.g. "Monday, 2026-07-13 14:32 (UTC+02:00)"
     now: String,
+}
+
+impl AiContext {
+    fn agent_provider(&self) -> agent::Provider {
+        match &self.endpoint {
+            None => agent::Provider::Anthropic,
+            Some(ep) => agent::Provider::OpenAiCompat(ep.clone()),
+        }
+    }
 }
 
 fn now_line() -> String {
@@ -141,29 +216,54 @@ fn now_line() -> String {
 }
 
 async fn ai_context(db: &Db) -> Result<AiContext> {
-    let (provider, anthropic_model, openrouter_model, locale) = db
+    let (provider, anthropic_model, openrouter_model, custom_base_url, custom_model, locale) = db
         .call(|conn| {
             Ok((
                 queries::get_setting(conn, "ai_provider")?,
                 queries::get_setting(conn, "ai_model")?,
                 queries::get_setting(conn, "openrouter_model")?,
+                queries::get_setting(conn, "custom_base_url")?,
+                queries::get_setting(conn, "custom_model")?,
                 queries::get_setting(conn, "locale")?,
             ))
         })
         .await?;
     let provider = Provider::parse(provider.as_deref().unwrap_or("anthropic"));
-    let key = secrets::get(provider.secret())?
-        .ok_or_else(|| SkimError::other("ai_key", "no AI API key configured"))?;
-    let model = match provider {
-        Provider::Anthropic => {
-            anthropic_model.unwrap_or_else(|| anthropic::DEFAULT_MODEL.to_string())
-        }
-        Provider::OpenRouter => {
-            openrouter_model.unwrap_or_else(|| openrouter::DEFAULT_MODEL.to_string())
+    // The custom endpoint may legitimately have no key (local servers).
+    let key = match provider {
+        Provider::Custom => secrets::get(secrets::CUSTOM_KEY)?.unwrap_or_default(),
+        _ => secrets::get(provider.secret())?
+            .ok_or_else(|| SkimError::other("ai_key", "no AI API key configured"))?,
+    };
+    let (model, endpoint) = match provider {
+        Provider::Anthropic => (
+            anthropic_model.unwrap_or_else(|| anthropic::DEFAULT_MODEL.to_string()),
+            None,
+        ),
+        Provider::OpenRouter => (
+            openrouter_model.unwrap_or_else(|| openrouter::DEFAULT_MODEL.to_string()),
+            Some(openrouter::endpoint()),
+        ),
+        Provider::Custom => {
+            let base_url = custom_base_url
+                .as_deref()
+                .and_then(openai_compat::normalize_base_url)
+                .ok_or_else(|| SkimError::other("ai_key", "no AI endpoint configured"))?;
+            let model = custom_model
+                .filter(|m| !m.trim().is_empty())
+                .ok_or_else(|| SkimError::other("ai", "no model configured"))?;
+            (
+                model,
+                Some(openai_compat::Endpoint {
+                    base_url,
+                    attribution: false,
+                }),
+            )
         }
     };
     Ok(AiContext {
         provider,
+        endpoint,
         key,
         model,
         locale: locale.unwrap_or_else(|| "en".into()),
@@ -190,8 +290,8 @@ fn spawn_stream(
                 text: delta.to_string(),
             });
         };
-        let result = match ctx.provider {
-            Provider::Anthropic => {
+        let result = match &ctx.endpoint {
+            None => {
                 let request = anthropic::Request {
                     model: ctx.model,
                     system,
@@ -201,16 +301,17 @@ fn spawn_stream(
                 };
                 anthropic::stream(&ctx.key, &request, &mut on_delta).await
             }
-            Provider::OpenRouter => {
-                // OpenRouter has no native attachment path; content was folded
-                // into the prompt text as extracted text, so `media` is unused.
-                let request = openrouter::Request {
+            Some(ep) => {
+                // OpenAI-compatible endpoints have no native attachment path;
+                // content was folded into the prompt text as extracted text,
+                // so `media` is unused.
+                let request = openai_compat::Request {
                     model: ctx.model,
                     system,
                     messages,
                     max_tokens,
                 };
-                openrouter::stream(&ctx.key, &request, &mut on_delta).await
+                openai_compat::stream(ep, &ctx.key, &request, &mut on_delta).await
             }
         };
         match result {
@@ -458,10 +559,7 @@ pub async fn ai_ask(
     // conversation, optionally opening links the thread contains via `fetch_url`.
     let (chain, media) = reply_chain(&state, message_id, 25, Some(&ctx)).await?;
     let (system, preamble) = prompts::ask_session(&chain, &ctx.now, &ctx.locale);
-    let provider = match ctx.provider {
-        Provider::Anthropic => agent::Provider::Anthropic,
-        Provider::OpenRouter => agent::Provider::OpenRouter,
-    };
+    let provider = ctx.agent_provider();
     let deps = agent::AgentDeps {
         db: state.db.clone(),
         engines: state.engines.lock().await.clone(),
@@ -548,10 +646,7 @@ pub async fn ai_chat(
         return Err(SkimError::other("ai", "no question provided"));
     }
     let ctx = ai_context(&state.db).await?;
-    let provider = match ctx.provider {
-        Provider::Anthropic => agent::Provider::Anthropic,
-        Provider::OpenRouter => agent::Provider::OpenRouter,
-    };
+    let provider = ctx.agent_provider();
     let system = prompts::chat_agent(&ctx.now, &ctx.locale, context_message_id.is_some());
     let deps = agent::AgentDeps {
         db: state.db.clone(),
@@ -811,16 +906,16 @@ pub async fn ai_analyze_style(
                 text: delta.to_string(),
             });
         };
-        let result = match ctx.provider {
-            Provider::Anthropic => anthropic::stream(&ctx.key, &request, &mut on_delta).await,
-            Provider::OpenRouter => {
-                let request = openrouter::Request {
+        let result = match &ctx.endpoint {
+            None => anthropic::stream(&ctx.key, &request, &mut on_delta).await,
+            Some(ep) => {
+                let request = openai_compat::Request {
                     model: ctx.model,
                     system,
                     messages: user_turn(user),
                     max_tokens: 1024,
                 };
-                openrouter::stream(&ctx.key, &request, &mut on_delta).await
+                openai_compat::stream(ep, &ctx.key, &request, &mut on_delta).await
             }
         };
         match result {
@@ -849,4 +944,18 @@ pub async fn ai_analyze_style(
         tasks.insert(request_id, task.abort_handle());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Provider;
+
+    #[test]
+    fn provider_parse_round_trips_and_defaults_to_anthropic() {
+        for p in [Provider::Anthropic, Provider::OpenRouter, Provider::Custom] {
+            assert_eq!(Provider::parse(p.id()), p);
+        }
+        assert_eq!(Provider::parse("unknown"), Provider::Anthropic);
+        assert_eq!(Provider::parse(""), Provider::Anthropic);
+    }
 }

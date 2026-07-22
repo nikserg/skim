@@ -214,7 +214,7 @@ export function invoke<T = any>(cmd: string, args: any = {}): Promise<T> {
 
     // AI key gate — the demo always has a key so AI actions are visible.
     case "ai_key_status":
-      return ok({ provider: "anthropic", anthropic: true, openrouter: false });
+      return ok({ provider: "anthropic", anthropic: true, openrouter: false, custom: false });
     case "ai_cancel":
       cancelled.add(args.requestId);
       return ok(undefined);

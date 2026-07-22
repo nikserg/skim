@@ -7,7 +7,9 @@
 //! serialized to each provider's wire format before every round.
 
 use crate::ai::retrieval::{format_date, Citation};
-use crate::ai::{anthropic, attachments, openrouter, prompts, AssistantTurn, MediaBlock, ToolCall};
+use crate::ai::{
+    anthropic, attachments, openai_compat, prompts, AssistantTurn, MediaBlock, ToolCall,
+};
 use crate::commands::search::{build_fts_query, build_fts_query_any};
 use crate::db::{bodies, Db};
 use crate::error::Result;
@@ -37,10 +39,12 @@ const THREAD_READ_BUDGET: usize = 10_000;
 /// Per-message cap within a whole-thread read (the anchor gets more).
 const THREAD_MSG_BUDGET: usize = 4_000;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum Provider {
     Anthropic,
-    OpenRouter,
+    /// Any OpenAI-compatible chat-completions endpoint — OpenRouter or a
+    /// user-supplied one.
+    OpenAiCompat(openai_compat::Endpoint),
 }
 
 /// Which tools the model may call this run. The mailbox chat gets all three;
@@ -312,16 +316,16 @@ fn fetch_schema() -> Value {
 }
 
 /// Wrap one tool's schema in the provider's expected envelope.
-fn tool_json(provider: Provider, name: &str, desc: &str, schema: Value) -> Value {
+fn tool_json(provider: &Provider, name: &str, desc: &str, schema: Value) -> Value {
     match provider {
         Provider::Anthropic => json!({ "name": name, "description": desc, "input_schema": schema }),
-        Provider::OpenRouter => {
+        Provider::OpenAiCompat(_) => {
             json!({ "type": "function", "function": { "name": name, "description": desc, "parameters": schema } })
         }
     }
 }
 
-fn tools_for(provider: Provider, set: ToolSet) -> Vec<Value> {
+fn tools_for(provider: &Provider, set: ToolSet) -> Vec<Value> {
     let mut tools = Vec::new();
     if set.search {
         tools.push(tool_json(
@@ -429,11 +433,11 @@ pub async fn run(
         let tools = if force_final {
             Vec::new()
         } else {
-            tools_for(provider, tool_set)
+            tools_for(&provider, tool_set)
         };
 
         let turn = call_provider(
-            provider,
+            &provider,
             &key,
             &model,
             &system,
@@ -489,7 +493,7 @@ pub async fn run(
 
 #[allow(clippy::too_many_arguments)]
 async fn call_provider(
-    provider: Provider,
+    provider: &Provider,
     key: &str,
     model: &str,
     system: &str,
@@ -514,17 +518,17 @@ async fn call_provider(
             };
             anthropic::stream_tools(key, &req, &mut sink).await
         }
-        Provider::OpenRouter => {
-            // OpenRouter has no native attachment path; its media rides as
-            // extracted text already folded into the preamble.
-            let req = openrouter::ToolRequest {
+        Provider::OpenAiCompat(ep) => {
+            // No native attachment path here; media rides as extracted text
+            // already folded into the preamble.
+            let req = openai_compat::ToolRequest {
                 model: model.to_string(),
                 system: system.to_string(),
                 messages: openai_messages(turns),
                 tools,
                 max_tokens: 4096,
             };
-            openrouter::stream_tools(key, &req, &mut sink).await
+            openai_compat::stream_tools(ep, key, &req, &mut sink).await
         }
     }
 }
