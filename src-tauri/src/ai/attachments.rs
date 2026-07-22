@@ -256,12 +256,14 @@ async fn extract_pdf_text(path: &str, max: usize) -> Option<String> {
 /// the generator split into several show operations for kerning.
 mod pdf {
     use super::prompts;
-    use lopdf::content::Content;
-    use lopdf::{Document, Encoding, Object, ObjectId};
-    use std::collections::BTreeMap;
+    use lopdf::content::{Content, Operation};
+    use lopdf::{Dictionary, Document, Encoding, Object, ObjectId};
+    use std::collections::{BTreeMap, HashSet};
 
     /// Per-stream decompressed-size cap: guards against decompression bombs.
     const STREAM_LIMIT: usize = 10 * 1024 * 1024;
+    /// Max nesting of Form XObjects invoked via `Do`.
+    const MAX_FORM_DEPTH: usize = 8;
 
     /// Text of all pages in order, truncated to `max` chars. `None` when the
     /// document yields no text at all. Pages that fail to parse are skipped.
@@ -296,10 +298,44 @@ mod pdf {
             .collect();
         let content = Content::decode(&doc.get_page_content_with_limit(page_id, STREAM_LIMIT)?)?;
 
+        let (resource_dict, resource_ids) = doc.get_page_resources(page_id)?;
+        let mut resources: Vec<&Dictionary> = resource_dict.into_iter().collect();
+        resources.extend(
+            resource_ids
+                .iter()
+                .filter_map(|id| doc.get_dictionary(*id).ok()),
+        );
+
+        // `visited` keeps one page from pulling the same form in twice and
+        // guards against reference cycles.
+        let mut visited = HashSet::new();
+        walk(
+            doc,
+            &content.operations,
+            &encodings,
+            &resources,
+            out,
+            0,
+            &mut visited,
+        );
+        Ok(())
+    }
+
+    /// Interpret one content stream, appending its text to `out`. Recurses
+    /// into Form XObjects invoked with `Do`.
+    fn walk(
+        doc: &Document,
+        operations: &[Operation],
+        encodings: &BTreeMap<Vec<u8>, Encoding>,
+        resources: &[&Dictionary],
+        out: &mut String,
+        depth: usize,
+        visited: &mut HashSet<ObjectId>,
+    ) {
         let mut encoding: Option<&Encoding> = None;
         let mut font_size: f32 = 12.0;
         let mut tm_pos: Option<(f32, f32)> = None;
-        for op in &content.operations {
+        for op in operations {
             match op.operator.as_ref() {
                 "Tf" => {
                     encoding = op
@@ -350,10 +386,113 @@ mod pdf {
                 }
                 "BT" => tm_pos = None,
                 "ET" => newline(out),
+                // Text may live inside a Form XObject rather than the page's
+                // own stream (letterheads, some invoice generators).
+                "Do" if depth < MAX_FORM_DEPTH => {
+                    if let Some(name) = op.operands.first().and_then(|o| o.as_name().ok()) {
+                        append_form_text(doc, name, encodings, resources, out, depth, visited);
+                    }
+                }
                 _ => {}
             }
         }
-        Ok(())
+    }
+
+    /// Extract the text of the Form XObject `name` from `resources`.
+    /// Non-form XObjects (images) and unresolvable references are ignored.
+    fn append_form_text(
+        doc: &Document,
+        name: &[u8],
+        parent_encodings: &BTreeMap<Vec<u8>, Encoding>,
+        parent_resources: &[&Dictionary],
+        out: &mut String,
+        depth: usize,
+        visited: &mut HashSet<ObjectId>,
+    ) {
+        let Some(id) = parent_resources.iter().find_map(|res| {
+            deref_dict(doc, res.get(b"XObject").ok()?)?
+                .get(name)
+                .ok()?
+                .as_reference()
+                .ok()
+        }) else {
+            return;
+        };
+        if !visited.insert(id) {
+            return;
+        }
+        let Some(stream) = doc.get_object(id).ok().and_then(|o| o.as_stream().ok()) else {
+            return;
+        };
+        if !matches!(
+            stream.dict.get(b"Subtype").and_then(|o| o.as_name()),
+            Ok(b"Form")
+        ) {
+            return;
+        }
+        let Some(content) = stream
+            .decompressed_content_with_limit(STREAM_LIMIT)
+            .ok()
+            .and_then(|data| Content::decode(&data).ok())
+        else {
+            return;
+        };
+
+        // A form with its own /Resources brings its own font namespace;
+        // without one it inherits the parent's (PDF 32000-1 §8.10.1).
+        let own_resources = stream
+            .dict
+            .get(b"Resources")
+            .ok()
+            .and_then(|o| deref_dict(doc, o));
+        match own_resources {
+            Some(res) => {
+                let encodings = encodings_from_resources(doc, res);
+                let resources = [res];
+                walk(
+                    doc,
+                    &content.operations,
+                    &encodings,
+                    &resources,
+                    out,
+                    depth + 1,
+                    visited,
+                );
+            }
+            None => {
+                walk(
+                    doc,
+                    &content.operations,
+                    parent_encodings,
+                    parent_resources,
+                    out,
+                    depth + 1,
+                    visited,
+                );
+            }
+        }
+    }
+
+    fn encodings_from_resources<'a>(
+        doc: &'a Document,
+        resources: &'a Dictionary,
+    ) -> BTreeMap<Vec<u8>, Encoding<'a>> {
+        let Some(fonts) = resources.get(b"Font").ok().and_then(|o| deref_dict(doc, o)) else {
+            return BTreeMap::new();
+        };
+        fonts
+            .iter()
+            .filter_map(|(name, obj)| {
+                deref_dict(doc, obj)?
+                    .get_font_encoding_with_limit(doc, STREAM_LIMIT)
+                    .ok()
+                    .map(|enc| (name.clone(), enc))
+            })
+            .collect()
+    }
+
+    fn deref_dict<'a>(doc: &'a Document, obj: &'a Object) -> Option<&'a Dictionary> {
+        doc.dereference(obj).ok()?.1.as_dict().ok()
     }
 
     /// Append the text of a Tj/TJ operand list. In TJ arrays, a large negative
@@ -482,6 +621,80 @@ mod tests {
         assert_eq!(
             pdf::extract_text(&doc, 5).as_deref(),
             Some("Hello\n…(truncated)")
+        );
+    }
+
+    #[test]
+    fn extracts_text_from_form_xobjects() {
+        use lopdf::content::{Content, Operation};
+        use lopdf::{dictionary, Document, Object, Stream};
+
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let font_id = doc.add_object(dictionary! {
+            "Type" => "Font",
+            "Subtype" => "Type1",
+            "BaseFont" => "Helvetica",
+        });
+        // Letterhead-style form with its own resources.
+        let form_content = Content {
+            operations: vec![
+                Operation::new("BT", vec![]),
+                Operation::new("Tf", vec!["F9".into(), 10.into()]),
+                Operation::new("Tj", vec![Object::string_literal("Letterhead")]),
+                Operation::new("ET", vec![]),
+            ],
+        };
+        let form_id = doc.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject",
+                "Subtype" => "Form",
+                "Resources" => dictionary! {
+                    "Font" => dictionary! { "F9" => font_id },
+                },
+            },
+            form_content.encode().unwrap(),
+        ));
+        let content = Content {
+            operations: vec![
+                Operation::new("Do", vec!["X1".into()]),
+                Operation::new("BT", vec![]),
+                Operation::new("Tf", vec!["F1".into(), 12.into()]),
+                Operation::new("Tj", vec![Object::string_literal("Body")]),
+                Operation::new("ET", vec![]),
+                // Re-invoking the same form must not duplicate its text.
+                Operation::new("Do", vec!["X1".into()]),
+            ],
+        };
+        let content_id = doc.add_object(Stream::new(dictionary! {}, content.encode().unwrap()));
+        let resources_id = doc.add_object(dictionary! {
+            "Font" => dictionary! { "F1" => font_id },
+            "XObject" => dictionary! { "X1" => form_id },
+        });
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "Contents" => content_id,
+            "Resources" => resources_id,
+            "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()],
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages",
+                "Kids" => vec![page_id.into()],
+                "Count" => 1,
+            }),
+        );
+        let catalog_id = doc.add_object(dictionary! {
+            "Type" => "Catalog",
+            "Pages" => pages_id,
+        });
+        doc.trailer.set("Root", catalog_id);
+
+        assert_eq!(
+            pdf::extract_text(&doc, 100).as_deref(),
+            Some("Letterhead\nBody")
         );
     }
 
