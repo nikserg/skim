@@ -14,12 +14,18 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "skim_lib=info".into()),
-        )
-        .init();
+    {
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::util::SubscriberInitExt;
+        let filter = std::env::var("RUST_LOG")
+            .ok()
+            .and_then(|v| v.parse::<tracing_subscriber::filter::Targets>().ok())
+            .unwrap_or_else(|| "skim_lib=info".parse().unwrap());
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer())
+            .with(filter)
+            .init();
+    }
 
     // ring is the only rustls crypto backend we compile (Cargo.toml disables the
     // default aws-lc one), but keep the explicit install: if a dependency ever
