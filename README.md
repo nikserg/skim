@@ -52,7 +52,7 @@ Email clients usually come in two flavors: a browser cosplaying as an app, or a 
 - ✂️ **Half the features, cut on purpose.** No calendar, no contacts manager, no rules, no filters, no snooze — none of the stuff you never actually use anyway. Fewer buttons, less cognitive load. Need a do-everything suite? Install Outlook.
 - 🎯 **Actions when you need them.** Buttons appear only when they're useful; there's no menu bar at all. Skim's job is to surface the right action at the right moment.
 - 🔒 **Local and private by default.** Your mail syncs over IMAP straight into a local SQLite cache. It works offline, search is instant, and nothing ever passes through anyone else's servers. Zero telemetry, zero anal probes.
-- ✦ **AI on your terms.** Paste your own key — Anthropic (Claude), or OpenRouter for models from any vendor (Claude, GPT, Gemini, Grok, …) — and Skim drafts in your voice, summarizes threads, answers questions about a message, and chats across your whole mailbox with cited sources. No key? Skim is a great mail client without it. Requests go directly from your machine to the provider; the key lives in Windows Credential Manager.
+- ✦ **AI on your terms.** Paste your own key — Anthropic (Claude), OpenRouter for models from any vendor (Claude, GPT, Gemini, Grok, …), or any OpenAI-compatible endpoint, including a local model (Ollama, LM Studio, vLLM) that never leaves your machine — and Skim drafts in your voice, summarizes threads, answers questions about a message, and chats across your whole mailbox with cited sources. No key? Skim is a great mail client without it. Requests go directly from your machine to the provider; the key lives in Windows Credential Manager.
 - 🌍 **11 languages**, light & dark themes, keyboard-first.
 
 <div align="center">
@@ -64,6 +64,7 @@ Email clients usually come in two flavors: a browser cosplaying as an app, or a 
 **Mail**
 - Gmail, Outlook, Yahoo, iCloud, or any IMAP/SMTP server (autoconfig for the big ones)
 - Google and Microsoft sign-in via OAuth (loopback + PKCE) or app password
+- Multiple accounts side by side, plus a unified **All inboxes** view; compose from any of them with a per-message From picker
 - Conversation threading (References/In-Reply-To with subject fallback)
 - Archive, delete, star, read/unread — all optimistic with a durable offline queue: act instantly, Skim syncs when the network returns
 - IMAP IDLE push + periodic polling; new-mail notifications with a mark-read quick action
@@ -89,7 +90,7 @@ There's no "Skim Pro" subscription and there never will be. Paste your own key a
 - **AI Recap** — one click digests up to 20 unread emails, what-needs-a-reply first with deadlines and cited sources, and marks them read
 - **Context-aware** — every prompt carries the current date, weekday, time, your timezone, your UI language, and the relevant thread. “Reply that I'll make it by Friday” becomes a concrete date
 - **Your writer profile** — set your name, pick a style (formal / friendly / concise / witty / enthusiastic) or “write exactly like me”, and give standing instructions (“sign as Nick”, “my company is called…”)
-- **Two providers** — Anthropic directly (Claude Sonnet 5 default, Opus 4.8, Haiku 4.5) or OpenRouter with one key for every vendor: Claude, GPT, Gemini, Grok, or any model slug you type in
+- **Three ways to bring a key** — Anthropic directly (Claude Sonnet 5 default, Opus 4.8, Haiku 4.5), OpenRouter with one key for every vendor (Claude, GPT, Gemini, Grok, or any model slug you type in), or any OpenAI-compatible endpoint — Ollama, LM Studio, vLLM, a gateway, or OpenAI itself — including a local model that never leaves your machine
 
 Your key, your bill: Skim talks to the provider's API directly and adds no markup, no proxy, no accounts. The key is stored in Windows Credential Manager.
 
@@ -162,9 +163,10 @@ Until you verify a publisher, Microsoft's consent screen calls the app "unverifi
 
 ## Enabling AI
 
-1. Get an API key from either provider:
+1. Pick a provider and get a key (or point Skim at your own endpoint):
    - **Anthropic** — [console.anthropic.com](https://console.anthropic.com/settings/keys) (Claude, straight from the source)
    - **OpenRouter** — [openrouter.ai](https://openrouter.ai/settings/keys) (one key for Claude, GPT, Gemini, Grok, and hundreds more — pick a suggested model or type any `vendor/model` slug)
+   - **OpenAI-compatible** — anything that speaks the OpenAI chat API: Ollama, LM Studio, vLLM, a gateway, or OpenAI itself. Give Skim the base URL, a model name, and a key if the endpoint needs one. Point it at a local model and your mail never leaves the machine (the mailbox chat wants a model with tool support).
 2. Paste it in onboarding (step 2) or later in **Settings → Skim AI**, on the provider's tab.
 3. That's it — the ✦ violet buttons light up.
 
@@ -218,7 +220,7 @@ npm run tauri build    # produce NSIS + MSI installers in src-tauri/target/relea
 │  Svelte 5 UI  (WebView2)      │◄──── sync engine ───────────►│  your mail   │
 │  3 panes · palette · composer │                              │  server      │
 ├───────────────────────────────┤      HTTPS (your key)        └──────────────┘
-│  Rust core  (Tauri 2)         │◄──── AI features ───────────► api.anthropic.com
+│  Rust core  (Tauri 2)         │◄──── AI features ───────────► your AI provider
 │  sync · sanitize · ops queue  │
 ├───────────────────────────────┤
 │  SQLite + FTS5  (local cache) │   passwords & keys → Windows Credential Manager
@@ -236,7 +238,7 @@ English, Русский, Srpski, Français, Deutsch, Español, Italiano, Polski,
 
 ## Deliberately not included
 
-Skim stays small on purpose: no calendar (invites still get an RSVP card and an add-to-calendar button), no contacts manager, no rules/filters, no snooze, no read receipts, no tracking pixels of its own. One account per install for now (multi-account is on the roadmap). If you need everything, there are battleships; if you need speed, there's Skim.
+Skim stays small on purpose: no calendar (invites still get an RSVP card and an add-to-calendar button), no contacts manager, no rules/filters, no snooze, no read receipts, no tracking pixels of its own. If you need everything, there are battleships; if you need speed, there's Skim.
 
 Known limitations: Windows Snap Layouts don't pop over the custom maximize button (Tauri frameless-window limitation); self-signed IMAP certificates are rejected rather than click-through-able — by design.
 
