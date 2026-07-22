@@ -3,7 +3,7 @@
   import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { aiApi, aiStream, api, errorMessage } from "../../lib/api";
-  import type { AiProvider, OrModel } from "../../lib/api";
+  import type { AiModel, AiProvider } from "../../lib/api";
   import { LOCALES, getLocale, setLocale, t, type Locale } from "../../lib/i18n/index.svelte";
   import { createOllamaDetection, ollamaV1 } from "../../lib/ollama-detect.svelte";
   import { ai } from "../../lib/stores/ai.svelte";
@@ -81,7 +81,7 @@
   let orCustom = $state("");
   // OpenRouter's live catalog, so the field can't be set to a model that
   // doesn't exist. Empty until fetched — and if the fetch fails, forever.
-  let orModels = $state<OrModel[]>([]);
+  let orModels = $state<AiModel[]>([]);
   let orCustomOpen = $state(false);
   let orHighlight = $state(0);
   // The user-supplied OpenAI-compatible endpoint.

@@ -1,4 +1,4 @@
-import { aiApi, type OrModel } from "./api";
+import { aiApi, type AiModel } from "./api";
 
 /**
  * Detection proved the URL is an Ollama server, whose OpenAI API lives under
@@ -18,7 +18,7 @@ export function ollamaV1(url: string): string {
  * philosophy for this provider.
  */
 export function createOllamaDetection(getUrl: () => string) {
-  let models = $state<OrModel[]>([]);
+  let models = $state<AiModel[]>([]);
   let status = $state<"idle" | "some" | "none">("idle");
   // Guards against a stale response landing after a newer request started
   // (e.g. the user edits the URL again while the first lookup is in flight).
