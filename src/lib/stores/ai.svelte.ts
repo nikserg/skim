@@ -6,6 +6,7 @@ const state = $state({
   provider: "anthropic" as AiProvider,
   anthropic: false,
   openrouter: false,
+  custom: false,
 });
 
 export const ai = {
@@ -25,13 +26,18 @@ export const ai = {
   get openrouter() {
     return state.openrouter;
   },
+  get custom() {
+    return state.custom;
+  },
   async refresh() {
     try {
       const s = await aiApi.keyStatus();
       state.provider = s.provider;
       state.anthropic = s.anthropic;
       state.openrouter = s.openrouter;
-      state.keyPresent = s.provider === "openrouter" ? s.openrouter : s.anthropic;
+      state.custom = s.custom;
+      state.keyPresent =
+        s.provider === "custom" ? s.custom : s.provider === "openrouter" ? s.openrouter : s.anthropic;
     } catch {
       state.keyPresent = false;
     }

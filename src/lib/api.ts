@@ -165,12 +165,14 @@ export interface AiHandlers {
   toolDone?: (id: string, count: number | null) => void;
 }
 
-export type AiProvider = "anthropic" | "openrouter";
+export type AiProvider = "anthropic" | "openrouter" | "custom";
 
 export interface AiKeyStatus {
   provider: AiProvider;
   anthropic: boolean;
   openrouter: boolean;
+  /** The custom endpoint counts as configured once a base URL is set. */
+  custom: boolean;
 }
 
 /** A model from OpenRouter's live catalog. */
@@ -181,6 +183,9 @@ export interface OrModel {
 
 export const aiApi = {
   setKey: (provider: AiProvider, key: string) => invoke<void>("ai_set_key", { provider, key }),
+  /** Configure the OpenAI-compatible endpoint; an empty key is fine. */
+  setCustom: (baseUrl: string, key: string, model: string) =>
+    invoke<void>("ai_set_custom", { baseUrl, key, model }),
   keyStatus: () => invoke<AiKeyStatus>("ai_key_status"),
   clearKey: (provider: AiProvider) => invoke<void>("ai_clear_key", { provider }),
   orModels: () => invoke<OrModel[]>("openrouter_models"),

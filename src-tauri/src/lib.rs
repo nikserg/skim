@@ -275,6 +275,7 @@ pub fn run() {
             commands::invites::rsvp_invite,
             commands::invites::open_invite_ics,
             commands::ai::ai_set_key,
+            commands::ai::ai_set_custom,
             commands::ai::ai_key_status,
             commands::ai::ai_clear_key,
             commands::ai::openrouter_models,

@@ -23,6 +23,9 @@
   let aiBusy = $state(false);
   let aiVerified = $state(false);
   let aiError = $state("");
+  // The user-supplied OpenAI-compatible endpoint.
+  let customBaseUrl = $state("");
+  let customModel = $state("");
 
   function chooseAiProvider(p: AiProvider) {
     aiProvider = p;
@@ -34,18 +37,26 @@
     // The AI key lives in Credential Manager, not per-account — if one was set
     // during an earlier onboarding it's still there. Don't ask for it again.
     const status = await aiApi.keyStatus().catch(() => null);
-    if (status && (status.anthropic || status.openrouter)) {
+    if (status && (status.anthropic || status.openrouter || status.custom)) {
       finish();
       return;
     }
     step = "ai";
   }
 
+  const aiReady = $derived(
+    aiProvider === "custom" ? !!customBaseUrl.trim() && !!customModel.trim() : !!aiKey.trim(),
+  );
+
   async function enableAi() {
     aiBusy = true;
     aiError = "";
     try {
-      await aiApi.setKey(aiProvider, aiKey);
+      if (aiProvider === "custom") {
+        await aiApi.setCustom(customBaseUrl, aiKey, customModel);
+      } else {
+        await aiApi.setKey(aiProvider, aiKey);
+      }
       aiVerified = true;
       setTimeout(() => finish(), 400);
     } catch (e) {
@@ -114,7 +125,11 @@
       </div>
       <h2 class="ai-title">✦ {t("onb.ai_title")}</h2>
       <p class="subtitle">
-        {aiProvider === "openrouter" ? t("onb.ai_subtitle_or") : t("onb.ai_subtitle")}
+        {aiProvider === "custom"
+          ? t("onb.ai_subtitle_custom")
+          : aiProvider === "openrouter"
+            ? t("onb.ai_subtitle_or")
+            : t("onb.ai_subtitle")}
       </p>
 
       <div class="provider-tabs">
@@ -132,36 +147,69 @@
         >
           OpenRouter
         </button>
+        <button
+          class="provider-tab"
+          class:active={aiProvider === "custom"}
+          onclick={() => chooseAiProvider("custom")}
+        >
+          {t("settings.provider_custom")}
+        </button>
       </div>
 
-      <label class="ai-key">
-        <span class="microlabel">
-          {aiProvider === "openrouter" ? t("onb.ai_key_label_or") : t("onb.ai_key_label")}
-        </span>
-        <input
-          bind:value={aiKey}
-          placeholder={aiProvider === "openrouter" ? "sk-or-…" : "sk-ant-…"}
-          spellcheck="false"
-          autocomplete="off"
-        />
-      </label>
-      <div class="key-hint">
-        {t("onb.ai_no_key")}
-        {#if aiProvider === "openrouter"}
-          <button class="linkish" onclick={() => openUrl("https://openrouter.ai/settings/keys")}>
-            openrouter.ai
-          </button>
-          <div class="key-hint-detail">{t("onb.ai_key_where_or")}</div>
-        {:else}
-          <button
-            class="linkish"
-            onclick={() => openUrl("https://console.anthropic.com/settings/keys")}
-          >
-            console.anthropic.com
-          </button>
-          <div class="key-hint-detail">{t("onb.ai_key_where")}</div>
-        {/if}
-      </div>
+      {#if aiProvider === "custom"}
+        <label class="ai-key">
+          <span class="microlabel">{t("settings.custom_base_url")}</span>
+          <input
+            bind:value={customBaseUrl}
+            placeholder={t("settings.custom_base_url_ph")}
+            spellcheck="false"
+            autocomplete="off"
+          />
+        </label>
+        <label class="ai-key">
+          <span class="microlabel">{t("settings.custom_key")}</span>
+          <input bind:value={aiKey} placeholder="sk-…" spellcheck="false" autocomplete="off" />
+        </label>
+        <label class="ai-key">
+          <span class="microlabel">{t("settings.custom_model")}</span>
+          <input
+            bind:value={customModel}
+            placeholder={t("settings.custom_model_ph")}
+            spellcheck="false"
+            autocomplete="off"
+          />
+        </label>
+        <div class="key-hint">{t("settings.custom_hint")}</div>
+      {:else}
+        <label class="ai-key">
+          <span class="microlabel">
+            {aiProvider === "openrouter" ? t("onb.ai_key_label_or") : t("onb.ai_key_label")}
+          </span>
+          <input
+            bind:value={aiKey}
+            placeholder={aiProvider === "openrouter" ? "sk-or-…" : "sk-ant-…"}
+            spellcheck="false"
+            autocomplete="off"
+          />
+        </label>
+        <div class="key-hint">
+          {t("onb.ai_no_key")}
+          {#if aiProvider === "openrouter"}
+            <button class="linkish" onclick={() => openUrl("https://openrouter.ai/settings/keys")}>
+              openrouter.ai
+            </button>
+            <div class="key-hint-detail">{t("onb.ai_key_where_or")}</div>
+          {:else}
+            <button
+              class="linkish"
+              onclick={() => openUrl("https://console.anthropic.com/settings/keys")}
+            >
+              console.anthropic.com
+            </button>
+            <div class="key-hint-detail">{t("onb.ai_key_where")}</div>
+          {/if}
+        </div>
+      {/if}
 
       <ul class="features">
         <li>{t("onb.ai_feature_draft")}</li>
@@ -175,7 +223,7 @@
 
       <div class="ai-actions">
         <button class="linkish" onclick={finish}>{t("onb.ai_skip")}</button>
-        <button class="primary ai-enable" onclick={enableAi} disabled={aiBusy || !aiKey.trim()}>
+        <button class="primary ai-enable" onclick={enableAi} disabled={aiBusy || !aiReady}>
           {aiVerified
             ? t("onb.ai_verified")
             : aiBusy

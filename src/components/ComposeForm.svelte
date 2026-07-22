@@ -213,7 +213,11 @@
   $effect(() => {
     void aiApi
       .keyStatus()
-      .then((s) => (aiAvailable = s.provider === "openrouter" ? s.openrouter : s.anthropic));
+      .then(
+        (s) =>
+          (aiAvailable =
+            s.provider === "custom" ? s.custom : s.provider === "openrouter" ? s.openrouter : s.anthropic),
+      );
   });
 
   function splitQuote(body: string): [string, string] {
