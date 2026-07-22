@@ -14,6 +14,7 @@ const ALLOWED: &[&str] = &[
     "group_threads",
     "last_from_account",
     "sidebar_collapsed",
+    "palette_expanded",
     "autostart",
     "ai_model",
     "ai_provider",
