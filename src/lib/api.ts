@@ -189,6 +189,9 @@ export const aiApi = {
   keyStatus: () => invoke<AiKeyStatus>("ai_key_status"),
   clearKey: (provider: AiProvider) => invoke<void>("ai_clear_key", { provider }),
   orModels: () => invoke<OrModel[]>("openrouter_models"),
+  /** Installed models on an Ollama server, if the given (custom-provider) base
+   *  URL turns out to be one — any error means "not Ollama", handled by the caller. */
+  ollamaModels: (url: string) => invoke<OrModel[]>("ollama_models", { url }),
 };
 
 /** Start a streaming AI request. Returns a cancel function. */

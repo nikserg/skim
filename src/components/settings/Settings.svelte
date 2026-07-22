@@ -87,6 +87,15 @@
   let customBaseUrl = $state("");
   let customKey = $state("");
   let customModel = $state("");
+  // Silent Ollama detection for the custom tab: if the base URL turns out to
+  // belong to an Ollama server, its installed models become clickable chips.
+  // Any error (unreachable, not Ollama, …) just means an empty list — no error
+  // UI, per upstream's no-connectivity-probe philosophy for this provider.
+  let ollamaModels = $state<OrModel[]>([]);
+  let ollamaStatus = $state<"idle" | "some" | "none">("idle");
+  // Guards against a stale response landing after a newer request started
+  // (e.g. the user edits the URL again while the first lookup is in flight).
+  let ollamaGeneration = 0;
   let imagesPolicy = $state("block");
   let notifications = $state("on");
   let groupThreads = $state("on");
@@ -122,6 +131,12 @@
       }
       if (s.openrouter_model) orModel = s.openrouter_model;
       if (s.custom_base_url) customBaseUrl = s.custom_base_url;
+      // Restoring straight into an already-configured custom tab: run the same
+      // silent probe chooseProviderTab would trigger on a click. Safe outside
+      // the effect's tracked scope — this runs inside the .then() continuation
+      // of an already-resolved async call, after the effect itself has finished
+      // running, so it registers no reactive dependencies.
+      if (providerTab === "custom" && customBaseUrl.trim()) void detectOllama();
       if (s.custom_model) customModel = s.custom_model;
       if (s.images_policy) imagesPolicy = s.images_policy;
       if (s.notifications) notifications = s.notifications;
@@ -246,6 +261,72 @@
     if (providerConfigured(p) && ai.provider !== p) {
       await api.setSetting("ai_provider", p);
       await ai.refresh();
+    }
+    if (p === "custom") void detectOllama();
+  }
+
+  // Silent probe: does customBaseUrl belong to an Ollama server? Runs on tab
+  // entry and on base-URL blur. Never surfaces an error — an unreachable or
+  // non-Ollama endpoint is exactly what upstream's design expects, and this is
+  // purely an enhancement on top of it.
+  async function detectOllama() {
+    const url = customBaseUrl.trim();
+    if (!url) {
+      // Bump the generation here too, so a still-in-flight probe for the
+      // previous URL can't land afterwards and repaint chips for a field
+      // that's now empty.
+      ++ollamaGeneration;
+      ollamaModels = [];
+      ollamaStatus = "idle";
+      return;
+    }
+    const generation = ++ollamaGeneration;
+    try {
+      const models = await aiApi.ollamaModels(url);
+      if (generation !== ollamaGeneration) return;
+      ollamaModels = models;
+      ollamaStatus = models.length > 0 ? "some" : "none";
+    } catch {
+      if (generation !== ollamaGeneration) return;
+      ollamaModels = [];
+      ollamaStatus = "idle";
+    }
+  }
+
+  // A hand-typed model the detected server doesn't announce as tool-capable:
+  // either a typo, or an installed model that can't drive the mailbox chat.
+  // Warn, don't block — compose-only use of such a model is legitimate.
+  const customModelUnknown = $derived(
+    ollamaStatus === "some" &&
+      customModel.trim().length > 0 &&
+      !ollamaModels.some((m) => m.id === customModel.trim()),
+  );
+
+  // Detection proved the URL is an Ollama server, whose OpenAI API lives
+  // under /v1 — complete a bare root so generation doesn't 404 later
+  // (upstream deliberately keeps the user's input literal otherwise).
+  function ollamaV1(url: string): string {
+    const base = url.trim().replace(/\/+$/, "");
+    return base.endsWith("/v1") ? base : `${base}/v1`;
+  }
+
+  // A chip pick fills the field. In the configured state it persists like
+  // saveCustomModel's save-on-commit; in the setup form it completes the whole
+  // setup — the URL is known-good (detection just succeeded) and the key is
+  // optional, so stopping at a filled field would be a dead end.
+  function pickOllamaModel(id: string, persist: boolean) {
+    if (aiBusy) return;
+    customModel = id;
+    const fixed = ollamaV1(customBaseUrl);
+    if (persist) {
+      if (fixed !== customBaseUrl) {
+        customBaseUrl = fixed;
+        void api.setSetting("custom_base_url", fixed);
+      }
+      void api.setSetting("custom_model", id);
+    } else {
+      customBaseUrl = fixed;
+      void saveCustom();
     }
   }
 
@@ -378,7 +459,12 @@
 
   async function removeAiKey() {
     await aiApi.clearKey(providerTab);
-    if (providerTab === "custom") customBaseUrl = "";
+    if (providerTab === "custom") {
+      customBaseUrl = "";
+      customModel = "";
+      // Blank-URL branch: drops the chips and voids any in-flight probe.
+      void detectOllama();
+    }
     await ai.refresh();
   }
 
@@ -431,6 +517,35 @@
       <span class="knob"></span>
     </button>
   </div>
+{/snippet}
+
+<!-- Ollama's installed, tool-capable models — a silent enhancement over the
+     free-text model field. `persist` matches the configured state's own
+     save-on-commit for the model field (the setup form saves everything
+     together via saveCustom). -->
+{#snippet ollamaChips(persist: boolean)}
+  {#if ollamaStatus === "some"}
+    <div class="writer-field">
+      <span class="microlabel">{t("settings.custom_models_detected")}</span>
+      <div class="chips">
+        {#each ollamaModels as m (m.id)}
+          <button
+            type="button"
+            class="model"
+            class:active={customModel === m.id}
+            onclick={() => pickOllamaModel(m.id, persist)}
+          >
+            {m.name}
+          </button>
+        {/each}
+      </div>
+      {#if customModelUnknown}
+        <span class="dim hint">{t("settings.custom_model_unknown")}</span>
+      {/if}
+    </div>
+  {:else if ollamaStatus === "none"}
+    <span class="dim hint">{t("settings.custom_no_tool_models")}</span>
+  {/if}
 {/snippet}
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -627,6 +742,7 @@
             </div>
           {:else if providerTab === "custom"}
             <div class="models">
+              {@render ollamaChips(true)}
               <label class="writer-field">
                 <span class="microlabel">{t("settings.custom_model")}</span>
                 <input
@@ -785,6 +901,7 @@
               <span class="microlabel">{t("settings.custom_base_url")}</span>
               <input
                 bind:value={customBaseUrl}
+                onblur={detectOllama}
                 placeholder={t("settings.custom_base_url_ph")}
                 spellcheck="false"
                 autocomplete="off"
@@ -808,6 +925,7 @@
                 autocomplete="off"
               />
             </label>
+            {@render ollamaChips(false)}
             <div class="custom-save">
               <button
                 class="ghost"

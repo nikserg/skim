@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod anthropic;
 pub mod attachments;
+pub mod ollama;
 pub mod openai_compat;
 pub mod openrouter;
 pub mod prompts;
