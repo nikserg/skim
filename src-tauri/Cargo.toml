@@ -1,6 +1,6 @@
 [package]
 name = "skim"
-version = "1.0.7"
+version = "1.0.8"
 description = "A fast, minimalist, AI-native email client for Windows"
 authors = ["Skim contributors"]
 license = "MIT"
