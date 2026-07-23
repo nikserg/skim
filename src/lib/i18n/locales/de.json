@@ -44,6 +44,10 @@
   "onb.connect_btn": "Verbinden",
   "onb.connecting": "Verbinde…",
   "onb.waiting_google": "Warte auf Google — schließe die Anmeldung im Browser ab…",
+  "onb.err_starttls_unsupported": "Dieser Server bietet auf Port 143 keine Verschlüsselung an, und Skim meldet sich nie über eine unverschlüsselte Verbindung an. Versuche IMAP-Port 993.",
+
+  "onb.err_plaintext_port": "Der Server hat unverschlüsselt geantwortet — das sieht nicht nach einem TLS-Port aus. Die meisten Anbieter nutzen IMAP-Port 993, manche 143.",
+
   "onb.footer": "Open Source · Windows",
   "nav.compose": "Schreiben",
   "nav.search": "Suchen",

@@ -46,6 +46,10 @@
   "onb.connect_btn": "Połącz",
   "onb.connecting": "Łączenie…",
   "onb.waiting_google": "Czekam na Google — dokończ logowanie w przeglądarce…",
+  "onb.err_starttls_unsupported": "Ten serwer nie oferuje szyfrowania na porcie 143, a Skim nigdy nie loguje się przez nieszyfrowane połączenie. Wypróbuj port IMAP 993.",
+
+  "onb.err_plaintext_port": "Serwer odpowiedział bez szyfrowania — to raczej nie jest port TLS. Większość dostawców używa portu IMAP 993; niektórzy 143.",
+
   "onb.footer": "Open source · Windows",
   "nav.compose": "Napisz",
   "nav.search": "Szukaj",

@@ -43,6 +43,10 @@
   "onb.connect_btn": "接続",
   "onb.connecting": "接続中…",
   "onb.waiting_google": "Google を待っています — ブラウザーでサインインを完了してください…",
+  "onb.err_starttls_unsupported": "このサーバーはポート143で暗号化を提供していません。Skimは暗号化されていない接続ではサインインしません。IMAPポート993をお試しください。",
+
+  "onb.err_plaintext_port": "サーバーが暗号化なしで応答しました — TLSポートではないようです。ほとんどのプロバイダはIMAPポート993を使用します（143の場合もあります）。",
+
   "onb.footer": "オープンソース · Windows",
   "nav.compose": "作成",
   "nav.search": "検索",
