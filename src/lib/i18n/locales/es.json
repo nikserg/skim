@@ -44,6 +44,10 @@
   "onb.connect_btn": "Conectar",
   "onb.connecting": "Conectando…",
   "onb.waiting_google": "Esperando a Google — termina de iniciar sesión en el navegador…",
+  "onb.err_starttls_unsupported": "Este servidor no ofrece cifrado en el puerto 143, y Skim nunca inicia sesión por una conexión sin cifrar. Prueba el puerto IMAP 993.",
+
+  "onb.err_plaintext_port": "El servidor respondió sin cifrado — no parece un puerto TLS. La mayoría de los proveedores usan el puerto IMAP 993; algunos el 143.",
+
   "onb.footer": "Open source · Windows",
   "nav.compose": "Redactar",
   "nav.search": "Buscar",

@@ -44,6 +44,10 @@
   "onb.connect_btn": "Collega",
   "onb.connecting": "Collegamento…",
   "onb.waiting_google": "In attesa di Google — completa l'accesso nel browser…",
+  "onb.err_starttls_unsupported": "Questo server non offre la crittografia sulla porta 143, e Skim non accede mai tramite una connessione non cifrata. Prova la porta IMAP 993.",
+
+  "onb.err_plaintext_port": "Il server ha risposto senza crittografia — non sembra una porta TLS. La maggior parte dei provider usa la porta IMAP 993; alcuni la 143.",
+
   "onb.footer": "Open source · Windows",
   "nav.compose": "Scrivi",
   "nav.search": "Cerca",

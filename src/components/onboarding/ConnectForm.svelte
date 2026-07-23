@@ -49,7 +49,11 @@
 
   /** A connect attempt failed — show the friendly text for known codes. */
   function showError(e: unknown) {
-    error = errorCode(e) === "account_exists" ? t("accounts.exists") : errorMessage(e);
+    const code = errorCode(e);
+    if (code === "account_exists") error = t("accounts.exists");
+    else if (code === "starttls_unsupported") error = t("onb.err_starttls_unsupported");
+    else if (code === "plaintext_port") error = t("onb.err_plaintext_port");
+    else error = errorMessage(e);
   }
 
   async function onEmailChange() {

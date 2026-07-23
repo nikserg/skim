@@ -43,6 +43,10 @@
   "onb.connect_btn": "연결",
   "onb.connecting": "연결 중…",
   "onb.waiting_google": "Google 대기 중 — 브라우저에서 로그인을 완료하세요…",
+  "onb.err_starttls_unsupported": "이 서버는 143 포트에서 암호화를 제공하지 않으며, Skim은 암호화되지 않은 연결로는 로그인하지 않습니다. IMAP 포트 993을 사용해 보세요.",
+
+  "onb.err_plaintext_port": "서버가 암호화 없이 응답했습니다 — TLS 포트가 아닌 것 같습니다. 대부분의 제공업체는 IMAP 포트 993을 사용하며, 일부는 143을 사용합니다.",
+
   "onb.footer": "오픈 소스 · Windows",
   "nav.compose": "쓰기",
   "nav.search": "검색",

@@ -44,6 +44,10 @@
   "onb.imap_off_body": "Sign-in worked, but this mailbox has IMAP switched off. Open your Outlook settings → Mail → Forwarding and IMAP, sign in when prompted, turn on IMAP and save — then try again.",
   "onb.open_outlook_settings": "Open Outlook settings",
   "onb.retry": "Try again",
+  "onb.err_starttls_unsupported": "This server doesn't offer encryption on port 143, and Skim never signs in over an unencrypted connection. Try IMAP port 993.",
+
+  "onb.err_plaintext_port": "The server answered without encryption — this doesn't look like a TLS port. Most providers use IMAP port 993; some use 143.",
+
   "onb.footer": "Open source · Windows",
   "nav.compose": "Compose",
   "nav.search": "Search",

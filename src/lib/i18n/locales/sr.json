@@ -45,6 +45,10 @@
   "onb.connect_btn": "Poveži",
   "onb.connecting": "Povezivanje…",
   "onb.waiting_google": "Čekam Google — završi prijavu u pregledaču…",
+  "onb.err_starttls_unsupported": "Ovaj server ne nudi šifrovanje na portu 143, a Skim se nikada ne prijavljuje preko nešifrovane veze. Probaj IMAP port 993.",
+
+  "onb.err_plaintext_port": "Server je odgovorio bez šifrovanja — ovo ne liči na TLS port. Većina provajdera koristi IMAP port 993; neki 143.",
+
   "onb.footer": "Open source · Windows",
   "nav.compose": "Napiši",
   "nav.search": "Pretraga",

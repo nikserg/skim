@@ -43,6 +43,10 @@
   "onb.connect_btn": "连接",
   "onb.connecting": "连接中…",
   "onb.waiting_google": "等待 Google——请在浏览器中完成登录…",
+  "onb.err_starttls_unsupported": "此服务器在 143 端口不提供加密，Skim 绝不会通过未加密的连接登录。请尝试 IMAP 端口 993。",
+
+  "onb.err_plaintext_port": "服务器以未加密方式响应 — 这似乎不是 TLS 端口。大多数服务商使用 IMAP 端口 993，有些使用 143。",
+
   "onb.footer": "开源 · Windows",
   "nav.compose": "写邮件",
   "nav.search": "搜索",
