@@ -175,8 +175,9 @@ export interface AiKeyStatus {
   custom: boolean;
 }
 
-/** A model from OpenRouter's live catalog. */
-export interface OrModel {
+/** A pickable model: an OpenRouter catalog entry, or an Ollama server's
+ *  installed model (where both fields carry the tag). */
+export interface AiModel {
   id: string;
   name: string;
 }
@@ -188,10 +189,10 @@ export const aiApi = {
     invoke<void>("ai_set_custom", { baseUrl, key, model }),
   keyStatus: () => invoke<AiKeyStatus>("ai_key_status"),
   clearKey: (provider: AiProvider) => invoke<void>("ai_clear_key", { provider }),
-  orModels: () => invoke<OrModel[]>("openrouter_models"),
+  orModels: () => invoke<AiModel[]>("openrouter_models"),
   /** Installed models on an Ollama server, if the given (custom-provider) base
    *  URL turns out to be one — any error means "not Ollama", handled by the caller. */
-  ollamaModels: (url: string) => invoke<OrModel[]>("ollama_models", { url }),
+  ollamaModels: (url: string) => invoke<AiModel[]>("ollama_models", { url }),
 };
 
 /** Start a streaming AI request. Returns a cancel function. */

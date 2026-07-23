@@ -5,6 +5,7 @@
   import { aiLinks } from "../lib/ai-links";
   import { getLocale, t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
+  import { createSlowStart } from "../lib/slow-start.svelte";
   import { ai } from "../lib/stores/ai.svelte";
   import { mail } from "../lib/stores/mail.svelte";
   import { palette } from "../lib/stores/palette.svelte";
@@ -47,20 +48,7 @@
   let followupEl: HTMLInputElement | undefined = $state();
   let chatThreadEl: HTMLDivElement | undefined = $state();
   let cancelChat: (() => void) | null = null;
-  // A custom endpoint's cold start can stall the first token for many seconds
-  // — after 5s of silence, say what is actually happening.
-  let slowStart = $state(false);
-  let slowTimer: ReturnType<typeof setTimeout> | undefined;
-  function armSlowStart() {
-    clearTimeout(slowTimer);
-    slowStart = false;
-    if (ai.provider !== "custom") return;
-    slowTimer = setTimeout(() => (slowStart = true), 5000);
-  }
-  function clearSlowStart() {
-    clearTimeout(slowTimer);
-    slowStart = false;
-  }
+  const slowStart = createSlowStart();
 
   function askChat(question: string) {
     cancelChat?.();
@@ -84,17 +72,17 @@
     const byIndex = new Map<number, Citation>();
     for (const tn of chat.turns) for (const c of tn.citations) byIndex.set(c.index, c);
     const priorCitations = [...byIndex.values()];
-    armSlowStart();
+    slowStart.arm();
     cancelChat = aiStream(
       "ai_chat",
       { turns: history, priorCitations, contextMessageId: chat.contextMessageId },
       {
         delta: (text) => {
-          clearSlowStart();
+          slowStart.clear();
           if (chat) chat.answer += text;
         },
         toolCall: (id, kind, arg) => {
-          clearSlowStart();
+          slowStart.clear();
           if (chat) chat.steps = [...chat.steps, { id, kind, arg, count: null, done: false }];
         },
         toolDone: (id, count) => {
@@ -102,7 +90,7 @@
             chat.steps = chat.steps.map((s) => (s.id === id ? { ...s, count, done: true } : s));
         },
         done: (citations) => {
-          clearSlowStart();
+          slowStart.clear();
           if (!chat) return;
           chat.turns = [...chat.turns, { role: "assistant", content: chat.answer, citations }];
           chat.answer = "";
@@ -111,7 +99,7 @@
           queueMicrotask(() => followupEl?.focus());
         },
         error: (code, message) => {
-          clearSlowStart();
+          slowStart.clear();
           if (!chat) return;
           // Drop the unanswered question back into the box so it can be retried.
           const last = chat.turns[chat.turns.length - 1];
@@ -147,7 +135,7 @@
     cancelChat = null;
     chat = null;
     followup = "";
-    clearSlowStart();
+    slowStart.clear();
     queueMicrotask(() => inputEl?.focus());
   }
 
@@ -247,7 +235,7 @@
       active = 0;
       chat = null;
       followup = "";
-      clearSlowStart();
+      slowStart.clear();
       queueMicrotask(() => inputEl?.focus());
     }
   });
@@ -415,7 +403,7 @@
             <div class="chat-answer">
               <div class="microlabel chat-label">✦ {t("ai.answer")}</div>
               {#if chat.answer === ""}
-                <span class="thinking">{slowStart ? t("ai.loading_model") : t("ai.thinking")}</span>
+                <span class="thinking">{slowStart.slow ? t("ai.loading_model") : t("ai.thinking")}</span>
               {:else}
                 <div class="chat-text md-body" use:aiLinks>{@html mdLite(chat.answer)}</div>
               {/if}

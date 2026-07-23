@@ -1,8 +1,9 @@
 <script lang="ts">
   import { getVersion } from "@tauri-apps/api/app";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { aiApi, api, errorMessage, type AiProvider, type OrModel } from "../../lib/api";
+  import { aiApi, api, errorMessage, type AiProvider } from "../../lib/api";
   import { getLocale, LOCALES, setLocale, t, type Locale } from "../../lib/i18n/index.svelte";
+  import { createOllamaDetection, ollamaV1 } from "../../lib/ollama-detect.svelte";
   import { mail } from "../../lib/stores/mail.svelte";
   import type { Account } from "../../lib/types";
   import ConnectForm from "./ConnectForm.svelte";
@@ -28,38 +29,12 @@
   let customModel = $state("");
   // Silent Ollama detection, mirroring Settings: an installed, tool-capable
   // catalog turns into clickable chips; any error just means an empty list.
-  let ollamaModels = $state<OrModel[]>([]);
-  let ollamaStatus = $state<"idle" | "some" | "none">("idle");
-  let ollamaGeneration = 0;
+  const ollama = createOllamaDetection(() => customBaseUrl);
 
   function chooseAiProvider(p: AiProvider) {
     aiProvider = p;
     aiError = "";
-    if (p === "custom") void detectOllama();
-  }
-
-  async function detectOllama() {
-    const url = customBaseUrl.trim();
-    if (!url) {
-      // Bump the generation here too, so a still-in-flight probe for the
-      // previous URL can't land afterwards and repaint chips for a field
-      // that's now empty.
-      ++ollamaGeneration;
-      ollamaModels = [];
-      ollamaStatus = "idle";
-      return;
-    }
-    const generation = ++ollamaGeneration;
-    try {
-      const models = await aiApi.ollamaModels(url);
-      if (generation !== ollamaGeneration) return;
-      ollamaModels = models;
-      ollamaStatus = models.length > 0 ? "some" : "none";
-    } catch {
-      if (generation !== ollamaGeneration) return;
-      ollamaModels = [];
-      ollamaStatus = "idle";
-    }
+    if (p === "custom") void ollama.detect();
   }
 
   async function accountConnected(account: Account) {
@@ -191,7 +166,7 @@
           <span class="microlabel">{t("settings.custom_base_url")}</span>
           <input
             bind:value={customBaseUrl}
-            onblur={detectOllama}
+            onblur={ollama.detect}
             placeholder={t("settings.custom_base_url_ph")}
             spellcheck="false"
             autocomplete="off"
@@ -210,11 +185,11 @@
             autocomplete="off"
           />
         </label>
-        {#if ollamaStatus === "some"}
+        {#if ollama.status === "some"}
           <div class="ai-key">
             <span class="microlabel">{t("settings.custom_models_detected")}</span>
             <div class="lang-row">
-              {#each ollamaModels as m (m.id)}
+              {#each ollama.models as m (m.id)}
                 <button
                   type="button"
                   class="lang"
@@ -224,10 +199,7 @@
                     customModel = m.id;
                     // The URL is known-good (detection succeeded) and the key
                     // is optional — a chip pick can finish the setup outright.
-                    // Ollama's OpenAI API lives under /v1; complete a bare root
-                    // so generation doesn't 404 later.
-                    const base = customBaseUrl.trim().replace(/\/+$/, "");
-                    customBaseUrl = base.endsWith("/v1") ? base : `${base}/v1`;
+                    customBaseUrl = ollamaV1(customBaseUrl);
                     void enableAi();
                   }}
                 >
@@ -236,7 +208,7 @@
               {/each}
             </div>
           </div>
-        {:else if ollamaStatus === "none"}
+        {:else if ollama.status === "none"}
           <div class="key-hint">{t("settings.custom_no_tool_models")}</div>
         {/if}
         <div class="key-hint">{t("settings.custom_hint")}</div>

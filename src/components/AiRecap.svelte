@@ -8,7 +8,7 @@
   import { aiLinks } from "../lib/ai-links";
   import { t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
-  import { ai } from "../lib/stores/ai.svelte";
+  import { createSlowStart } from "../lib/slow-start.svelte";
   import { mail } from "../lib/stores/mail.svelte";
   import { ui } from "../lib/stores/ui.svelte";
 
@@ -49,22 +49,10 @@
   let followup = $state("");
   let cancelChat: (() => void) | null = null;
   let bodyEl: HTMLDivElement | undefined = $state();
-  // A custom endpoint's cold start can stall the first token for many seconds —
-  // after 5s of silence, say what is actually happening. Shared between the
-  // initial scan and the follow-up chat since only one of them can be in
-  // flight at a time (the chat only exists once the scan is done).
-  let slowStart = $state(false);
-  let slowTimer: ReturnType<typeof setTimeout> | undefined;
-  function armSlowStart() {
-    clearTimeout(slowTimer);
-    slowStart = false;
-    if (ai.provider !== "custom") return;
-    slowTimer = setTimeout(() => (slowStart = true), 5000);
-  }
-  function clearSlowStart() {
-    clearTimeout(slowTimer);
-    slowStart = false;
-  }
+  // Cold-start hint, shared between the initial scan and the follow-up chat
+  // since only one of them can be in flight at a time (the chat only exists
+  // once the scan is done).
+  const slowStart = createSlowStart();
 
   $effect(() => {
     const folderId = mail.selectedFolderId;
@@ -80,7 +68,7 @@
     progress = null;
     scannedTotal = 0;
     markedCount = 0;
-    clearSlowStart();
+    slowStart.clear();
     cancel = aiStream(
       "ai_recap",
       { folderId },
@@ -90,16 +78,16 @@
           if (total > scannedTotal) scannedTotal = total;
           // A cold model start can leave the counter frozen at N/N after the
           // scan itself finishes — re-arm on every progress tick.
-          armSlowStart();
+          slowStart.arm();
         },
         delta: (chunk) => {
-          clearSlowStart();
+          slowStart.clear();
           status = "streaming";
           progress = null;
           text += chunk;
         },
         done: (cited) => {
-          clearSlowStart();
+          slowStart.clear();
           status = "done";
           citations = cited;
           markRead(cited);
@@ -117,7 +105,7 @@
           };
         },
         error: (code, message) => {
-          clearSlowStart();
+          slowStart.clear();
           status = "error";
           text = code === "ai_key" ? t("ai.needs_key") : message;
         },
@@ -162,17 +150,17 @@
     const byIndex = new Map<number, Citation>();
     for (const tn of chat.turns) for (const c of tn.citations) byIndex.set(c.index, c);
     const priorCitations = [...byIndex.values()];
-    armSlowStart();
+    slowStart.arm();
     cancelChat = aiStream(
       "ai_chat",
       { turns: history, priorCitations, contextMessageId: null },
       {
         delta: (chunk) => {
-          clearSlowStart();
+          slowStart.clear();
           if (chat) chat.answer += chunk;
         },
         toolCall: (id, kind, arg) => {
-          clearSlowStart();
+          slowStart.clear();
           if (chat) chat.steps = [...chat.steps, { id, kind, arg, count: null, done: false }];
         },
         toolDone: (id, count) => {
@@ -180,7 +168,7 @@
             chat.steps = chat.steps.map((s) => (s.id === id ? { ...s, count, done: true } : s));
         },
         done: (cited) => {
-          clearSlowStart();
+          slowStart.clear();
           if (!chat) return;
           chat.turns = [...chat.turns, { role: "assistant", content: chat.answer, citations: cited }];
           chat.answer = "";
@@ -188,7 +176,7 @@
           chat.status = "done";
         },
         error: (code, message) => {
-          clearSlowStart();
+          slowStart.clear();
           if (!chat) return;
           // Drop the unanswered question back into the box so it can be retried.
           const last = chat.turns[chat.turns.length - 1];
@@ -238,7 +226,7 @@
     {#if status === "scanning"}
       <div class="progress">
         <span class="spinner"></span>
-        {#if slowStart}
+        {#if slowStart.slow}
           {t("ai.loading_model")}
         {:else}
           {t("ai.recap_reading")}
@@ -333,7 +321,7 @@
               <div class="chat-answer">
                 <div class="microlabel chat-label">✦ {t("ai.answer")}</div>
                 {#if chat.answer === ""}
-                  <span class="thinking">{slowStart ? t("ai.loading_model") : t("ai.thinking")}</span>
+                  <span class="thinking">{slowStart.slow ? t("ai.loading_model") : t("ai.thinking")}</span>
                 {:else}
                   <div class="chat-text md-body" use:aiLinks>{@html mdLite(chat.answer)}</div>
                 {/if}

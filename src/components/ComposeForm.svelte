@@ -3,8 +3,10 @@
   // its own native window (Composer.svelte, `chrome` on) and inline in the
   // reading pane for editing a draft from the Drafts folder (`chrome` off).
   import { onDestroy } from "svelte";
-  import { aiApi, aiStream, api, errorMessage, type AiProvider } from "../lib/api";
+  import { aiStream, api, errorMessage } from "../lib/api";
   import { t } from "../lib/i18n/index.svelte";
+  import { createSlowStart } from "../lib/slow-start.svelte";
+  import { ai } from "../lib/stores/ai.svelte";
   import type { Account, Draft, DraftAttachment } from "../lib/types";
   import AddressInput from "./AddressInput.svelte";
 
@@ -180,23 +182,7 @@
   });
   let aiBusy = $state(false);
   let cancelAi: (() => void) | null = null;
-  // The composer runs in its own window, where the shared `ai` store is never
-  // refreshed — track the provider from this component's own keyStatus fetch.
-  let aiProviderName = $state<AiProvider>("anthropic");
-  // A custom endpoint's cold start can stall the first token for many seconds
-  // — after 5s of silence, say what is actually happening.
-  let slowStart = $state(false);
-  let slowTimer: ReturnType<typeof setTimeout> | undefined;
-  function armSlowStart() {
-    clearTimeout(slowTimer);
-    slowStart = false;
-    if (aiProviderName !== "custom") return;
-    slowTimer = setTimeout(() => (slowStart = true), 5000);
-  }
-  function clearSlowStart() {
-    clearTimeout(slowTimer);
-    slowStart = false;
-  }
+  const slowStart = createSlowStart();
   /** Quoted original (reply/forward), preserved below AI-generated text. */
   let quotedTail = "";
 
@@ -227,12 +213,10 @@
     return { subject, body };
   }
 
+  // The composer runs in its own window with its own copy of the `ai` store;
+  // refresh it here so this webview sees the active provider and key too.
   $effect(() => {
-    void aiApi.keyStatus().then((s) => {
-      aiAvailable =
-        s.provider === "custom" ? s.custom : s.provider === "openrouter" ? s.openrouter : s.anthropic;
-      aiProviderName = s.provider;
-    });
+    void ai.refresh().then(() => (aiAvailable = ai.keyPresent));
   });
 
   function splitQuote(body: string): [string, string] {
@@ -277,7 +261,7 @@
     aiBusy = true;
     error = "";
     draft.body = quotedTail;
-    armSlowStart();
+    slowStart.arm();
     let streamed = "";
     // The pending instruction rides along with the settled history for the
     // request, but it isn't committed to `convo` until it succeeds — so a
@@ -295,7 +279,7 @@
       },
       {
         delta: (text) => {
-          clearSlowStart();
+          slowStart.clear();
           streamed += text;
           if (!draft) return;
           // Replies stream straight into the body; new mail has its subject
@@ -309,7 +293,7 @@
           draft.body = quotedTail ? `${body}\n${quotedTail}` : body;
         },
         done: () => {
-          clearSlowStart();
+          slowStart.clear();
           const text = streamed.trim();
           if (text) {
             // Success — commit the exchange to the session and (only now) clear
@@ -327,7 +311,7 @@
           scheduleSave();
         },
         error: (_code, message) => {
-          clearSlowStart();
+          slowStart.clear();
           aiBusy = false;
           error = message;
           // The instruction was never committed or cleared, so it's still in
@@ -375,7 +359,7 @@
   function stopAi() {
     cancelAi?.();
     aiBusy = false;
-    clearSlowStart();
+    slowStart.clear();
     // The pending instruction was never committed to the session, so it stays
     // put in the input — nothing to roll back.
   }
@@ -619,7 +603,7 @@
           <!-- Progress indicator: kept OUTSIDE the scrollable thread so a tall
                instruction can't push it below the fold — it must stay visible
                the whole time the draft is streaming. -->
-          <div class="ai-thinking">✦ {slowStart ? t("ai.loading_model") : t("ai.thinking")}</div>
+          <div class="ai-thinking">✦ {slowStart.slow ? t("ai.loading_model") : t("ai.thinking")}</div>
         {/if}
         <form
           class="ai-input"
