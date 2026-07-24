@@ -21,10 +21,10 @@ const ROOT = resolve(DIR, "..");
 const DOCS = resolve(ROOT, "docs");
 const TMP = resolve(DIR, "output");
 const PORT = 1421;
-const BASE = `http://localhost:${PORT}`;
+const BASE = `http://127.0.0.1:${PORT}`;
 // Capture the three-pane layout at 3:2, then downscale to OUT_W wide (aspect kept).
 const SIZE = { width: 1600, height: 1068 };
-const OUT_W = 800;
+const OUT_W = 1280;
 
 // Themes are two-axis ("<cold|warm>-<light|dark>"). The landing shows a light and a
 // dark shot; both use the warm palette, which is the app's default temperature.
@@ -72,7 +72,7 @@ async function startServer() {
   // real Vite process leaks, wedging port 1421 for the next run.
   const viteBin = resolve(ROOT, "node_modules", "vite", "bin", "vite.js");
   if (!existsSync(viteBin)) throw new Error("Vite not found at " + viteBin + " — run `npm install`.");
-  const proc = spawn(process.execPath, [viteBin, "--config", "demo/vite.demo.config.ts"], {
+  const proc = spawn(process.execPath, [viteBin, "--config", "demo/vite.demo.config.ts", "--host", "127.0.0.1"], {
     cwd: ROOT, stdio: "inherit",
   });
   for (let i = 0; i < 120; i++) {
@@ -86,7 +86,7 @@ async function shoot(browser, { name, theme }) {
   const context = await browser.newContext({ viewport: SIZE, deviceScaleFactor: 2 });
   await context.addInitScript((t) => { try { localStorage.setItem("skimdemo.theme", t); } catch {} }, theme);
   const page = await context.newPage();
-  await page.goto(BASE + "/");
+  await page.goto(BASE + "/", { waitUntil: "domcontentloaded" });
   await page.locator(".row", { hasText: "Q3 launch" }).first().waitFor({ timeout: 15000 });
   // Open the hero thread so the reading pane is populated (three-pane look).
   await page.locator('.row:has-text("Q3 launch")').first().click();
