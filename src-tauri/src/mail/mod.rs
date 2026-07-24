@@ -5,6 +5,7 @@ pub mod oauth;
 pub mod parse;
 pub mod sanitize;
 pub mod smtp;
+pub mod suspicion;
 pub mod sync;
 pub mod threading;
 

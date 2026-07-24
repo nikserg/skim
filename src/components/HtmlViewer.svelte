@@ -4,13 +4,66 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { ui } from "../lib/stores/ui.svelte";
   import { t } from "../lib/i18n/index.svelte";
+  import type { LinkFlag } from "../lib/types";
 
-  let { html }: { html: string } = $props();
+  let {
+    html,
+    security = null,
+    onHoverUrl,
+  }: {
+    html: string;
+    /** Per-link phishing verdicts from the backend, keyed by raw href. */
+    security?: LinkFlag[] | null;
+    /** Reports the real destination under the cursor (null = left links). */
+    onHoverUrl?: (url: string | null) => void;
+  } = $props();
 
   let iframe: HTMLIFrameElement | undefined = $state();
   let height = $state(120);
   let resizeObs: ResizeObserver | null = null;
   let observedDoc: Document | null = null;
+
+  // The backend matched verdicts against the raw href attribute, so lookups
+  // here must use getAttribute("href") too — never .href, which normalizes.
+  const flags = $derived(new Map((security ?? []).map((f) => [f.href, f])));
+
+  // Click-time gate for a flagged link: tiny popover at the click point with
+  // the real host and the reason; nothing opens until "Open anyway".
+  let gate = $state<{ flag: LinkFlag; x: number; y: number } | null>(null);
+  let gateEl: HTMLDivElement | undefined = $state();
+
+  $effect(() => {
+    if (!gate) return;
+    gateEl?.focus();
+    const dismiss = () => (gate = null);
+    // Capture phase + stopPropagation: while the gate is open, Escape closes
+    // only the gate — the app's own window-level Escape (which deselects the
+    // whole message) must not see the event.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        dismiss();
+      }
+    };
+    // The reading pane scrolls in the parent document; a fixed popover would
+    // detach from its link, so any scroll closes it. Clicks land either in
+    // the parent (pointerdown here) or inside the iframe (its own handler
+    // replaces or reopens the gate).
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("pointerdown", dismiss);
+    window.addEventListener("scroll", dismiss, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("pointerdown", dismiss);
+      window.removeEventListener("scroll", dismiss, true);
+    };
+  });
+
+  function openGateLink() {
+    const href = gate?.flag.href;
+    gate = null;
+    if (href) void openUrl(href);
+  }
 
   // Attach measurement as soon as the srcdoc document's DOM exists — do NOT
   // wait for the iframe's `load` event. `load` fires only once every remote
@@ -146,11 +199,39 @@
     doc.addEventListener("contextmenu", (e) => e.preventDefault());
     doc.addEventListener("click", (e) => {
       const target = (e.target as HTMLElement | null)?.closest("a");
-      if (target) {
-        e.preventDefault();
-        const href = target.getAttribute("href");
-        if (href && /^https?:/i.test(href)) void openUrl(href);
+      if (!target) {
+        gate = null;
+        return;
       }
+      e.preventDefault();
+      const href = target.getAttribute("href");
+      if (!href || !/^https?:/i.test(href)) return;
+      const flag = flags.get(href);
+      if (!flag) {
+        gate = null;
+        void openUrl(href);
+        return;
+      }
+      // Click coords are iframe-local; the iframe never scrolls internally
+      // (its height tracks content), so iframe rect + coords = viewport.
+      const rect = iframe?.getBoundingClientRect();
+      const x = (rect?.left ?? 0) + e.clientX;
+      const y = (rect?.top ?? 0) + e.clientY;
+      gate = {
+        flag,
+        x: Math.max(8, Math.min(x, window.innerWidth - 336)),
+        y: Math.max(8, Math.min(y + 8, window.innerHeight - 180)),
+      };
+    });
+    // Hover preview: report the real destination to the status bar. Entering
+    // anything that isn't a link (or leaving the document) clears it.
+    doc.addEventListener("mouseover", (e) => {
+      const a = (e.target as HTMLElement | null)?.closest("a");
+      const href = a?.getAttribute("href");
+      onHoverUrl?.(href && /^(https?|mailto):/i.test(href) ? href : null);
+    });
+    doc.addEventListener("mouseout", (e) => {
+      if (!e.relatedTarget) onHoverUrl?.(null);
     });
   }
 
@@ -172,6 +253,26 @@
   style="height: {height}px"
 ></iframe>
 
+{#if gate}
+  <div
+    bind:this={gateEl}
+    class="gate"
+    role="alertdialog"
+    aria-label={t("security.link_gate_title", { host: gate.flag.host })}
+    tabindex="-1"
+    style="left: {gate.x}px; top: {gate.y}px"
+    onpointerdown={(e) => e.stopPropagation()}
+  >
+    <div class="gate-title">{t("security.link_gate_title", { host: gate.flag.host })}</div>
+    {#each gate.flag.reasons as r (r.code)}
+      <div class="gate-reason">{t(`security.link.${r.code}`, { param: r.param ?? "" })}</div>
+    {/each}
+    <div class="gate-actions">
+      <button class="gate-open" onclick={openGateLink}>{t("security.open_anyway")}</button>
+    </div>
+  </div>
+{/if}
+
 <style>
   iframe {
     width: 100%;
@@ -179,5 +280,48 @@
     display: block;
     background: var(--surface);
     border-radius: var(--radius-m);
+  }
+
+  /* Link-safety gate. Neutral surface; danger tone only where it matters —
+     this is a security affordance, not an AI feature, so no accent. */
+  .gate {
+    position: fixed;
+    z-index: 40;
+    max-width: 328px;
+    padding: 10px 12px;
+    background: var(--surface-raised);
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--radius-m);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+    outline: none;
+  }
+  .gate-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--danger);
+    overflow-wrap: anywhere;
+  }
+  .gate-reason {
+    margin-top: 4px;
+    font-size: 12.5px;
+    color: var(--text-dim);
+  }
+  .gate-actions {
+    margin-top: 8px;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .gate-open {
+    font-size: 12.5px;
+    padding: 4px 10px;
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--radius-s);
+    background: none;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .gate-open:hover {
+    color: var(--text);
+    border-color: var(--danger);
   }
 </style>

@@ -14,8 +14,9 @@ use crate::secrets;
 use futures::StreamExt;
 use serde_json::json;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Mutex};
 
 const INBOX_WINDOW: u32 = 500;
 const FOLDER_WINDOW: u32 = 200;
@@ -24,6 +25,13 @@ const CHUNK: u32 = 100;
 // rest (other folders, read state from other devices) — it can run infrequently.
 const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(300);
 const IDLE_REISSUE: std::time::Duration = std::time::Duration::from_secs(25 * 60);
+// Ceiling on the actual body FETCH from the server, so a stalled socket can't
+// wedge the worker (and thus every later command) indefinitely.
+const BODY_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+// How long a `get_message_body` caller waits for the worker to service its
+// request — longer than BODY_FETCH_TIMEOUT so the worker's own error wins, but
+// still bounded in case the worker is stuck on some other un-timed op.
+const BODY_FETCH_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
 
 pub enum SyncCommand {
     SyncAll,
@@ -39,6 +47,9 @@ pub enum SyncCommand {
 #[derive(Clone)]
 pub struct SyncHandle {
     pub tx: mpsc::UnboundedSender<SyncCommand>,
+    // A separate connection dedicated to interactive body fetches, so opening a
+    // message never queues behind a long background sync on the main one.
+    pub fetch_tx: mpsc::UnboundedSender<SyncCommand>,
 }
 
 impl SyncHandle {
@@ -50,17 +61,25 @@ impl SyncHandle {
     }
     pub fn stop(&self) {
         let _ = self.tx.send(SyncCommand::Stop);
+        let _ = self.fetch_tx.send(SyncCommand::Stop);
     }
     pub async fn fetch_body(&self, message_pk: i64) -> Result<()> {
         let (respond, rx) = oneshot::channel();
-        self.tx
+        // Route to the dedicated fetch connection, not the sync worker.
+        self.fetch_tx
             .send(SyncCommand::FetchBody {
                 message_pk,
                 respond,
             })
             .map_err(|_| SkimError::other("sync", "sync engine is not running"))?;
-        rx.await
-            .map_err(|_| SkimError::other("sync", "sync engine dropped the request"))?
+        // The fetch connection is serial too, so bound the wait: a stalled
+        // socket must surface as an error, not hang the reading pane forever.
+        match tokio::time::timeout(BODY_FETCH_WAIT, rx).await {
+            Ok(res) => {
+                res.map_err(|_| SkimError::other("sync", "sync engine dropped the request"))?
+            }
+            Err(_) => Err(SkimError::other("sync", "timed out fetching message body")),
+        }
     }
 }
 
@@ -71,7 +90,9 @@ struct Engine {
     data_dir: PathBuf,
     session: Option<imap_client::Session>,
     selected: Option<String>,
-    oauth_token: Option<(String, i64)>,
+    // Shared between the sync and body-fetch connections so they never refresh
+    // (and, for Microsoft, rotate) the stored OAuth token concurrently.
+    oauth_token: Arc<Mutex<Option<(String, i64)>>>,
 }
 
 /// A folder's server-side STATUS snapshot. When an untouched folder reports the
@@ -86,9 +107,50 @@ struct FolderStatus {
 
 pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> SyncHandle {
     let (tx, mut rx) = mpsc::unbounded_channel::<SyncCommand>();
-    let handle = SyncHandle { tx: tx.clone() };
+    let (fetch_tx, mut fetch_rx) = mpsc::unbounded_channel::<SyncCommand>();
+    let handle = SyncHandle {
+        tx: tx.clone(),
+        fetch_tx: fetch_tx.clone(),
+    };
 
     spawn_idle_watcher(account.clone(), tx.clone());
+
+    // One OAuth token cache, shared by both connections.
+    let oauth: Arc<Mutex<Option<(String, i64)>>> = Arc::new(Mutex::new(None));
+
+    // Dedicated connection for interactive body fetches. It only ever handles
+    // FetchBody, on its own IMAP session, so opening a message stays instant
+    // even while the main connection is mid-way through a long sync.
+    {
+        let mut fetcher = Engine {
+            app: app.clone(),
+            db: db.clone(),
+            account: account.clone(),
+            data_dir: data_dir.clone(),
+            session: None,
+            selected: None,
+            oauth_token: oauth.clone(),
+        };
+        tauri::async_runtime::spawn(async move {
+            while let Some(cmd) = fetch_rx.recv().await {
+                match cmd {
+                    SyncCommand::Stop => break,
+                    SyncCommand::FetchBody {
+                        message_pk,
+                        respond,
+                    } => {
+                        let result = fetcher.fetch_body(message_pk).await;
+                        if result.is_err() {
+                            fetcher.reset_session();
+                        }
+                        let _ = respond.send(result);
+                    }
+                    _ => {}
+                }
+            }
+            fetcher.logout().await;
+        });
+    }
 
     tauri::async_runtime::spawn(async move {
         let mut engine = Engine {
@@ -98,7 +160,7 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
             data_dir,
             session: None,
             selected: None,
-            oauth_token: None,
+            oauth_token: oauth,
         };
 
         let mut poll = tokio::time::interval(POLL_INTERVAL);
@@ -118,14 +180,10 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
                             engine.sync_inbox().await;
                         }
                         Some(SyncCommand::RunOps) => engine.drain_ops().await,
-                        Some(SyncCommand::FetchBody { message_pk, respond }) => {
-                            let result = engine.fetch_body(message_pk).await;
-                            if result.is_err() {
-                                // A broken session poisons every later fetch.
-                                engine.reset_session();
-                            }
-                            let _ = respond.send(result);
-                        }
+                        // Interactive body fetches run on the dedicated fetch
+                        // connection (see `spawn`), never here — opening a
+                        // message must not queue behind a long sync.
+                        Some(SyncCommand::FetchBody { .. }) => {}
                     }
                 }
                 _ = poll.tick() => {
@@ -245,9 +303,13 @@ impl Engine {
 
     async fn session(&mut self) -> Result<&mut imap_client::Session> {
         if self.session.is_none() {
-            let mut cache = self.oauth_token.take();
-            let creds = resolve_credentials(&self.account, &mut cache).await?;
-            self.oauth_token = cache;
+            // Hold the shared token cache only across the (possibly refreshing)
+            // credential resolve, so the two connections can't refresh at once.
+            let creds = {
+                let cache = self.oauth_token.clone();
+                let mut cache = cache.lock().await;
+                resolve_credentials(&self.account, &mut cache).await?
+            };
             let session = imap_client::login(
                 &self.account.imap_host,
                 self.account.imap_port,
@@ -805,19 +867,22 @@ impl Engine {
 
         self.ensure_selected(&imap_name).await?;
         let session = self.session().await?;
-        let mut raw: Option<Vec<u8>> = None;
-        {
+        let raw: Option<Vec<u8>> = tokio::time::timeout(BODY_FETCH_TIMEOUT, async {
             let mut stream = session
                 .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
                 .await
                 .map_err(imap_err)?;
+            let mut raw: Option<Vec<u8>> = None;
             while let Some(item) = stream.next().await {
                 let f = item.map_err(imap_err)?;
                 if f.uid == Some(uid) {
                     raw = f.body().map(|b| b.to_vec());
                 }
             }
-        }
+            Ok::<_, SkimError>(raw)
+        })
+        .await
+        .map_err(|_| SkimError::other("network", "timed out fetching message body"))??;
         let Some(raw) = raw else {
             return Err(SkimError::other("mail", "server returned no message body"));
         };
@@ -862,6 +927,19 @@ impl Engine {
         let html = parsed.html;
         let text = parsed.text;
         let snippet = parsed.snippet;
+
+        // Messages synced before migration 0008 have no auth columns; the raw
+        // payload here starts with the full header block, so backfill them the
+        // first time the body is fetched. NULL-guarded: never overwrite what
+        // header sync already stored.
+        let hdr = parse::parse_headers("", 0, 0, &raw, None, None, false, false, false);
+        let (reply_to, spf, dkim, dmarc) = (
+            hdr.reply_to_addr,
+            hdr.auth_spf,
+            hdr.auth_dkim,
+            hdr.auth_dmarc,
+        );
+
         self.db
             .call(move |conn| {
                 bodies::set_body(
@@ -871,7 +949,17 @@ impl Engine {
                     text.as_deref(),
                     &snippet,
                     &stored,
-                )
+                )?;
+                conn.execute(
+                    "UPDATE messages SET
+                         reply_to_addr = COALESCE(reply_to_addr, ?2),
+                         auth_spf      = COALESCE(auth_spf, ?3),
+                         auth_dkim     = COALESCE(auth_dkim, ?4),
+                         auth_dmarc    = COALESCE(auth_dmarc, ?5)
+                     WHERE id = ?1",
+                    rusqlite::params![message_pk, reply_to, spf, dkim, dmarc],
+                )?;
+                Ok(())
             })
             .await?;
         Ok(())
@@ -1138,9 +1226,11 @@ impl Engine {
             false,
         )?;
 
-        let mut cache = self.oauth_token.take();
-        let creds = resolve_credentials(&self.account, &mut cache).await?;
-        self.oauth_token = cache;
+        let creds = {
+            let cache = self.oauth_token.clone();
+            let mut cache = cache.lock().await;
+            resolve_credentials(&self.account, &mut cache).await?
+        };
         smtp::send(&self.account, &creds, &raw).await?;
 
         let sent_folder_id = self.mirror_to_sent(&raw).await;
@@ -1320,9 +1410,11 @@ impl Engine {
 
         let raw = smtp::build_calendar_reply(&self.account, &to, &subject, &text_body, &ics)?;
 
-        let mut cache = self.oauth_token.take();
-        let creds = resolve_credentials(&self.account, &mut cache).await?;
-        self.oauth_token = cache;
+        let creds = {
+            let cache = self.oauth_token.clone();
+            let mut cache = cache.lock().await;
+            resolve_credentials(&self.account, &mut cache).await?
+        };
         smtp::send(&self.account, &creds, &raw).await?;
 
         Ok(self.mirror_to_sent(&raw).await)
@@ -1376,9 +1468,11 @@ impl Engine {
                 }
                 let raw = smtp::build_unsubscribe_mail(&self.account, to, subject)?;
 
-                let mut cache = self.oauth_token.take();
-                let creds = resolve_credentials(&self.account, &mut cache).await?;
-                self.oauth_token = cache;
+                let creds = {
+                    let cache = self.oauth_token.clone();
+                    let mut cache = cache.lock().await;
+                    resolve_credentials(&self.account, &mut cache).await?
+                };
                 smtp::send(&self.account, &creds, &raw).await?;
                 Ok(None)
             }

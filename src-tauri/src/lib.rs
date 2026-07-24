@@ -10,7 +10,42 @@ pub mod secrets;
 pub mod state;
 
 use state::AppState;
+use std::path::PathBuf;
 use tauri::Manager;
+
+/// Roaming app-data dir (`%APPDATA%\com.skim.app`) — the same place Tauri's
+/// `app_data_dir()` resolves to on Windows, computed without an `AppHandle` so
+/// the panic hook can reach it before setup runs.
+fn app_data_dir() -> Option<PathBuf> {
+    std::env::var_os("APPDATA").map(|p| PathBuf::from(p).join("com.skim.app"))
+}
+
+/// A panic in a windowed release build has nowhere to print — stderr is not
+/// attached — so a crash inside a DB closure or the sync worker would just look
+/// like a freeze. Record every panic (payload + location) to `skim-panic.log`
+/// and to the tracing log, then chain the default hook.
+fn install_panic_hook() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        tracing::error!(target: "skim_lib", "panic: {info}");
+        if let Some(dir) = app_data_dir() {
+            let _ = std::fs::create_dir_all(&dir);
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(dir.join("skim-panic.log"))
+            {
+                use std::io::Write;
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let _ = writeln!(f, "[{ts}] {info}");
+            }
+        }
+        default(info);
+    }));
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -26,6 +61,8 @@ pub fn run() {
             .with(filter)
             .init();
     }
+
+    install_panic_hook();
 
     // ring is the only rustls crypto backend we compile (Cargo.toml disables the
     // default aws-lc one), but keep the explicit install: if a dependency ever

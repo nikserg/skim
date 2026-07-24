@@ -168,6 +168,21 @@
 
   let detail = $state<ThreadDetail | null>(null);
   let bodies = $state<Record<number, RenderedBody | "loading" | "error">>({});
+  // Real destination of the link under the cursor (browser-style status bar).
+  let hoverUrl = $state<string | null>(null);
+
+  // Security verdict of the AI-target message's loaded body; gates the
+  // "check for phishing" quick chip so it only exists for flagged mail.
+  const targetSecurity = $derived.by(() => {
+    const id = replyTarget?.id;
+    if (id == null) return null;
+    const b = bodies[id];
+    return typeof b === "object" ? (b.security ?? null) : null;
+  });
+  const targetFlagged = $derived(
+    targetSecurity !== null &&
+      (targetSecurity.sender.length > 0 || targetSecurity.links.length > 0),
+  );
   // Per-message unsubscribe state: true once the user clicks the chip.
   let unsubscribed = $state<Record<number, boolean>>({});
   let loadedFor = $state<string | null>(null);
@@ -636,6 +651,13 @@
           <button class="quick-btn" onclick={() => quickPrompt(t("ai.prompt_translate"))}>
             {t("ai.translate")}
           </button>
+          {#if targetFlagged}
+            <!-- Contextual: only exists when local heuristics flagged this
+                 message, so honest mail never grows an extra button. -->
+            <button class="quick-btn" onclick={() => quickPrompt(t("ai.prompt_phishing"))}>
+              {t("ai.check_phishing")}
+            </button>
+          {/if}
         </div>
       </div>
     {/if}
@@ -650,6 +672,11 @@
       {/if}
       <button class="btn" onclick={() => reply("forward")}>{t("reading.forward")}<kbd>F</kbd></button>
     </footer>
+
+    {#if hoverUrl}
+      <!-- Browser-style status bar: the real destination of the hovered link. -->
+      <div class="statusbar">{hoverUrl}</div>
+    {/if}
   {/if}
 </section>
 
@@ -684,6 +711,24 @@
         <button class="linkish" onclick={() => loadBody(message.id)}>{t("reading.retry")}</button>
       </div>
     {:else}
+      {#if body.security && body.security.sender.length > 0}
+        <!-- Danger-toned sibling of the images bar: message-level phishing
+             signals. Informational — nothing is blocked, links get their own
+             click-time gate. -->
+        <div class="security-bar">
+          <span class="security-title">{t("security.banner")}</span>
+          <span class="security-reasons">
+            {body.security.sender
+              .map((r) => t(`security.reason.${r.code}`, { param: r.param ?? "" }))
+              .join(" · ")}
+          </span>
+          {#if ai.keyPresent}
+            <button class="linkish ai-check" onclick={() => quickPrompt(t("ai.prompt_phishing"))}>
+              ✦ {t("security.check_ai")}
+            </button>
+          {/if}
+        </div>
+      {/if}
       {#if body.blockedImages > 0}
         <div class="images-bar">
           {t("reading.images_blocked", { n: body.blockedImages })}
@@ -716,13 +761,21 @@
           <details class="orig-body">
             <summary class="linkish">{t("invite.show_original")}</summary>
             <div class="body">
-              <HtmlViewer html={body.html} />
+              <HtmlViewer
+                html={body.html}
+                security={body.security?.links}
+                onHoverUrl={(u) => (hoverUrl = u)}
+              />
             </div>
           </details>
         {/if}
       {:else}
         <div class="body">
-          <HtmlViewer html={body.html} />
+          <HtmlViewer
+            html={body.html}
+            security={body.security?.links}
+            onHoverUrl={(u) => (hoverUrl = u)}
+          />
         </div>
       {/if}
       {#if body.attachments.length > 0}
@@ -759,6 +812,8 @@
     flex-direction: column;
     background: var(--surface);
     min-width: 0;
+    /* Anchors the link-destination status bar. */
+    position: relative;
   }
 
   .placeholder {
@@ -1103,6 +1158,47 @@
     gap: 8px;
     flex-wrap: wrap;
     align-items: center;
+  }
+  /* Structurally the images bar, but danger-toned: message-level phishing
+     signals. Danger only on the border and title — not the AI accent. */
+  .security-bar {
+    margin-top: 12px;
+    padding: 8px 12px;
+    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+    border-radius: var(--radius-s);
+    font-size: 12.5px;
+    color: var(--text-dim);
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .security-title {
+    color: var(--danger);
+    font-weight: 600;
+  }
+  /* The one AI entry point in the banner — accent is correct here. */
+  .ai-check {
+    color: var(--accent);
+  }
+  /* Browser-style status bar for the hovered link's real destination. */
+  .statusbar {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    z-index: 30;
+    max-width: 70%;
+    padding: 3px 8px;
+    background: var(--surface-raised);
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--radius-s);
+    font-family: Consolas, monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
   }
   .linkish {
     color: var(--text);

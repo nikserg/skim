@@ -116,6 +116,21 @@ export const INBOX_THREADS = [
     hasAttachments: true,
     messageCount: 4,
   },
+  // The phishing fixture: shows the security banner, the link click-gate, and
+  // the "Check for phishing" AI chip. Read + oldest so the scripted tour and
+  // the recap's "3 unread" stay untouched.
+  {
+    id: 108,
+    fromName: "Microsoft account team",
+    fromAddr: "security@rnicrosoft-alerts.example",
+    subject: "Unusual sign-in activity on your account",
+    snippet: "We detected an unusual sign-in attempt to your account. Verify your identity within 24 hours…",
+    date: NOW - 3 * D - 6 * H,
+    isRead: true,
+    isStarred: false,
+    hasAttachments: false,
+    messageCount: 1,
+  },
 ];
 
 // Threads shown in other folders (kept short — the demo mostly lives in Inbox).
@@ -270,10 +285,36 @@ const DESIGN_BODY = `
 
 const GENERIC_BODY = `<p>Hi Alex,</p><p>Just following up on the thread below — let me know your thoughts when you get a moment.</p><p>Thanks!</p>`;
 
+// Classic credential phish: urgency, a link whose text shows Microsoft but
+// whose href is a raw IP, and a shortener as the "backup" link.
+const PHISHING_BODY = `
+<p>Dear Customer,</p>
+<p>We detected an <strong>unusual sign-in attempt</strong> to your account from a new device. If this wasn't you, your account will be suspended within <strong>24 hours</strong>.</p>
+<p>Please verify your identity immediately:</p>
+<p><a href="https://185.199.1.1/verify" rel="noopener noreferrer">https://account.microsoft.com/security</a></p>
+<p>Or use our quick verification portal: <a href="https://bit.ly/ms-secure-check" rel="noopener noreferrer">Verify now</a></p>
+<p>Microsoft account team</p>
+`;
+
 const BODIES: Record<number, string> = {
   101: HERO_BODY,
   102: CONTRACT_BODY,
   103: DESIGN_BODY,
+  108: PHISHING_BODY,
+};
+
+// What the Rust heuristics would return for the phishing fixture: DMARC fail
+// + foreign Reply-To at message level; an IP-host link and (because the
+// sender is already suspicious) the shortener soft signal.
+const PHISHING_SECURITY = {
+  sender: [
+    { code: "auth_dmarc_fail", param: null },
+    { code: "reply_to_mismatch", param: "verify-account-support.example" },
+  ],
+  links: [
+    { href: "https://185.199.1.1/verify", host: "185.199.1.1", reasons: [{ code: "ip", param: null }] },
+    { href: "https://bit.ly/ms-secure-check", host: "bit.ly", reasons: [{ code: "shortener", param: null }] },
+  ],
 };
 
 export function bodyFor(threadId: number): string {
@@ -329,6 +370,7 @@ export function renderedBody(messageId: number) {
     fromAddr: null,
     attachments,
     invite: null,
+    security: messageId === 1081 ? PHISHING_SECURITY : null,
   };
 }
 
@@ -509,6 +551,16 @@ Two open questions: whether to announce the API beta on day one or hold it for t
 
 The checklist and the draft press note are attached. Anna proposes a 30-minute sync on Thursday morning.`;
 
+// The "Check for phishing" quick chip on the flagged fixture email.
+export const AI_PHISHING = `**Yes — this is almost certainly phishing.** Don't click either link.
+
+- The sender claims to be Microsoft, but the address is **rnicrosoft-alerts.example** — "rn" imitating "m", and the domain **failed DMARC** authentication.
+- The main link *shows* account.microsoft.com but actually opens a **raw IP address** (185.199.1.1) — the classic display/target trick.
+- The backup link hides its destination behind a **shortener** (bit.ly), and replies would go to a completely different domain.
+- The "verify within 24 hours or be suspended" pressure is a standard urgency tactic.
+
+If you're unsure about your account, open microsoft.com directly in your browser — never through links in a message like this. Mark it as spam and move on.`;
+
 export const AI_CHAT = {
   answer: `The **Q3 launch is this Thursday**. The landing page is owned by your team — Anna asked for a final copy pass by **Wednesday EOD** [1]. Priya also moved the onboarding **design review to Friday at 10:00**, so it won't collide with launch day [2].`,
   steps: [
@@ -553,6 +605,7 @@ export function askAnswer(turns: Turn[] | undefined): string {
   const last = (asked[asked.length - 1]?.content ?? "").toLowerCase();
   if (last.startsWith("summarize")) return AI_SUMMARY;
   if (last.startsWith("translate")) return AI_TRANSLATE;
+  if (last.startsWith("is this email a phishing")) return AI_PHISHING;
   return asked.length > 1 ? AI_ASK_FOLLOWUP : AI_ASK;
 }
 

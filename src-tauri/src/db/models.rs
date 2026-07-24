@@ -126,6 +126,36 @@ pub struct InviteView {
     pub can_rsvp: bool,
 }
 
+/// A single fired phishing heuristic, shipped to the UI as a code the i18n
+/// layer turns into words. `param` carries the value the wording interpolates
+/// (a domain, an address), never English text.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignalReason {
+    pub code: String,
+    pub param: Option<String>,
+}
+
+/// Verdict for one suspicious link in the rendered body. `href` is the exact
+/// attribute string as it appears in the sanitized HTML — the frontend matches
+/// it via `getAttribute("href")`, so no URL normalization on either side.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkFlag {
+    pub href: String,
+    pub host: String,
+    pub reasons: Vec<SignalReason>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecuritySignals {
+    /// Message-level signals (failed authentication, lookalike sender, …).
+    pub sender: Vec<SignalReason>,
+    /// Per-link warnings for the click-time gate.
+    pub links: Vec<LinkFlag>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderedBody {
@@ -136,6 +166,9 @@ pub struct RenderedBody {
     pub from_addr: Option<String>,
     pub attachments: Vec<AttachmentMeta>,
     pub invite: Option<InviteView>,
+    /// Phishing heuristics; `None` when nothing fired, so honest mail costs
+    /// the wire nothing and the UI shows nothing.
+    pub security: Option<SecuritySignals>,
 }
 
 /// Headers of a message as parsed from the wire, ready for insertion.
@@ -162,4 +195,11 @@ pub struct NewMessage {
     pub list_unsubscribe: Option<String>,
     /// `List-Unsubscribe-Post: List-Unsubscribe=One-Click` present (RFC 8058).
     pub list_unsubscribe_one_click: bool,
+    /// First `Reply-To` address, when it differs from nothing — stored as-is.
+    pub reply_to_addr: Option<String>,
+    /// Verdicts from the topmost `Authentication-Results` header, lowercased
+    /// ("pass", "fail", "softfail", "none", …). `None` = header absent.
+    pub auth_spf: Option<String>,
+    pub auth_dkim: Option<String>,
+    pub auth_dmarc: Option<String>,
 }

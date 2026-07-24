@@ -50,10 +50,19 @@
   );
   const visible = $derived(mail.threads.slice(start, end));
 
+  // Measure the row height for the windowing arithmetic. Rows are NOT perfectly
+  // uniform — one with an empty snippet is a line shorter — so as different rows
+  // scroll into the measured slot, a two-way `!= rowH` update would flip rowH
+  // between e.g. 68 and 76 forever: that feeds `visible`, which re-runs this
+  // effect, which re-measures… Svelte caps that as `effect_update_depth_exceeded`
+  // and then stops applying updates — the whole UI freezes (list stops loading,
+  // clicks stop opening) until a full restart. So only ever ratchet *up* to the
+  // tallest row seen; it converges in a couple of steps and can't oscillate.
+  // Overestimating a little is harmless — overscan keeps the viewport full.
   $effect(() => {
     void visible;
     const el = rowsEl?.querySelector<HTMLElement>("button.row");
-    if (el && Math.abs(el.offsetHeight - rowH) > 0.5) rowH = el.offsetHeight;
+    if (el && el.offsetHeight > rowH) rowH = el.offsetHeight;
   });
 
   // A new folder (or grouping mode) is a new list — start it at the top.

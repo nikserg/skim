@@ -1,7 +1,7 @@
 use crate::db::models::{Folder, InviteView, RenderedBody, ThreadDetail, ThreadRow};
 use crate::db::{bodies, queries};
 use crate::error::{Result, SkimError};
-use crate::mail::{ics, sanitize};
+use crate::mail::{ics, sanitize, suspicion};
 use crate::state::AppState;
 use serde_json::json;
 use tauri::{AppHandle, Emitter, State};
@@ -324,6 +324,14 @@ pub async fn get_message_body(
         });
     }
 
+    let security = {
+        let html = rendered.html.clone();
+        state
+            .db
+            .call(move |conn| suspicion::security_for_message(conn, message_id, &html))
+            .await?
+    };
+
     Ok(RenderedBody {
         message_id,
         html: rendered.html,
@@ -331,6 +339,7 @@ pub async fn get_message_body(
         from_addr,
         attachments,
         invite,
+        security,
     })
 }
 

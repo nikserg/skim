@@ -78,7 +78,15 @@ pub fn parse_headers(
         msg.cc_addrs = convert_addrs(cc);
     }
 
+    if let Some(reply_to) = parsed.reply_to().and_then(|a| match a {
+        mail_parser::Address::List(l) => l.first(),
+        mail_parser::Address::Group(g) => g.first().and_then(|g| g.addresses.first()),
+    }) {
+        msg.reply_to_addr = reply_to.address.as_ref().map(|a| a.to_string());
+    }
+
     // In-Reply-To / References come back as text or text lists.
+    let mut saw_auth_results = false;
     for header in parsed.headers() {
         if header.name().eq_ignore_ascii_case("In-Reply-To") {
             if let Some(first) = header_text_list(header.value()).into_iter().next() {
@@ -89,6 +97,22 @@ pub fn parse_headers(
                 .into_iter()
                 .map(|s| format!("<{s}>"))
                 .collect();
+        } else if !saw_auth_results && header.name().eq_ignore_ascii_case("Authentication-Results")
+        {
+            // Only the topmost occurrence: that's the one our own receiving
+            // server added; lower ones may come from forwarders — or from the
+            // sender, which is exactly what a phisher would forge. Read the
+            // raw byte range so header parsing quirks can't drop the value.
+            saw_auth_results = true;
+            let start = header.offset_start as usize;
+            let end = (header.offset_end as usize).min(header_bytes.len());
+            if start < end {
+                let raw = String::from_utf8_lossy(&header_bytes[start..end]);
+                let verdicts = crate::mail::suspicion::parse_auth_results(&raw);
+                msg.auth_spf = verdicts.spf;
+                msg.auth_dkim = verdicts.dkim;
+                msg.auth_dmarc = verdicts.dmarc;
+            }
         }
     }
 
@@ -349,6 +373,44 @@ mod tests {
         let msg = headers("From: A Friend <friend@example.com>\r\nSubject: Hi\r\n\r\n");
         assert!(msg.list_unsubscribe.is_none());
         assert!(!msg.list_unsubscribe_one_click);
+    }
+
+    #[test]
+    fn captures_auth_results_and_reply_to() {
+        let msg = headers(
+            "From: PayPal <service@paypal.com>\r\n\
+             Reply-To: Support <help@evil.example>\r\n\
+             Authentication-Results: mx.google.com;\r\n\
+             \tspf=pass smtp.mailfrom=paypal.com;\r\n\
+             \tdkim=pass header.d=paypal.com;\r\n\
+             \tdmarc=fail (p=REJECT) header.from=paypal.com\r\n\
+             Subject: Hi\r\n\
+             \r\n",
+        );
+        assert_eq!(msg.reply_to_addr.as_deref(), Some("help@evil.example"));
+        assert_eq!(msg.auth_spf.as_deref(), Some("pass"));
+        assert_eq!(msg.auth_dkim.as_deref(), Some("pass"));
+        assert_eq!(msg.auth_dmarc.as_deref(), Some("fail"));
+    }
+
+    #[test]
+    fn first_auth_results_header_wins() {
+        let msg = headers(
+            "Authentication-Results: mx.example.com; dmarc=pass\r\n\
+             Authentication-Results: forwarder.example; dmarc=fail\r\n\
+             From: A <a@example.com>\r\n\
+             \r\n",
+        );
+        assert_eq!(msg.auth_dmarc.as_deref(), Some("pass"));
+    }
+
+    #[test]
+    fn absent_security_headers_stay_none() {
+        let msg = headers("From: A Friend <friend@example.com>\r\nSubject: Hi\r\n\r\n");
+        assert!(msg.reply_to_addr.is_none());
+        assert!(msg.auth_spf.is_none());
+        assert!(msg.auth_dkim.is_none());
+        assert!(msg.auth_dmarc.is_none());
     }
 
     #[test]

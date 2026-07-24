@@ -571,7 +571,24 @@ pub async fn ai_ask(
     // the model can't search the mailbox — it only answers about this
     // conversation, optionally opening links the thread contains via `fetch_url`.
     let (chain, media) = reply_chain(&state, message_id, 25, Some(&ctx)).await?;
-    let (system, preamble) = prompts::ask_session(&chain, &ctx.now, &ctx.locale);
+    // Local phishing heuristics over the open message (None when clean), so a
+    // "is this legit?" question — or the phishing quick chip — gets grounded
+    // signals instead of the model guessing from body text alone.
+    let security = state
+        .db
+        .call(move |conn| {
+            let html = match crate::db::bodies::get_body(conn, message_id)? {
+                Some((Some(html), _)) => {
+                    crate::mail::sanitize::sanitize_email_html(&html, message_id, true).html
+                }
+                Some((None, Some(text))) => crate::mail::sanitize::text_to_html(&text),
+                _ => String::new(),
+            };
+            crate::mail::suspicion::prompt_summary(conn, message_id, &html)
+        })
+        .await?;
+    let (system, preamble) =
+        prompts::ask_session(&chain, security.as_deref(), &ctx.now, &ctx.locale);
     let provider = ctx.agent_provider();
     let deps = agent::AgentDeps {
         db: state.db.clone(),

@@ -110,6 +110,24 @@ export interface InviteView {
   canRsvp: boolean;
 }
 
+/** One fired phishing heuristic; `code` maps to a `security.*` i18n key. */
+export interface SignalReason {
+  code: string;
+  param: string | null;
+}
+
+/** A suspicious link. `href` matches `getAttribute("href")` exactly. */
+export interface LinkFlag {
+  href: string;
+  host: string;
+  reasons: SignalReason[];
+}
+
+export interface SecuritySignals {
+  sender: SignalReason[];
+  links: LinkFlag[];
+}
+
 export interface RenderedBody {
   messageId: number;
   html: string;
@@ -117,6 +135,8 @@ export interface RenderedBody {
   fromAddr: string | null;
   attachments: AttachmentMeta[];
   invite: InviteView | null;
+  /** Phishing heuristics; absent/null when nothing fired. */
+  security?: SecuritySignals | null;
 }
 
 export interface SearchHit {
