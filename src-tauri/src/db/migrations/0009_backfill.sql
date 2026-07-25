@@ -1,0 +1,11 @@
+-- Progress marker for the historical backfill. The first sync of a folder only
+-- takes the newest window, so everything older stayed invisible to search and
+-- to the assistant — permanently. The backfill walks a folder's history
+-- backwards a bounded amount per pass; this records how far down it has got.
+--
+-- `backfill_seq_floor` is the lowest sequence number already fetched (NULL =
+-- not started). Sequence numbers only shift downward as older mail is expunged,
+-- so a stale floor costs a few deduped re-fetches, never a skipped message.
+-- `backfill_done` already existed in the initial schema but was never used;
+-- from here it means "walked all the way to the first message".
+ALTER TABLE folders ADD COLUMN backfill_seq_floor INTEGER;

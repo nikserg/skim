@@ -21,6 +21,11 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 const INBOX_WINDOW: u32 = 500;
 const FOLDER_WINDOW: u32 = 200;
 const CHUNK: u32 = 100;
+/// Headers per FETCH while walking a folder's history backwards.
+const BACKFILL_CHUNK: u32 = 200;
+/// Chunks of history per folder per pass. Bounds one sweep so a decade-deep
+/// mailbox can't hold up new mail; the next poll resumes where this stopped.
+const BACKFILL_CHUNKS_PER_PASS: u32 = 10;
 // IDLE keeps the inbox instant, so this poll only backfills the slow-changing
 // rest (other folders, read state from other devices) — it can run infrequently.
 const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(300);
@@ -365,7 +370,12 @@ impl Engine {
             } else {
                 match self.probe_status(&folder.imap_name).await {
                     Ok(st) => {
-                        if self.status_matches(folder.id, &st).await {
+                        // An unchanged folder still needs its history walked —
+                        // backfill reaches into the past, which no STATUS
+                        // snapshot can tell us anything about.
+                        if self.status_matches(folder.id, &st).await
+                            && self.backfill_state(folder.id).await?.0
+                        {
                             skipped += 1;
                             continue;
                         }
@@ -585,7 +595,11 @@ impl Engine {
             let dbc = db.clone();
             dbc.call(move |conn| {
                 conn.execute(
-                    "UPDATE folders SET uidvalidity = ?2, last_seen_uid = 0 WHERE id = ?1",
+                    // The folder was wiped, so the history walk restarts too.
+                    "UPDATE folders
+                        SET uidvalidity = ?2, last_seen_uid = 0,
+                            backfill_done = 0, backfill_seq_floor = NULL
+                      WHERE id = ?1",
                     rusqlite::params![folder_id, uidvalidity],
                 )
                 .map(|_| ())
@@ -659,12 +673,128 @@ impl Engine {
             .await?;
         }
 
+        // Older-than-the-window history, a slice at a time. Last, so a failure
+        // here can't cost us the new mail this pass already recorded.
+        changed |= self.backfill_folder(folder_id, exists).await?;
+
         if changed {
             let _ = self
                 .app
                 .emit("mail:updated", json!({ "folderId": folder_id }));
         }
         Ok(changed)
+    }
+
+    /// Walk a folder's history backwards, a bounded number of chunks per pass,
+    /// until its very first message has been cached.
+    ///
+    /// The first sync of a folder only takes the newest window, and every sync
+    /// after that fetches `last_seen_uid+1:*` — forward only. Without this,
+    /// mail older than that initial window is never downloaded, so it is
+    /// invisible to search and the assistant for as long as the account exists.
+    ///
+    /// Runs against the already-selected mailbox, so sequence numbers hold
+    /// still for the whole descent. `exists` is the server's message count from
+    /// that SELECT.
+    async fn backfill_folder(&mut self, folder_id: i64, exists: u32) -> Result<bool> {
+        let (done, floor) = self.backfill_state(folder_id).await?;
+        if done {
+            return Ok(false);
+        }
+        if exists == 0 {
+            self.set_backfill_done(folder_id).await?;
+            return Ok(false);
+        }
+
+        // Where the un-fetched history ends. Resume from the stored floor, or
+        // on the first pass from just below the newest cached run — the cache
+        // is always a newest-first suffix of the folder, so that's the boundary.
+        let mut floor = match floor {
+            Some(f) => f,
+            None => initial_floor(exists, self.cached_count(folder_id).await?),
+        };
+
+        let mut changed = false;
+        for _ in 0..BACKFILL_CHUNKS_PER_PASS {
+            let Some((low, high)) = backfill_chunk(floor) else {
+                break;
+            };
+            let inserted = self
+                .fetch_headers(folder_id, &format!("{low}:{high}"), false, 0)
+                .await?;
+            changed |= !inserted.is_empty();
+            // Step down whatever came back: a chunk of already-cached messages
+            // still means that stretch of history is covered. Persisting each
+            // step is what makes the walk resumable across passes and restarts.
+            floor = low;
+            self.set_backfill_floor(folder_id, floor).await?;
+            let _ = self.app.emit(
+                "sync:progress",
+                json!({ "folderId": folder_id, "done": exists - low + 1, "total": exists }),
+            );
+        }
+
+        if floor <= 1 {
+            self.set_backfill_done(folder_id).await?;
+            tracing::info!(folder_id, exists, "history backfill complete");
+        }
+        Ok(changed)
+    }
+
+    /// `(backfill_done, backfill_seq_floor)` for a folder.
+    async fn backfill_state(&self, folder_id: i64) -> Result<(bool, Option<u32>)> {
+        self.db
+            .call(move |conn| {
+                conn.query_row(
+                    "SELECT backfill_done, backfill_seq_floor FROM folders WHERE id = ?1",
+                    rusqlite::params![folder_id],
+                    |r| {
+                        Ok((
+                            r.get::<_, i64>(0)? != 0,
+                            r.get::<_, Option<i64>>(1)?.map(|v| v.max(0) as u32),
+                        ))
+                    },
+                )
+            })
+            .await
+    }
+
+    async fn cached_count(&self, folder_id: i64) -> Result<u32> {
+        let n: i64 = self
+            .db
+            .call(move |conn| {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM messages WHERE folder_id = ?1",
+                    rusqlite::params![folder_id],
+                    |r| r.get(0),
+                )
+            })
+            .await?;
+        Ok(n.max(0) as u32)
+    }
+
+    async fn set_backfill_floor(&self, folder_id: i64, floor: u32) -> Result<()> {
+        self.db
+            .call(move |conn| {
+                conn.execute(
+                    "UPDATE folders SET backfill_seq_floor = ?2 WHERE id = ?1",
+                    rusqlite::params![folder_id, floor as i64],
+                )
+                .map(|_| ())
+            })
+            .await
+    }
+
+    async fn set_backfill_done(&self, folder_id: i64) -> Result<()> {
+        self.db
+            .call(move |conn| {
+                conn.execute(
+                    "UPDATE folders SET backfill_done = 1 WHERE id = ?1",
+                    rusqlite::params![folder_id],
+                )
+                .map(|_| ())
+            })
+            .await
     }
 
     async fn fetch_headers(
@@ -1705,6 +1835,25 @@ async fn idle_session(
 
 // ---- helpers ------------------------------------------------------------
 
+/// The next slice of history to fetch, walking down from `floor` — the lowest
+/// sequence number already covered. `None` once the folder's first message is
+/// covered and there is nothing older left.
+fn backfill_chunk(floor: u32) -> Option<(u32, u32)> {
+    if floor <= 1 {
+        return None;
+    }
+    let high = floor - 1;
+    let low = high.saturating_sub(BACKFILL_CHUNK - 1).max(1);
+    Some((low, high))
+}
+
+/// Where to start walking when a folder has no stored floor yet. The cache is a
+/// newest-first suffix of the folder, so the `cached` newest messages occupy the
+/// top of the sequence range and history resumes just below them.
+fn initial_floor(exists: u32, cached: u32) -> u32 {
+    exists.saturating_sub(cached).saturating_add(1)
+}
+
 async fn wipe_folder(db: &Db, folder_id: i64) -> Result<()> {
     db.call(move |conn| {
         let tx = conn.transaction()?;
@@ -1856,6 +2005,52 @@ fn decode_imap_utf7(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod backfill_tests {
+    use super::{backfill_chunk, initial_floor, BACKFILL_CHUNK};
+
+    #[test]
+    fn starts_just_below_the_newest_cached_run() {
+        // The reported case: an inbox of 609 messages, all of them cached by
+        // the initial window plus new arrivals, on a server holding 5000.
+        assert_eq!(initial_floor(5000, 609), 4392);
+        // Nothing cached yet — start at the very top.
+        assert_eq!(initial_floor(5000, 0), 5001);
+        // Everything cached — nothing older to walk to.
+        assert_eq!(initial_floor(609, 609), 1);
+        // A cache larger than the server's count (expunges we haven't noticed)
+        // must not wrap around into a huge floor.
+        assert_eq!(initial_floor(100, 250), 1);
+    }
+
+    #[test]
+    fn walk_stops_at_the_first_message() {
+        assert_eq!(backfill_chunk(1), None);
+        assert_eq!(backfill_chunk(0), None);
+        // The floor is exclusive: the chunk sits strictly below it.
+        assert_eq!(backfill_chunk(2), Some((1, 1)));
+    }
+
+    #[test]
+    fn walk_covers_every_sequence_number_exactly_once() {
+        let mut floor = initial_floor(1000, 40);
+        assert_eq!(floor, 961);
+        let mut covered = Vec::new();
+        while let Some((low, high)) = backfill_chunk(floor) {
+            assert!(low <= high);
+            covered.push((low, high));
+            floor = low;
+        }
+        // Contiguous, descending, no gaps and no overlap.
+        for w in covered.windows(2) {
+            assert_eq!(w[0].0, w[1].1 + 1);
+        }
+        assert_eq!(covered.first().unwrap().1, 960);
+        assert_eq!(covered.last().unwrap().0, 1);
+        assert!(covered.iter().all(|(l, h)| h - l < BACKFILL_CHUNK));
+    }
 }
 
 #[cfg(test)]
