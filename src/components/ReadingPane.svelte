@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { aiErrorText, aiStream, api } from "../lib/api";
+  import { aiErrorText, aiStream, api, errorMessage } from "../lib/api";
   import { aiLinks } from "../lib/ai-links";
   import { getLocale, t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
@@ -172,6 +172,13 @@
 
   let detail = $state<ThreadDetail | null>(null);
   let bodies = $state<Record<number, RenderedBody | "loading" | "error">>({});
+  // Why a body failed, for the tooltip on the error note — the visible wording
+  // stays the same, but a bug report is diagnosable.
+  let bodyErrors = $state<Record<number, string>>({});
+  // Newest body request per message, so a slow answer can't overwrite a newer
+  // one. Plain (non-reactive) state: it only gates writes into `bodies`.
+  let bodySeq = 0;
+  const bodyReq = new Map<number, number>();
   // Real destination of the link under the cursor (browser-style status bar).
   let hoverUrl = $state<string | null>(null);
 
@@ -320,6 +327,8 @@
   async function loadThread(threadId: number) {
     detail = null;
     bodies = {};
+    bodyErrors = {};
+    bodyReq.clear();
     cancelAi?.();
     aiPanel = null;
     askOpen = false;
@@ -354,12 +363,26 @@
   }
 
   async function loadBody(messageId: number, showImages?: boolean) {
+    // A body fetch can take seconds (the server may have to be asked), so guard
+    // against both ways a late answer can land in the wrong place: the thread
+    // changed under us (loadThread clears `bodies`), or this same message was
+    // requested again meanwhile (a thread refresh, Retry, "show images"). An
+    // "error" written by a stale answer would latch — the auto-load effect only
+    // fires on `undefined`, so nothing would ever retry it.
+    const threadId = mail.selectedThreadId;
+    const seq = ++bodySeq;
+    bodyReq.set(messageId, seq);
+    const stale = () => bodyReq.get(messageId) !== seq || mail.selectedThreadId !== threadId;
     bodies = { ...bodies, [messageId]: "loading" };
     try {
       const body = await api.getMessageBody(messageId, showImages);
+      if (stale()) return;
       bodies = { ...bodies, [messageId]: body };
-    } catch {
+    } catch (e) {
+      console.warn("getMessageBody failed", messageId, e);
+      if (stale()) return;
       bodies = { ...bodies, [messageId]: "error" };
+      bodyErrors = { ...bodyErrors, [messageId]: errorMessage(e) };
     }
   }
 
@@ -710,7 +733,7 @@
     {#if body === "loading" || body === undefined}
       <div class="body-note">{t("reading.loading")}</div>
     {:else if body === "error"}
-      <div class="body-note">
+      <div class="body-note" title={bodyErrors[message.id]}>
         {t("reading.load_failed")}
         <button class="linkish" onclick={() => loadBody(message.id)}>{t("reading.retry")}</button>
       </div>
