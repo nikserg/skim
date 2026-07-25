@@ -33,6 +33,11 @@ const IDLE_REISSUE: std::time::Duration = std::time::Duration::from_secs(25 * 60
 // Ceiling on the actual body FETCH from the server, so a stalled socket can't
 // wedge the worker (and thus every later command) indefinitely.
 const BODY_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+// Shorter leash for the first try on a connection that has been sitting idle
+// since the last message was opened. A connection the server dropped usually
+// errors at once, but one killed by sleep/wake or a network switch just hangs —
+// and the reconnect below still has to fit inside BODY_FETCH_WAIT.
+const STALE_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 // How long a `get_message_body` caller waits for the worker to service its
 // request — longer than BODY_FETCH_TIMEOUT so the worker's own error wins, but
 // still bounded in case the worker is stuck on some other un-timed op.
@@ -144,9 +149,35 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
                         message_pk,
                         respond,
                     } => {
-                        let result = fetcher.fetch_body(message_pk).await;
-                        if result.is_err() {
+                        // Nothing else ever touches this connection, so between
+                        // two opened messages it can sit idle long enough for
+                        // the server to drop it — and we only find out when the
+                        // user clicks. Reconnect and try once more, so a socket
+                        // that merely went stale never reaches the reading pane
+                        // as "couldn't load".
+                        let reused = fetcher.session.is_some();
+                        let leash = if reused {
+                            STALE_FETCH_TIMEOUT
+                        } else {
+                            BODY_FETCH_TIMEOUT
+                        };
+                        let mut result = fetcher.fetch_body(message_pk, leash).await;
+                        if let Err(e) = &result {
                             fetcher.reset_session();
+                            // Only a reused connection is worth a second try:
+                            // reset_session() means the retry logs in fresh, so
+                            // this can't loop, and a failure that already
+                            // happened on a fresh connection is a real error.
+                            if reused {
+                                tracing::warn!(message_pk, error = %e, "body fetch failed on a reused session, reconnecting");
+                                result = fetcher.fetch_body(message_pk, BODY_FETCH_TIMEOUT).await;
+                                if result.is_err() {
+                                    fetcher.reset_session();
+                                }
+                            }
+                        }
+                        if let Err(e) = &result {
+                            tracing::warn!(message_pk, error = %e, "body fetch failed");
                         }
                         let _ = respond.send(result);
                     }
@@ -973,7 +1004,9 @@ impl Engine {
 
     // ---- bodies --------------------------------------------------------
 
-    async fn fetch_body(&mut self, message_pk: i64) -> Result<()> {
+    /// `timeout` bounds the FETCH itself; the caller picks it from how much it
+    /// trusts the connection (see the fetch worker in [`spawn`]).
+    async fn fetch_body(&mut self, message_pk: i64, timeout: std::time::Duration) -> Result<()> {
         let coords: Option<(String, u32, i64)> = self
             .db
             .call(move |conn| {
@@ -997,7 +1030,7 @@ impl Engine {
 
         self.ensure_selected(&imap_name).await?;
         let session = self.session().await?;
-        let raw: Option<Vec<u8>> = tokio::time::timeout(BODY_FETCH_TIMEOUT, async {
+        let raw: Option<Vec<u8>> = tokio::time::timeout(timeout, async {
             let mut stream = session
                 .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
                 .await
