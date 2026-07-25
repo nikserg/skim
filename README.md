@@ -103,9 +103,20 @@ Your key, your bill: Skim talks to the provider's API directly and adds no marku
 
 Download the latest installer from **[Releases](https://github.com/nikserg/skim/releases)** — the `.exe` (NSIS) installs per-user without admin rights; an `.msi` is also published for managed environments.
 
+Or use a package manager:
+
+```powershell
+winget install nikserg.Skim
+```
+
+```powershell
+scoop bucket add skim https://github.com/nikserg/skim
+scoop install skim/skim
+```
+
 Requirements: Windows 10/11 with [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) (preinstalled on Windows 11).
 
-Skim keeps itself current: once a day it quietly asks GitHub for a new release and, if there is one, shows a small banner — one click downloads in the background, another restarts into the new version. Dismiss it and that version never nags again. No update, no banner, no background installer services.
+Skim keeps itself current: once a day it quietly asks GitHub for a new release and, if there is one, shows a small banner — one click downloads in the background, another restarts into the new version. Dismiss it and that version never nags again. No update, no banner, no background installer services. Scoop installs skip all of this — `scoop update skim` is the update path there. (Packaging details: [packaging/README.md](packaging/README.md).)
 
 ## Connecting your mail
 

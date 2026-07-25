@@ -63,3 +63,61 @@ jobs:
             Select-String '\.sig$' | ForEach-Object {
               gh release delete-asset ${{ github.ref_name }} $_.Line --yes
             }
+
+  # Both package managers ship the NSIS installer — the same per-user .exe the
+  # site links to, and the one the in-app updater knows how to apply. The .msi
+  # stays a manual download for managed environments.
+
+  winget:
+    needs: build
+    # Needs WINGET_TOKEN and a winget-pkgs fork under the same owner; forks
+    # have neither, and a failed job on every tag is just noise.
+    if: github.repository == 'nikserg/skim'
+    runs-on: ubuntu-latest
+    steps:
+      # Opens a PR against microsoft/winget-pkgs. The package must already
+      # exist there — see packaging/README.md for the one-time bootstrap.
+      - uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: nikserg.Skim
+          installers-regex: '-setup\.exe$'
+          token: ${{ secrets.WINGET_TOKEN }}
+
+  scoop:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      # Scoop pins an exact URL + hash, so the manifest can only be written
+      # once the asset is actually on the release page.
+      - name: Point the bucket at the new release
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/Skim_${version}_x64-setup.exe"
+          curl -fsSL --retry 5 --retry-all-errors -o setup.exe "$url"
+          hash="$(sha256sum setup.exe | cut -d ' ' -f 1)"
+          rm setup.exe
+          # The #/dl.7z fragment is what makes Scoop unpack the NSIS installer
+          # with 7-Zip instead of dropping the installer itself into the app dir.
+          jq --arg v "$version" --arg u "$url#/dl.7z" --arg h "$hash" \
+            '.version = $v
+             | .architecture."64bit".url = $u
+             | .architecture."64bit".hash = $h' \
+            bucket/skim.json > bucket/skim.json.new
+          mv bucket/skim.json.new bucket/skim.json
+
+      - name: Commit
+        run: |
+          if git diff --quiet; then
+            echo "Manifest already points at ${GITHUB_REF_NAME}."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "scoop: skim ${GITHUB_REF_NAME#v}"
+          git push

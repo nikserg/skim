@@ -1,0 +1,37 @@
+{
+  "version": "1.0.9",
+  "description": "A fast, minimalist, AI-native email client for Windows",
+  "homepage": "https://skim-tech.com",
+  "license": "MIT",
+  "notes": [
+    "Skim's built-in updater stays quiet on Scoop installs — run 'scoop update skim' instead.",
+    "Mail, settings, and credentials live outside the app folder, so they survive an update or uninstall."
+  ],
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/nikserg/skim/releases/download/v1.0.9/Skim_1.0.9_x64-setup.exe#/dl.7z",
+      "hash": "55d723ce70d57bb9b856218092d8ac0d3039c0bfec41ae3184fa1e05f7dccd01"
+    }
+  },
+  "post_install": [
+    "# The NSIS installer is unpacked with 7-Zip, which also drops its own scratch folder.",
+    "Remove-Item (Join-Path $dir '$PLUGINSDIR') -Recurse -Force -ErrorAction Ignore",
+    "# Marker read by the app: Scoop owns this install, so don't self-update behind its back.",
+    "New-Item (Join-Path $dir '.managed-updates') -ItemType File -Force | Out-Null"
+  ],
+  "uninstaller": {
+    "script": [
+      "# Mirrors NSIS_HOOK_POSTUNINSTALL — the app registers these at runtime.",
+      "Remove-Item 'HKCU:\\Software\\Classes\\AppUserModelId\\com.skim.app' -Recurse -Force -ErrorAction Ignore",
+      "Remove-Item 'HKCU:\\Software\\Classes\\skim' -Recurse -Force -ErrorAction Ignore",
+      "Remove-Item (Join-Path $env:USERPROFILE '.skim') -Recurse -Force -ErrorAction Ignore"
+    ]
+  },
+  "bin": "skim.exe",
+  "shortcuts": [
+    [
+      "skim.exe",
+      "Skim"
+    ]
+  ]
+}

@@ -59,6 +59,9 @@ export const updater = {
   init(settings: Record<string, string>) {
     if (started) return;
     started = true;
+    // Installed through a package manager: it owns the version, so never
+    // check and never offer — the banner would install a duplicate copy.
+    if (settings.update_managed === "1") return;
     dismissed = settings.update_dismissed ?? "";
     lastCheck = Number(settings.update_last_check) || 0;
     const tick = () => {
