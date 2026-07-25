@@ -4,7 +4,7 @@
   "homepage": "https://skim-tech.com",
   "license": "MIT",
   "notes": [
-    "Skim's built-in updater stays quiet on Scoop installs — run 'scoop update skim' instead.",
+    "Skim's built-in updater stays quiet on Scoop installs - run 'scoop update skim' instead.",
     "Mail, settings, and credentials live outside the app folder, so they survive an update or uninstall."
   ],
   "architecture": {
@@ -14,8 +14,11 @@
     }
   },
   "post_install": [
-    "# The NSIS installer is unpacked with 7-Zip, which also drops its own scratch folder.",
+    "# Unpacking the NSIS installer with 7-Zip yields the app plus installer-only",
+    "# leftovers: 7-Zip's scratch folder and the stock uninstaller, which would",
+    "# try to remove an install that was never registered. Scoop owns removal here.",
     "Remove-Item (Join-Path $dir '$PLUGINSDIR') -Recurse -Force -ErrorAction Ignore",
+    "Remove-Item (Join-Path $dir 'uninstall.exe') -Force -ErrorAction Ignore",
     "# Marker read by the app: Scoop owns this install, so don't self-update behind its back.",
     "New-Item (Join-Path $dir '.managed-updates') -ItemType File -Force | Out-Null"
   ],
