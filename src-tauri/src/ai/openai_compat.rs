@@ -90,7 +90,7 @@ fn tool_body(request: &ToolRequest) -> serde_json::Value {
 /// when `key` is empty — local servers need none, and some reject an empty
 /// bearer.
 fn post_chat(ep: &Endpoint, key: &str, body: &serde_json::Value) -> reqwest::RequestBuilder {
-    let mut req = reqwest::Client::new().post(format!("{}/chat/completions", ep.base_url));
+    let mut req = super::http_client().post(format!("{}/chat/completions", ep.base_url));
     if !key.is_empty() {
         req = req.bearer_auth(key);
     }
@@ -308,6 +308,8 @@ fn assemble_turn(
         text,
         tool_calls,
         stop_reason,
+        // This wire format carries no replayable reasoning blocks.
+        thinking: Vec::new(),
     }
 }
 

@@ -20,7 +20,7 @@ pub fn endpoint() -> openai_compat::Endpoint {
 
 /// Validate an API key with a free key-info call.
 pub async fn validate_key(key: &str) -> Result<()> {
-    let resp = reqwest::Client::new()
+    let resp = super::http_client()
         .get(format!("{API_BASE}/key"))
         .bearer_auth(key)
         .send()
@@ -63,7 +63,7 @@ struct CatalogModel {
 /// the mailbox-wide assistant. Needs no API key. Ordered as OpenRouter returns
 /// it — newest first.
 pub async fn list_models() -> Result<Vec<Model>> {
-    let resp = reqwest::Client::new()
+    let resp = super::http_client()
         .get(format!("{API_BASE}/models"))
         .send()
         .await

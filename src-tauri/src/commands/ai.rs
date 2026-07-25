@@ -42,6 +42,15 @@ pub enum AiEvent {
     },
 }
 
+/// Output ceiling for the one-shot AI features. Like the agent's own budget,
+/// this is shared with whatever reasoning the model does before it answers —
+/// too tight and a thinking model spends it all and returns nothing.
+const ONE_SHOT_MAX_TOKENS: u32 = 8192;
+/// Style analysis reads a handful of sent messages and writes a short profile,
+/// so it needs less room than a user-facing answer — but still more than the
+/// reasoning alone will use.
+const STYLE_MAX_TOKENS: u32 = 4096;
+
 // ---- providers -----------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -282,6 +291,33 @@ async fn ai_context(db: &Db) -> Result<AiContext> {
         locale: locale.unwrap_or_else(|| "en".into()),
         now: now_line(),
     })
+}
+
+/// The oldest date every still-filling inbox is known to cover, so the agent
+/// can tell "not in your mail" apart from "not downloaded yet". `None` once the
+/// backfill has walked each inbox to its first message — then the cache is the
+/// whole mailbox and there is nothing to qualify.
+///
+/// Takes the newest of the per-inbox oldest dates: that is the boundary above
+/// which *every* inbox has coverage, so the claim holds for all of them.
+async fn sync_horizon(db: &Db) -> Option<String> {
+    let oldest: i64 = db
+        .call(|conn| {
+            conn.query_row(
+                "SELECT MAX(oldest) FROM (
+                   SELECT MIN(m.date) AS oldest
+                     FROM messages m JOIN folders f ON f.id = m.folder_id
+                    WHERE f.role = 'inbox' AND f.backfill_done = 0
+                    GROUP BY m.folder_id
+                 )",
+                [],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+        })
+        .await
+        .ok()
+        .flatten()?;
+    Some(crate::ai::retrieval::format_date(oldest))
 }
 
 /// Spawn the streaming task and register it for cancellation.
@@ -540,7 +576,7 @@ pub async fn ai_compose(
         system,
         messages,
         media,
-        2048,
+        ONE_SHOT_MAX_TOKENS,
         Vec::new(),
         channel,
     );
@@ -677,7 +713,13 @@ pub async fn ai_chat(
     }
     let ctx = ai_context(&state.db).await?;
     let provider = ctx.agent_provider();
-    let system = prompts::chat_agent(&ctx.now, &ctx.locale, context_message_id.is_some());
+    let horizon = sync_horizon(&state.db).await;
+    let system = prompts::chat_agent(
+        &ctx.now,
+        &ctx.locale,
+        context_message_id.is_some(),
+        horizon.as_deref(),
+    );
     let deps = agent::AgentDeps {
         db: state.db.clone(),
         engines: state.engines.lock().await.clone(),
@@ -823,7 +865,7 @@ pub async fn ai_recap(
         system,
         user_turn(user),
         Vec::new(),
-        2048,
+        ONE_SHOT_MAX_TOKENS,
         citations,
         channel,
     );
@@ -927,7 +969,7 @@ pub async fn ai_analyze_style(
                 content: user.clone(),
             }],
             media: Vec::new(),
-            max_tokens: 1024,
+            max_tokens: STYLE_MAX_TOKENS,
         };
         let mut profile_text = String::new();
         let mut on_delta = |delta: &str| {
@@ -943,7 +985,7 @@ pub async fn ai_analyze_style(
                     model: ctx.model,
                     system,
                     messages: user_turn(user),
-                    max_tokens: 1024,
+                    max_tokens: STYLE_MAX_TOKENS,
                 };
                 openai_compat::stream(ep, &ctx.key, &request, &mut on_delta).await
             }

@@ -82,7 +82,7 @@ async fn show_model(
 /// once.
 pub async fn list_models(base_url: &str) -> Result<Vec<Model>> {
     let base = api_root(base_url);
-    let client = reqwest::Client::new();
+    let client = super::http_client();
     let resp = client
         .get(format!("{base}/api/tags"))
         .send()

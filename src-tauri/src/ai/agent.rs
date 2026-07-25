@@ -8,11 +8,12 @@
 
 use crate::ai::retrieval::{format_date, Citation};
 use crate::ai::{
-    anthropic, attachments, openai_compat, prompts, AssistantTurn, MediaBlock, ToolCall,
+    anthropic, attachments, openai_compat, prompts, AssistantTurn, MediaBlock, ThinkingBlock,
+    ToolCall,
 };
 use crate::commands::search::{build_fts_query, build_fts_query_any};
 use crate::db::{bodies, Db};
-use crate::error::Result;
+use crate::error::{Result, SkimError};
 use crate::mail::sync::SyncHandle;
 use chrono::TimeZone;
 use rusqlite::types::Value as SqlValue;
@@ -21,6 +22,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 const MAX_ROUNDS: usize = 6;
 const MAX_TOOL_CALLS: usize = 12;
+/// Output ceiling per round. Models that reason before answering spend this
+/// budget on thinking *and* the answer, so it has to be roomy: at 4k a long
+/// reasoning chain used it all up and the round returned no text at all. It's
+/// a cap, not a spend — short answers cost the same as they always did.
+const AGENT_MAX_TOKENS: u32 = 16_384;
 const READ_EMAIL_BUDGET: usize = 6_000;
 const CONTEXT_EMAIL_BUDGET: usize = 2_000;
 /// Bytes of a linked page we download before stopping (HTML is bulky).
@@ -146,6 +152,10 @@ enum Turn {
     Assistant {
         text: String,
         tool_calls: Vec<ToolCall>,
+        /// Reasoning the model emitted this round. Anthropic rejects a
+        /// tool-calling round whose earlier assistant turns had their thinking
+        /// stripped, so it rides along even though nothing displays it.
+        thinking: Vec<ThinkingBlock>,
     },
     ToolResults(Vec<ToolResult>),
 }
@@ -176,8 +186,27 @@ fn anthropic_messages(turns: &[Turn], media: &[MediaBlock]) -> Vec<Value> {
                 json!({ "role": "user", "content": content })
             }
             Turn::User(text) => json!({ "role": "user", "content": text }),
-            Turn::Assistant { text, tool_calls } => {
+            Turn::Assistant {
+                text,
+                tool_calls,
+                thinking,
+            } => {
                 let mut content = Vec::new();
+                // Thinking blocks must come first, and verbatim — the API
+                // checks their signatures against the rest of the turn.
+                for tb in thinking {
+                    content.push(match tb {
+                        ThinkingBlock::Thinking { text, signature } => json!({
+                            "type": "thinking",
+                            "thinking": text,
+                            "signature": signature,
+                        }),
+                        ThinkingBlock::Redacted { data } => json!({
+                            "type": "redacted_thinking",
+                            "data": data,
+                        }),
+                    });
+                }
                 if !text.is_empty() {
                     content.push(json!({ "type": "text", "text": text }));
                 }
@@ -217,7 +246,11 @@ fn openai_messages(turns: &[Turn]) -> Vec<Value> {
     for t in turns {
         match t {
             Turn::User(text) => out.push(json!({ "role": "user", "content": text })),
-            Turn::Assistant { text, tool_calls } => {
+            // Reasoning blocks are Anthropic-shaped; this wire format has no
+            // slot for them.
+            Turn::Assistant {
+                text, tool_calls, ..
+            } => {
                 let mut msg = json!({ "role": "assistant" });
                 msg["content"] = if text.is_empty() {
                     Value::Null
@@ -410,6 +443,7 @@ pub async fn run(
             turns.push(Turn::Assistant {
                 text: content,
                 tool_calls: Vec::new(),
+                thinking: Vec::new(),
             });
         } else {
             let text = match (&context_prefix, context_used) {
@@ -452,12 +486,22 @@ pub async fn run(
         let wants_tools =
             turn.stop_reason.as_deref() == Some("tool_use") && !turn.tool_calls.is_empty();
         if !wants_tools {
+            // Out of output budget. With nothing written yet there is no answer
+            // to show, and silently finishing would leave the user staring at an
+            // empty bubble — say so instead. A partial answer is worth keeping.
+            if truncated(turn.stop_reason.as_deref()) && full_text.trim().is_empty() {
+                return Err(SkimError::other(
+                    "ai_truncated",
+                    "the model ran out of room before it answered",
+                ));
+            }
             break;
         }
 
         turns.push(Turn::Assistant {
             text: turn.text.clone(),
             tool_calls: turn.tool_calls.clone(),
+            thinking: turn.thinking.clone(),
         });
 
         let mut results = Vec::with_capacity(turn.tool_calls.len());
@@ -491,6 +535,12 @@ pub async fn run(
     Ok(out)
 }
 
+/// Whether a round stopped because it hit the output ceiling. Anthropic says
+/// `max_tokens`, OpenAI-compatible endpoints say `length`.
+fn truncated(stop_reason: Option<&str>) -> bool {
+    matches!(stop_reason, Some("max_tokens") | Some("length"))
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn call_provider(
     provider: &Provider,
@@ -514,7 +564,7 @@ async fn call_provider(
                 system: system.to_string(),
                 messages: anthropic_messages(turns, media),
                 tools,
-                max_tokens: 4096,
+                max_tokens: AGENT_MAX_TOKENS,
             };
             anthropic::stream_tools(key, &req, &mut sink).await
         }
@@ -526,7 +576,7 @@ async fn call_provider(
                 system: system.to_string(),
                 messages: openai_messages(turns),
                 tools,
-                max_tokens: 4096,
+                max_tokens: AGENT_MAX_TOKENS,
             };
             openai_compat::stream_tools(ep, key, &req, &mut sink).await
         }
@@ -1212,6 +1262,66 @@ mod tests {
         assert!(c.contains(&2));
         assert!(c.contains(&5));
         assert_eq!(c.len(), 2);
+    }
+
+    #[test]
+    fn detects_both_providers_truncation_markers() {
+        assert!(truncated(Some("max_tokens")));
+        assert!(truncated(Some("length")));
+        assert!(!truncated(Some("end_turn")));
+        assert!(!truncated(Some("tool_use")));
+        assert!(!truncated(None));
+    }
+
+    #[test]
+    fn replayed_assistant_turn_leads_with_thinking() {
+        // The API validates a thinking block's signature against the turn it
+        // leads, so order is load-bearing, not cosmetic.
+        let turns = vec![Turn::Assistant {
+            text: "Looking now.".into(),
+            tool_calls: vec![ToolCall {
+                id: "tu_1".into(),
+                name: "search_emails".into(),
+                input: json!({ "query": "alta" }),
+            }],
+            thinking: vec![
+                ThinkingBlock::Thinking {
+                    text: "reason".into(),
+                    signature: "sig".into(),
+                },
+                ThinkingBlock::Redacted {
+                    data: "opaque".into(),
+                },
+            ],
+        }];
+        let msgs = anthropic_messages(&turns, &[]);
+        let content = msgs[0]["content"].as_array().unwrap();
+        assert_eq!(
+            content[0],
+            json!({ "type": "thinking", "thinking": "reason", "signature": "sig" })
+        );
+        assert_eq!(
+            content[1],
+            json!({ "type": "redacted_thinking", "data": "opaque" })
+        );
+        assert_eq!(content[2]["type"], "text");
+        assert_eq!(content[3]["type"], "tool_use");
+    }
+
+    #[test]
+    fn openai_replay_drops_thinking() {
+        // No slot for reasoning blocks in the chat-completions shape.
+        let turns = vec![Turn::Assistant {
+            text: "hi".into(),
+            tool_calls: Vec::new(),
+            thinking: vec![ThinkingBlock::Thinking {
+                text: "reason".into(),
+                signature: "sig".into(),
+            }],
+        }];
+        let msgs = openai_messages(&turns);
+        assert_eq!(msgs[0]["content"], "hi");
+        assert!(!msgs[0].to_string().contains("reason"));
     }
 
     #[test]

@@ -4,7 +4,7 @@
   // Once the digest lands, the user can keep the conversation going — follow-ups
   // route through the mailbox chat (`ai_chat`), seeded with the recap's turns and
   // citations, exactly like the Ctrl+K assistant.
-  import { aiStream, api, type Citation } from "../lib/api";
+  import { aiErrorText, aiStream, api, type Citation } from "../lib/api";
   import { aiLinks } from "../lib/ai-links";
   import { t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
@@ -88,6 +88,13 @@
         },
         done: (cited) => {
           slowStart.clear();
+          // No digest means nothing to seed the chat with — show why rather
+          // than an empty panel.
+          if (!text.trim()) {
+            status = "error";
+            text = t("ai.no_answer");
+            return;
+          }
           status = "done";
           citations = cited;
           markRead(cited);
@@ -107,7 +114,7 @@
         error: (code, message) => {
           slowStart.clear();
           status = "error";
-          text = code === "ai_key" ? t("ai.needs_key") : message;
+          text = aiErrorText(code, message);
         },
       },
     );
@@ -151,6 +158,21 @@
     for (const tn of chat.turns) for (const c of tn.citations) byIndex.set(c.index, c);
     const priorCitations = [...byIndex.values()];
     slowStart.arm();
+    // A round that produced nothing is a failure however it ended: show why and
+    // drop the unanswered question back into the box so it can be retried.
+    const fail = (why: string) => {
+      slowStart.clear();
+      if (!chat) return;
+      const last = chat.turns[chat.turns.length - 1];
+      if (last?.role === "user") {
+        followup = last.content;
+        chat.turns = chat.turns.slice(0, -1);
+      }
+      chat.answer = "";
+      chat.steps = [];
+      chat.status = "error";
+      chat.errorText = why;
+    };
     cancelChat = aiStream(
       "ai_chat",
       { turns: history, priorCitations, contextMessageId: null },
@@ -170,30 +192,17 @@
         done: (cited) => {
           slowStart.clear();
           if (!chat) return;
+          // A blank answer is a failed round, not a turn.
+          if (!chat.answer.trim()) {
+            fail(t("ai.no_answer"));
+            return;
+          }
           chat.turns = [...chat.turns, { role: "assistant", content: chat.answer, citations: cited }];
           chat.answer = "";
           chat.steps = [];
           chat.status = "done";
         },
-        error: (code, message) => {
-          slowStart.clear();
-          if (!chat) return;
-          // Drop the unanswered question back into the box so it can be retried.
-          const last = chat.turns[chat.turns.length - 1];
-          if (last?.role === "user") {
-            followup = last.content;
-            chat.turns = chat.turns.slice(0, -1);
-          }
-          chat.answer = "";
-          chat.steps = [];
-          chat.status = "error";
-          chat.errorText =
-            code === "ai_no_context"
-              ? t("ai.no_context")
-              : code === "ai_key"
-                ? t("ai.needs_key")
-                : message;
-        },
+        error: (code, message) => fail(aiErrorText(code, message)),
       },
     );
   }

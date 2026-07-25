@@ -1,7 +1,7 @@
 <script lang="ts">
   // Ctrl+K palette: commands + instant local search, plus the mailbox-wide
   // AI chat (the "Ask Skim AI" row on any query).
-  import { aiStream, api, type Citation } from "../lib/api";
+  import { aiErrorText, aiStream, api, type Citation } from "../lib/api";
   import { aiLinks } from "../lib/ai-links";
   import { getLocale, t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
@@ -73,6 +73,22 @@
     for (const tn of chat.turns) for (const c of tn.citations) byIndex.set(c.index, c);
     const priorCitations = [...byIndex.values()];
     slowStart.arm();
+    // A round that produced nothing is a failure however it ended: show why and
+    // drop the unanswered question back into the box so it can be retried.
+    const fail = (why: string) => {
+      slowStart.clear();
+      if (!chat) return;
+      const last = chat.turns[chat.turns.length - 1];
+      if (last?.role === "user") {
+        followup = last.content;
+        chat.turns = chat.turns.slice(0, -1);
+      }
+      chat.answer = "";
+      chat.steps = [];
+      chat.status = "error";
+      chat.errorText = why;
+      queueMicrotask(() => followupEl?.focus());
+    };
     cancelChat = aiStream(
       "ai_chat",
       { turns: history, priorCitations, contextMessageId: chat.contextMessageId },
@@ -92,32 +108,19 @@
         done: (citations) => {
           slowStart.clear();
           if (!chat) return;
+          // Committing a blank answer is what put an empty violet card in the
+          // thread; treat it as the failed round it is.
+          if (!chat.answer.trim()) {
+            fail(t("ai.no_answer"));
+            return;
+          }
           chat.turns = [...chat.turns, { role: "assistant", content: chat.answer, citations }];
           chat.answer = "";
           chat.steps = [];
           chat.status = "done";
           queueMicrotask(() => followupEl?.focus());
         },
-        error: (code, message) => {
-          slowStart.clear();
-          if (!chat) return;
-          // Drop the unanswered question back into the box so it can be retried.
-          const last = chat.turns[chat.turns.length - 1];
-          if (last?.role === "user") {
-            followup = last.content;
-            chat.turns = chat.turns.slice(0, -1);
-          }
-          chat.answer = "";
-          chat.steps = [];
-          chat.status = "error";
-          chat.errorText =
-            code === "ai_no_context"
-              ? t("ai.no_context")
-              : code === "ai_key"
-                ? t("ai.needs_key")
-                : message;
-          queueMicrotask(() => followupEl?.focus());
-        },
+        error: (code, message) => fail(aiErrorText(code, message)),
       },
     );
   }

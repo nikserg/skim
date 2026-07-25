@@ -245,12 +245,25 @@ pub fn ask_session(
 /// sets the behavior — no email content is injected up front. `has_context`
 /// is true when the email open in the reading pane rides along in the first
 /// user turn.
-pub fn chat_agent(now: &str, locale: &str, has_context: bool) -> String {
+/// `horizon` is the oldest date the local cache is known to cover while the
+/// history backfill is still running — `None` once it has finished.
+pub fn chat_agent(now: &str, locale: &str, has_context: bool, horizon: Option<&str>) -> String {
     let context_rule = if has_context {
         " The first user message includes the email the user has open; answer questions \
          about it directly, but still search when the question goes beyond it."
     } else {
         ""
+    };
+    // Without this the assistant reports a search miss as proof the email does
+    // not exist, when it may simply predate what has been downloaded.
+    let horizon_rule = match horizon {
+        Some(date) => format!(
+            " Your tools only see mail already downloaded to this machine, currently reaching \
+             back to {date}; older mail is still being fetched in the background. So when a \
+             search comes up empty, say the email isn't in the mail synced so far and mention \
+             that date — never state that it does not exist."
+        ),
+        None => String::new(),
     };
     format!(
         "You are Skim's mailbox assistant, helping the user with questions about their entire \
@@ -275,7 +288,7 @@ pub fn chat_agent(now: &str, locale: &str, has_context: bool) -> String {
          range from the current date and pass `after`/`before`. Each search result is tagged \
          [N]; cite the emails you used with \
          those bracketed numbers right after the claim they support. If nothing relevant turns \
-         up, say so plainly. Be concise. Use **bold** for the key terms, names, and figures; \
+         up, say so plainly.{horizon_rule} Be concise. Use **bold** for the key terms, names, and figures; \
          '-' bullets only when listing several points; no headings. A markdown '|' table is \
          fine only when the data is genuinely tabular. {} {}",
         now_block(now),
@@ -354,4 +367,25 @@ pub fn style_analysis(samples: &[String], locale: &str) -> (String, String) {
          No preamble, no commentary — just the directives.\n\n{body}"
     );
     (system, user)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn horizon_turns_a_search_miss_into_not_synced_yet() {
+        let p = chat_agent("Sat, 2026-07-25", "ru", false, Some("2026-06-01"));
+        assert!(p.contains("2026-06-01"));
+        assert!(p.contains("never state that it does not exist"));
+    }
+
+    #[test]
+    fn no_horizon_line_once_history_is_complete() {
+        // With the whole mailbox cached there is nothing to qualify, so the
+        // prompt shouldn't spend tokens hedging about sync at all.
+        let p = chat_agent("Sat, 2026-07-25", "ru", false, None);
+        assert!(!p.contains("still being fetched"));
+        assert!(!p.contains("synced so far"));
+    }
 }

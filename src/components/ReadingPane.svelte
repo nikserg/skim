@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { aiStream, api } from "../lib/api";
+  import { aiErrorText, aiStream, api } from "../lib/api";
   import { aiLinks } from "../lib/ai-links";
   import { getLocale, t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
@@ -59,6 +59,15 @@
     cancelAi?.();
     aiPanel = { status: "streaming", text: "", steps: [] };
     slowStart.arm();
+    // A round that produced nothing is a failure however it ended: show why and
+    // put the unanswered question back into the input so it can be retried.
+    const fail = (why: string) => {
+      slowStart.clear();
+      if (askTurns[askTurns.length - 1]?.role === "user") {
+        askQuestion = askTurns.pop()!.content;
+      }
+      aiPanel = { status: "error", text: why, steps: [] };
+    };
     cancelAi = aiStream("ai_ask", args, {
       delta: (text) => {
         slowStart.clear();
@@ -82,22 +91,17 @@
       done: () => {
         slowStart.clear();
         if (!aiPanel) return;
+        // An answer that came back blank is a failure, not a turn — committing
+        // it would leave an empty card sitting in the thread.
+        if (!aiPanel.text.trim()) {
+          fail(t("ai.no_answer"));
+          return;
+        }
         askTurns.push({ role: "assistant", content: aiPanel.text });
         aiPanel = null;
         queueMicrotask(() => askInput?.focus());
       },
-      error: (code, message) => {
-        slowStart.clear();
-        // Put the failed question back into the input so it can be retried.
-        if (askTurns[askTurns.length - 1]?.role === "user") {
-          askQuestion = askTurns.pop()!.content;
-        }
-        aiPanel = {
-          status: "error",
-          text: code === "ai_key" ? t("ai.needs_key") : message || t("ai.no_context"),
-          steps: [],
-        };
-      },
+      error: (code, message) => fail(aiErrorText(code, message)),
     });
   }
 

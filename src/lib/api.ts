@@ -1,5 +1,6 @@
 // Typed wrappers around the Tauri IPC surface — one function per command.
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { t } from "./i18n/index.svelte";
 import type {
   Account,
   Draft,
@@ -194,6 +195,15 @@ export const aiApi = {
    *  URL turns out to be one — any error means "not Ollama", handled by the caller. */
   ollamaModels: (url: string) => invoke<AiModel[]>("ollama_models", { url }),
 };
+
+/** What to show the user for a failed AI request. Codes the backend gives a
+ *  specific meaning get a specific message; anything else falls through to what
+ *  the provider said. */
+export function aiErrorText(code: string, message: string): string {
+  if (code === "ai_key") return t("ai.needs_key");
+  if (code === "ai_truncated") return t("ai.truncated");
+  return message || t("ai.no_answer");
+}
 
 /** Start a streaming AI request. Returns a cancel function. */
 export function aiStream(
