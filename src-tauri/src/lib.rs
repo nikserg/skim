@@ -20,6 +20,35 @@ fn app_data_dir() -> Option<PathBuf> {
     std::env::var_os("APPDATA").map(|p| PathBuf::from(p).join("com.skim.app"))
 }
 
+/// Past this a diagnostic log is old news; the file is started over rather than
+/// grown forever. Small enough that it can never be a disk-space question.
+const LOG_MAX_BYTES: u64 = 256 * 1024;
+
+/// Append one timestamped line to a log file next to the database. A windowed
+/// release build has no stderr, so `tracing` output is invisible where it
+/// matters most — the user's own machine. Only rare, diagnosable events go
+/// through here (panics, pathologically slow fetches), never message content.
+pub(crate) fn append_log(file: &str, line: &str) {
+    let Some(dir) = app_data_dir() else { return };
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join(file);
+    let oversized = std::fs::metadata(&path).is_ok_and(|m| m.len() > LOG_MAX_BYTES);
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(!oversized)
+        .write(oversized)
+        .truncate(oversized)
+        .open(&path)
+    {
+        use std::io::Write;
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let _ = writeln!(f, "[{ts}] {line}");
+    }
+}
+
 /// A panic in a windowed release build has nowhere to print — stderr is not
 /// attached — so a crash inside a DB closure or the sync worker would just look
 /// like a freeze. Record every panic (payload + location) to `skim-panic.log`
@@ -28,21 +57,7 @@ fn install_panic_hook() {
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         tracing::error!(target: "skim_lib", "panic: {info}");
-        if let Some(dir) = app_data_dir() {
-            let _ = std::fs::create_dir_all(&dir);
-            if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(dir.join("skim-panic.log"))
-            {
-                use std::io::Write;
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                let _ = writeln!(f, "[{ts}] {info}");
-            }
-        }
+        append_log("skim-panic.log", &info.to_string());
         default(info);
     }));
 }

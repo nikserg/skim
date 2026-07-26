@@ -171,7 +171,9 @@
   }
 
   let detail = $state<ThreadDetail | null>(null);
-  let bodies = $state<Record<number, RenderedBody | "loading" | "error">>({});
+  // "loading" = already in the local cache, back in milliseconds; "fetching" =
+  // still has to be pulled off the server, which can take seconds.
+  let bodies = $state<Record<number, RenderedBody | "loading" | "fetching" | "error">>({});
   // Why a body failed, for the tooltip on the error note — the visible wording
   // stays the same, but a bug report is diagnosable.
   let bodyErrors = $state<Record<number, string>>({});
@@ -373,7 +375,15 @@
     const seq = ++bodySeq;
     bodyReq.set(messageId, seq);
     const stale = () => bodyReq.get(messageId) !== seq || mail.selectedThreadId !== threadId;
-    bodies = { ...bodies, [messageId]: "loading" };
+    // Say which of the two is happening. A body already in SQLite renders in
+    // milliseconds; one the server still has to hand over does not, and showing
+    // the same word for both is what made a slow fetch look like a hang. The
+    // loaded-object check covers Retry and "show images", where `detail` still
+    // carries the pre-fetch bodyState.
+    const local =
+      typeof bodies[messageId] === "object" ||
+      detail?.messages.find((m) => m.id === messageId)?.bodyState === 1;
+    bodies = { ...bodies, [messageId]: local ? "loading" : "fetching" };
     try {
       const body = await api.getMessageBody(messageId, showImages);
       if (stale()) return;
@@ -719,7 +729,10 @@
   {/if}
 </section>
 
-{#snippet messageBlock(message: MessageMeta, body: RenderedBody | "loading" | "error" | undefined)}
+{#snippet messageBlock(
+  message: MessageMeta,
+  body: RenderedBody | "loading" | "fetching" | "error" | undefined,
+)}
   <article class="message">
     <div class="meta">
       <span class="avatar">{initial(message.from.name ?? message.from.addr)}</span>
@@ -742,8 +755,8 @@
       <span class="date microlabel">{formatFull(message.date)}</span>
     </div>
 
-    {#if body === "loading" || body === undefined}
-      <div class="body-note">{t("reading.loading")}</div>
+    {#if body === "loading" || body === "fetching" || body === undefined}
+      <div class="body-note">{t(body === "fetching" ? "reading.fetching" : "reading.loading")}</div>
     {:else if body === "error"}
       <div class="body-note" title={bodyErrors[message.id]}>
         {t("reading.load_failed")}

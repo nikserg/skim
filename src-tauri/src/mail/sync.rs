@@ -30,16 +30,28 @@ const BACKFILL_CHUNKS_PER_PASS: u32 = 10;
 // rest (other folders, read state from other devices) — it can run infrequently.
 const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(300);
 const IDLE_REISSUE: std::time::Duration = std::time::Duration::from_secs(25 * 60);
-// Ceiling on the actual body FETCH from the server, so a stalled socket can't
-// wedge the worker (and thus every later command) indefinitely.
+// Ceiling on one whole trip to the server for a body — login, SELECT and the
+// FETCH — so a stalled socket can't wedge the worker (and thus every later
+// command) indefinitely.
 const BODY_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
-// Shorter leash for the first try on a connection that has been sitting idle
-// since the last message was opened. A connection the server dropped usually
-// errors at once, but one killed by sleep/wake or a network switch just hangs —
-// and the reconnect below still has to fit inside BODY_FETCH_WAIT.
-const STALE_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+// One NOOP round-trip, used to tell a live connection from a dead one before the
+// user's FETCH goes out. A live socket answers in an RTT, a dropped one errors at
+// once, and one blackholed by sleep/wake or a network switch hangs — which is
+// what this leash is for. It replaces paying that discovery out of the fetch.
+const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+// Don't probe a connection that was just used: the second message in a thread
+// must stay instant. A minute is far below any server's idle timeout and above
+// any pause between two clicks.
+const PROBE_AFTER_IDLE: std::time::Duration = std::time::Duration::from_secs(60);
+// Everything one FetchBody may spend on the wire: probe, login, SELECT, FETCH
+// and the one retry. Stays under BODY_FETCH_WAIT so the worker's own error
+// always beats the caller's timeout to the reading pane.
+const FETCH_REQUEST_BUDGET: std::time::Duration = std::time::Duration::from_secs(100);
+// Above this, opening a message stopped feeling instant and is worth a line in
+// the on-disk log — a windowed build has no stderr to print to.
+const SLOW_FETCH_LOG: std::time::Duration = std::time::Duration::from_secs(3);
 // How long a `get_message_body` caller waits for the worker to service its
-// request — longer than BODY_FETCH_TIMEOUT so the worker's own error wins, but
+// request — longer than FETCH_REQUEST_BUDGET so the worker's own error wins, but
 // still bounded in case the worker is stuck on some other un-timed op.
 const BODY_FETCH_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
 
@@ -103,6 +115,11 @@ struct Engine {
     // Shared between the sync and body-fetch connections so they never refresh
     // (and, for Microsoft, rotate) the stored OAuth token concurrently.
     oauth_token: Arc<Mutex<Option<(String, i64)>>>,
+    /// When this connection last completed a round-trip with the server. Only
+    /// the fetch worker reads it: the sync connection talks to its server every
+    /// five minutes anyway, so it never sits idle long enough to go stale
+    /// unnoticed.
+    last_ok: std::time::Instant,
 }
 
 /// A folder's server-side STATUS snapshot. When an untouched folder reports the
@@ -140,6 +157,7 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
             session: None,
             selected: None,
             oauth_token: oauth.clone(),
+            last_ok: std::time::Instant::now(),
         };
         tauri::async_runtime::spawn(async move {
             while let Some(cmd) = fetch_rx.recv().await {
@@ -149,28 +167,36 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
                         message_pk,
                         respond,
                     } => {
+                        let started = std::time::Instant::now();
                         // Nothing else ever touches this connection, so between
                         // two opened messages it can sit idle long enough for
                         // the server to drop it — and we only find out when the
-                        // user clicks. Reconnect and try once more, so a socket
-                        // that merely went stale never reaches the reading pane
-                        // as "couldn't load".
-                        let reused = fetcher.session.is_some();
-                        let leash = if reused {
-                            STALE_FETCH_TIMEOUT
-                        } else {
-                            BODY_FETCH_TIMEOUT
-                        };
-                        let mut result = fetcher.fetch_body(message_pk, leash).await;
-                        if let Err(e) = &result {
+                        // user clicks. One NOOP settles that in a round-trip;
+                        // paying for the discovery out of the user's fetch is
+                        // what used to leave the reading pane on "Loading…".
+                        let probed = fetcher.last_ok.elapsed() > PROBE_AFTER_IDLE;
+                        if probed && !fetcher.session_is_alive().await {
                             fetcher.reset_session();
-                            // Only a reused connection is worth a second try:
-                            // reset_session() means the retry logs in fresh, so
-                            // this can't loop, and a failure that already
-                            // happened on a fresh connection is a real error.
-                            if reused {
+                        }
+                        let probe_ms = started.elapsed().as_millis();
+                        let reused = fetcher.session.is_some();
+                        let mut result = fetcher.fetch_body(message_pk, BODY_FETCH_TIMEOUT).await;
+                        let mut retried = false;
+                        if let Err(e) = &result {
+                            // A cancelled command leaves the response stream
+                            // desynced, so the session is finished either way.
+                            let worth_retrying = reused && is_connection_error(e);
+                            fetcher.reset_session();
+                            // The probe makes this rare — it now only catches a
+                            // server that dropped us in between. It still has to
+                            // fit in what's left of the budget, or the caller's
+                            // wait expires and the pane says "couldn't load"
+                            // while we are still fetching.
+                            let left = FETCH_REQUEST_BUDGET.saturating_sub(started.elapsed());
+                            if worth_retrying && !left.is_zero() {
                                 tracing::warn!(message_pk, error = %e, "body fetch failed on a reused session, reconnecting");
-                                result = fetcher.fetch_body(message_pk, BODY_FETCH_TIMEOUT).await;
+                                retried = true;
+                                result = fetcher.fetch_body(message_pk, left).await;
                                 if result.is_err() {
                                     fetcher.reset_session();
                                 }
@@ -178,6 +204,24 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
                         }
                         if let Err(e) = &result {
                             tracing::warn!(message_pk, error = %e, "body fetch failed");
+                        }
+                        let took = started.elapsed();
+                        if took > SLOW_FETCH_LOG {
+                            // The whole point of the breakdown: it says whether
+                            // the time went into finding a dead connection, into
+                            // reconnecting, or into a genuinely large message.
+                            crate::append_log(
+                                "skim-slow.log",
+                                &format!(
+                                    "slow body fetch: {}ms total, probe {probe_ms}ms (probed={probed}), \
+                                     reused={reused}, retried={retried}, outcome={}",
+                                    took.as_millis(),
+                                    match &result {
+                                        Ok(()) => "ok".to_string(),
+                                        Err(e) => format!("{} ({})", e.code(), e),
+                                    }
+                                ),
+                            );
                         }
                         let _ = respond.send(result);
                     }
@@ -197,6 +241,7 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
             session: None,
             selected: None,
             oauth_token: oauth,
+            last_ok: std::time::Instant::now(),
         };
 
         let mut poll = tokio::time::interval(POLL_INTERVAL);
@@ -294,6 +339,23 @@ impl Engine {
     fn reset_session(&mut self) {
         self.session = None;
         self.selected = None;
+    }
+
+    /// True when the current session answered a NOOP inside [`PROBE_TIMEOUT`].
+    ///
+    /// A `false` **must** be followed by `reset_session()`: on timeout the NOOP
+    /// future is dropped mid-command, so the session's response stream is left
+    /// desynced and the next command would read the NOOP's reply.
+    async fn session_is_alive(&mut self) -> bool {
+        let Some(session) = self.session.as_mut() else {
+            return false;
+        };
+        if noop_probe(session, PROBE_TIMEOUT).await {
+            self.last_ok = std::time::Instant::now();
+            true
+        } else {
+            false
+        }
     }
 
     async fn run_sync(&mut self) {
@@ -1025,8 +1087,12 @@ impl Engine {
 
     // ---- bodies --------------------------------------------------------
 
-    /// `timeout` bounds the FETCH itself; the caller picks it from how much it
-    /// trusts the connection (see the fetch worker in [`spawn`]).
+    /// `timeout` bounds every step that touches the network — logging in,
+    /// selecting the folder and the FETCH.
+    ///
+    /// Any `Err` may have cancelled a command mid-flight, which leaves the
+    /// response stream desynced: callers must `reset_session()` before reusing
+    /// this engine.
     async fn fetch_body(&mut self, message_pk: i64, timeout: std::time::Duration) -> Result<()> {
         let coords: Option<(String, u32, i64)> = self
             .db
@@ -1049,9 +1115,14 @@ impl Engine {
             return Ok(());
         }
 
-        self.ensure_selected(&imap_name).await?;
-        let session = self.session().await?;
+        // One leash over the whole trip. It used to cover only the FETCH, with
+        // `ensure_selected` — and the login inside it, which can wait on the
+        // shared OAuth mutex across an HTTPS token refresh — running in front of
+        // it unbounded. A stalled socket there held the reading pane for as long
+        // as the OS kept the connection open.
         let raw: Option<Vec<u8>> = tokio::time::timeout(timeout, async {
+            self.ensure_selected(&imap_name).await?;
+            let session = self.session().await?;
             let mut stream = session
                 .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
                 .await
@@ -1067,6 +1138,7 @@ impl Engine {
         })
         .await
         .map_err(|_| SkimError::other("network", "timed out fetching message body"))??;
+        self.last_ok = std::time::Instant::now();
         let Some(raw) = raw else {
             return Err(SkimError::other("mail", "server returned no message body"));
         };
@@ -2093,6 +2165,27 @@ fn imap_err(e: async_imap::error::Error) -> SkimError {
     SkimError::other("imap", e.to_string())
 }
 
+/// One NOOP on a short leash: does this session still have a server on the
+/// other end? Generic over the transport, and taking its own leash, so it can
+/// be tested without TLS and without waiting out [`PROBE_TIMEOUT`].
+async fn noop_probe<T>(session: &mut async_imap::Session<T>, leash: std::time::Duration) -> bool
+where
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + std::fmt::Debug + Send,
+{
+    matches!(
+        tokio::time::timeout(leash, session.noop()).await,
+        Ok(Ok(()))
+    )
+}
+
+/// Errors that mean "this connection is no good", as opposed to "this message
+/// is no good" (`mail`) or "this machine is" (`db`, `io`, `internal`). Only the
+/// former earns a reconnect: logging in again to re-ask a question that was
+/// already answered just spends the user's time on the same answer.
+fn is_connection_error(e: &SkimError) -> bool {
+    !matches!(e.code(), "mail" | "db" | "io" | "internal")
+}
+
 fn detect_role(imap_name: &str, attrs_lower: &str) -> Option<String> {
     if imap_name.eq_ignore_ascii_case("INBOX") {
         return Some("inbox".into());
@@ -2309,6 +2402,129 @@ mod backfill_tests {
         assert_eq!(covered.first().unwrap().1, 960);
         assert_eq!(covered.last().unwrap().0, 1);
         assert!(covered.iter().all(|(l, h)| h - l < BACKFILL_CHUNK));
+    }
+}
+
+#[cfg(test)]
+mod fetch_tests {
+    use super::{
+        is_connection_error, noop_probe, BODY_FETCH_TIMEOUT, BODY_FETCH_WAIT, FETCH_REQUEST_BUDGET,
+        PROBE_AFTER_IDLE, PROBE_TIMEOUT,
+    };
+    use crate::error::SkimError;
+    use std::time::Duration;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    /// The bug this fix is about was constants that stopped composing: the
+    /// caller timed out while the worker was still usefully working, or the
+    /// worker spent the user's time discovering what a probe answers in an RTT.
+    #[test]
+    fn the_worker_always_reports_before_the_caller_gives_up() {
+        assert!(PROBE_TIMEOUT < BODY_FETCH_TIMEOUT);
+        assert!(PROBE_TIMEOUT + BODY_FETCH_TIMEOUT < FETCH_REQUEST_BUDGET);
+        assert!(FETCH_REQUEST_BUDGET < BODY_FETCH_WAIT);
+        // A probe that fired more often than the reading pause it guards would
+        // cost a round-trip on every second message in a thread.
+        assert!(PROBE_AFTER_IDLE > PROBE_TIMEOUT);
+    }
+
+    #[test]
+    fn only_connection_errors_earn_a_reconnect() {
+        // "mail" is the engine's code for answers *about the message* — it was
+        // deleted, or the server returned no body. Logging in again changes
+        // nothing about either, nor about a failed local write.
+        assert!(!is_connection_error(&SkimError::other(
+            "mail",
+            "message no longer exists"
+        )));
+        for code in ["db", "io", "internal"] {
+            assert!(
+                !is_connection_error(&SkimError::other(code, "boom")),
+                "{code} is local, reconnecting can't help"
+            );
+        }
+        for code in ["imap", "network", "tls", "auth", "folder"] {
+            assert!(
+                is_connection_error(&SkimError::other(code, "boom")),
+                "{code} should reconnect"
+            );
+        }
+    }
+
+    /// What the scripted server does once the client is logged in.
+    enum AfterLogin {
+        AnswerNoop,
+        StaySilent,
+        CloseSocket,
+    }
+
+    /// Minimal IMAP server: greeting, LOGIN, then one scripted reaction to the
+    /// probe. Returns the port and the server task.
+    async fn scripted_server(after: AfterLogin) -> (u16, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (sock, _) = listener.accept().await.unwrap();
+            let mut reader = BufReader::new(sock);
+            reader.get_mut().write_all(b"* OK ready\r\n").await.unwrap();
+            let mut line = String::new();
+            reader.read_line(&mut line).await.unwrap();
+            let tag = line.split_whitespace().next().unwrap_or("a1").to_string();
+            reader
+                .get_mut()
+                .write_all(format!("{tag} OK logged in\r\n").as_bytes())
+                .await
+                .unwrap();
+            match after {
+                AfterLogin::AnswerNoop => {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).await.unwrap();
+                    let tag = line.split_whitespace().next().unwrap_or("a2").to_string();
+                    reader
+                        .get_mut()
+                        .write_all(format!("{tag} OK NOOP completed\r\n").as_bytes())
+                        .await
+                        .unwrap();
+                }
+                // Blackholed by sleep/wake or a network switch: the socket is
+                // open, the server is gone, nothing ever comes back.
+                AfterLogin::StaySilent => std::future::pending::<()>().await,
+                AfterLogin::CloseSocket => drop(reader),
+            }
+        });
+        (port, server)
+    }
+
+    async fn probe_against(after: AfterLogin, leash: Duration) -> bool {
+        let (port, server) = scripted_server(after).await;
+        let tcp = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .unwrap();
+        let mut client = async_imap::Client::new(tcp);
+        client.read_response().await.unwrap().unwrap();
+        let mut session = client.login("u", "p").await.map_err(|(e, _)| e).unwrap();
+        let alive = noop_probe(&mut session, leash).await;
+        server.abort();
+        alive
+    }
+
+    #[tokio::test]
+    async fn a_live_connection_answers_the_probe() {
+        assert!(probe_against(AfterLogin::AnswerNoop, PROBE_TIMEOUT).await);
+    }
+
+    /// The case that cost forty seconds: a socket that is open but answers
+    /// nothing. The probe must give up on its own leash instead of hanging.
+    #[tokio::test]
+    async fn a_silent_connection_fails_the_probe_on_its_leash() {
+        let started = std::time::Instant::now();
+        assert!(!probe_against(AfterLogin::StaySilent, Duration::from_millis(200)).await);
+        assert!(started.elapsed() < Duration::from_secs(5), "probe hung");
+    }
+
+    #[tokio::test]
+    async fn a_dropped_connection_fails_the_probe_at_once() {
+        assert!(!probe_against(AfterLogin::CloseSocket, PROBE_TIMEOUT).await);
     }
 }
 

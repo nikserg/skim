@@ -98,6 +98,7 @@
   "reading.save": "저장",
   "reading.open": "열기",
   "reading.loading": "불러오는 중…",
+  "reading.fetching": "서버에서 가져오는 중…",
   "reading.load_failed": "메일을 불러오지 못했습니다",
   "reading.retry": "다시 시도",
   "security.banner": "이 메시지에는 피싱 징후가 있습니다",

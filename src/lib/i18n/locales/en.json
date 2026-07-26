@@ -105,6 +105,7 @@
   "reading.save": "Save",
   "reading.open": "Open",
   "reading.loading": "Loading…",
+  "reading.fetching": "Fetching from the server…",
   "reading.load_failed": "Couldn't load this message",
   "reading.retry": "Retry",
   "security.banner": "This message has signs of phishing",
