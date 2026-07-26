@@ -7,7 +7,10 @@
 //! (shorteners, plain http, punycode, odd ports, deep subdomains) flag only
 //! when the sender itself already looks suspicious — otherwise every
 //! newsletter full of tracking redirects would cry wolf and train the user
-//! to ignore warnings.
+//! to ignore warnings. Sender signals follow the same rule: patterns that
+//! transactional mail produces every day (a foreign Reply-To, a relay naming
+//! its customer in the display name, DMARC failing on alignment alone) are
+//! not evidence on their own.
 
 use crate::db::models::{LinkFlag, SecuritySignals, SignalReason};
 use rusqlite::{Connection, OptionalExtension};
@@ -444,6 +447,10 @@ fn sender_history(
 /// Message-level suspicion signals. Own/outgoing mail (From = one of the
 /// user's accounts) never flags. Missing data (no auth headers, unknown
 /// sender history) is never treated as suspicious by itself.
+///
+/// Same two tiers as the link checks: signals that legitimate relays produce
+/// as a matter of course are either gated on the sender being a stranger, or
+/// held back until something harder has already fired.
 pub fn sender_signals(conn: &Connection, message_id: i64) -> rusqlite::Result<Vec<SignalReason>> {
     let Some(row) = load_row(conn, message_id)? else {
         return Ok(vec![]);
@@ -464,27 +471,56 @@ pub fn sender_signals(conn: &Connection, message_id: i64) -> rusqlite::Result<Ve
 
     let mut out = Vec::new();
 
-    if row.auth_dmarc.as_deref() == Some("fail") {
+    // A DMARC failure with both SPF and DKIM passing is an alignment-only
+    // failure: the mail is cryptographically genuine, it just wasn't sent
+    // from the From domain's own infrastructure. A spoofer cannot produce a
+    // passing DKIM signature for someone else's domain, so this shape is a
+    // relay or a forward, not a forgery.
+    if row.auth_dmarc.as_deref() == Some("fail")
+        && !(row.auth_spf.as_deref() == Some("pass") && row.auth_dkim.as_deref() == Some("pass"))
+    {
         out.push(reason("auth_dmarc_fail", None));
     } else if row.auth_spf.as_deref() == Some("fail") && row.auth_dkim.as_deref() == Some("fail") {
         out.push(reason("auth_fail", None));
     }
+    // The auth block is the only thing that can have fired so far.
+    let auth_failed = !out.is_empty();
 
+    let (addr_count, domain_count) = sender_history(conn, from_addr, &from_domain)?;
+    let first_time = addr_count <= 1;
+    // Same threshold as the frequent-domain query below.
+    let established = domain_count >= 3;
+
+    // An address embedded in the display name is only a disguise when it
+    // hides where the mail really comes from. Platform relays put the real
+    // correspondent there on purpose ("organiser@client.example (Calendar)"),
+    // so skip the ones that disclose rather than impersonate: the address is
+    // the one you'd actually reply to, or the sender is a domain the user
+    // already hears from and nothing is wrong with its authentication.
     if let Some(embedded) = row.from_name.as_deref().and_then(embedded_email) {
         if let Some(embedded_domain) = addr_domain(&embedded) {
-            if registrable_domain(&embedded_domain) != registrable_domain(&from_domain) {
+            let confirmed_by_reply_to = row
+                .reply_to_addr
+                .as_deref()
+                .is_some_and(|rt| rt.eq_ignore_ascii_case(&embedded));
+            if registrable_domain(&embedded_domain) != registrable_domain(&from_domain)
+                && !confirmed_by_reply_to
+                && !(established && !auth_failed)
+            {
                 out.push(reason("name_addr_mismatch", Some(embedded)));
             }
         }
     }
 
-    let (addr_count, domain_count) = sender_history(conn, from_addr, &from_domain)?;
-    let first_time = addr_count <= 1;
-
+    // Soft: a foreign Reply-To is how every transactional platform works
+    // (the ESP sends, the customer receives the reply), so on its own it is
+    // not evidence of anything. It only adds detail to a warning something
+    // else already raised.
+    let mut soft = Vec::new();
     if first_time {
         if let Some(reply_domain) = row.reply_to_addr.as_deref().and_then(addr_domain) {
             if registrable_domain(&reply_domain) != registrable_domain(&from_domain) {
-                out.push(reason("reply_to_mismatch", Some(reply_domain)));
+                soft.push(reason("reply_to_mismatch", Some(reply_domain)));
             }
         }
     }
@@ -512,6 +548,10 @@ pub fn sender_signals(conn: &Connection, message_id: i64) -> rusqlite::Result<Ve
                 break;
             }
         }
+    }
+
+    if !out.is_empty() {
+        out.append(&mut soft);
     }
 
     Ok(out)
@@ -913,9 +953,10 @@ mod tests {
     }
 
     #[test]
-    fn reply_to_mismatch_gated_by_first_contact() {
+    fn reply_to_mismatch_only_surfaces_alongside_another_signal() {
         let db = test_db();
-        // First contact + foreign Reply-To → fires.
+        // First contact + foreign Reply-To, nothing else wrong → silent.
+        // This is just how every transactional platform sends mail.
         insert_message(
             &db,
             10,
@@ -927,25 +968,123 @@ mod tests {
             None,
         );
         db.with(|conn| {
-            let s = sender_signals(conn, 10)?;
-            assert_eq!(s.len(), 1);
-            assert_eq!(s[0].code, "reply_to_mismatch");
+            assert!(sender_signals(conn, 10)?.is_empty());
             Ok(())
         })
         .unwrap();
-        // Known sender (2nd message) + foreign Reply-To → does not fire.
+        // Same message, but authentication also failed → both are reported.
         insert_message(
             &db,
             11,
             None,
-            "a@shop.example",
+            "b@shop.example",
             Some("collect@evil.example"),
+            Some("fail"),
+            None,
+            None,
+        );
+        db.with(|conn| {
+            let s = sender_signals(conn, 11)?;
+            let codes: Vec<&str> = s.iter().map(|r| r.code.as_str()).collect();
+            assert_eq!(codes, ["auth_dmarc_fail", "reply_to_mismatch"]);
+            assert_eq!(s[1].param.as_deref(), Some("evil.example"));
+            Ok(())
+        })
+        .unwrap();
+        // Known sender (2nd message from that address) → gated out entirely.
+        insert_message(
+            &db,
+            12,
+            None,
+            "b@shop.example",
+            Some("collect@evil.example"),
+            Some("fail"),
+            None,
+            None,
+        );
+        db.with(|conn| {
+            let s = sender_signals(conn, 12)?;
+            assert_eq!(s.len(), 1);
+            assert_eq!(s[0].code, "auth_dmarc_fail");
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn dmarc_alignment_only_failure_is_not_suspicious() {
+        // SPF and DKIM both pass, DMARC fails → relayed/forwarded legitimate
+        // mail, not a forgery. A spoofer cannot sign for someone else.
+        let db = test_db();
+        insert_message(
+            &db,
+            10,
+            None,
+            "x@shop.example",
+            None,
+            Some("fail"),
+            Some("pass"),
+            Some("pass"),
+        );
+        db.with(|conn| {
+            assert!(sender_signals(conn, 10)?.is_empty());
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn relay_display_name_confirmed_by_reply_to_is_clean() {
+        // Calendar invites name the organiser in the display name and set
+        // Reply-To to that same address — disclosure, not disguise.
+        let db = test_db();
+        insert_message(
+            &db,
+            10,
+            Some("organiser@client.example (Calendar)"),
+            "calendar-notification@platform.example",
+            Some("organiser@client.example"),
+            Some("pass"),
+            Some("pass"),
+            Some("pass"),
+        );
+        db.with(|conn| {
+            assert!(sender_signals(conn, 10)?.is_empty());
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn relay_display_name_from_established_domain_is_clean() {
+        // Same relay shape without any Reply-To or auth headers: the sender
+        // domain is one the user hears from constantly, so it stands on its
+        // own history.
+        let db = test_db();
+        for i in 0..3 {
+            insert_message(
+                &db,
+                100 + i,
+                None,
+                "notify@platform.example",
+                None,
+                None,
+                None,
+                None,
+            );
+        }
+        insert_message(
+            &db,
+            200,
+            Some("guest@client.example (via Meet)"),
+            "meetings-noreply@platform.example",
+            None,
             None,
             None,
             None,
         );
         db.with(|conn| {
-            assert!(sender_signals(conn, 11)?.is_empty());
+            assert!(sender_signals(conn, 200)?.is_empty());
             Ok(())
         })
         .unwrap();
