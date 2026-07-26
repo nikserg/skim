@@ -518,12 +518,16 @@ impl Engine {
     async fn discover_folders(&mut self) -> Result<()> {
         let session = self.session().await?;
         let mut names = Vec::new();
+        let mut delimiter: Option<String> = None;
         {
             let mut stream = session.list(None, Some("*")).await.map_err(imap_err)?;
             while let Some(item) = stream.next().await {
                 let name = item.map_err(imap_err)?;
                 let attrs: Vec<String> =
                     name.attributes().iter().map(|a| format!("{a:?}")).collect();
+                if delimiter.is_none() {
+                    delimiter = name.delimiter().map(str::to_string);
+                }
                 names.push((name.name().to_string(), attrs));
             }
         }
@@ -562,6 +566,23 @@ impl Engine {
                 tx.commit()
             })
             .await?;
+
+        // The hierarchy separator is a property of the server, not of one
+        // mailbox, so learning it once from LIST is enough. It is only needed
+        // when creating a folder from a name the user typed.
+        if let Some(delim) = delimiter {
+            let account_id = self.account.id.clone();
+            let _ = self
+                .db
+                .call(move |conn| {
+                    conn.execute(
+                        "UPDATE accounts SET folder_delimiter = ?2 WHERE id = ?1",
+                        rusqlite::params![account_id, delim],
+                    )
+                    .map(|_| ())
+                })
+                .await;
+        }
 
         // A folder can gain the 'all' role after its contents were already
         // synced (e.g. the attribute was missed on an earlier run) — those
@@ -1163,10 +1184,8 @@ impl Engine {
                 }
             };
             match self.execute_op(&kind, &parsed).await {
-                Ok(folder_id) => {
-                    if let Some(fid) = folder_id {
-                        affected.insert(fid);
-                    }
+                Ok(folder_ids) => {
+                    affected.extend(folder_ids);
                     let _ = self.finish_op(op_id, true).await;
                 }
                 Err(e) => {
@@ -1198,6 +1217,58 @@ impl Engine {
                                         })
                                         .await;
                                     let _ = self.app.emit("mail:updated", json!({}));
+                                }
+                                // Same for a folder we optimistically added to
+                                // the sidebar for a move that never landed:
+                                // discover_folders only ever inserts, so an
+                                // empty phantom would stay there forever.
+                                let orphan = if kind == "move"
+                                    && parsed["createDest"].as_bool().unwrap_or(false)
+                                {
+                                    parsed["destFolderId"].as_i64()
+                                } else {
+                                    None
+                                };
+                                // A rename that never reached the server: put the
+                                // old name back, or discover_folders would add a
+                                // second row for the mailbox that still exists
+                                // under it.
+                                if kind == "rename_folder" {
+                                    let undo = (
+                                        parsed["folderId"].as_i64(),
+                                        parsed["imapName"].as_str().map(str::to_string),
+                                        parsed["displayName"].as_str().map(str::to_string),
+                                    );
+                                    if let (Some(id), Some(imap), Some(display)) = undo {
+                                        let _ = self
+                                            .db
+                                            .call(move |conn| {
+                                                conn.execute(
+                                                    "UPDATE folders
+                                                        SET imap_name = ?2, display_name = ?3
+                                                      WHERE id = ?1",
+                                                    rusqlite::params![id, imap, display],
+                                                )
+                                                .map(|_| ())
+                                            })
+                                            .await;
+                                        let _ = self.app.emit("folders:updated", json!({}));
+                                    }
+                                }
+                                if let Some(folder_id) = orphan {
+                                    let _ = self
+                                        .db
+                                        .call(move |conn| {
+                                            conn.execute(
+                                                "DELETE FROM folders WHERE id = ?1
+                                                 AND NOT EXISTS (SELECT 1 FROM messages
+                                                                 WHERE folder_id = ?1)",
+                                                rusqlite::params![folder_id],
+                                            )
+                                            .map(|_| ())
+                                        })
+                                        .await;
+                                    let _ = self.app.emit("folders:updated", json!({}));
                                 }
                                 let _ = self.app.emit(
                                     "ops:failed",
@@ -1259,19 +1330,30 @@ impl Engine {
             .await
     }
 
-    /// Execute one queued op. Returns the folder id to resync afterwards.
-    async fn execute_op(&mut self, kind: &str, payload: &serde_json::Value) -> Result<Option<i64>> {
+    /// Execute one queued op. Returns the folders to resync afterwards — the
+    /// source, plus the destination when the op moved mail between two of them.
+    async fn execute_op(&mut self, kind: &str, payload: &serde_json::Value) -> Result<Vec<i64>> {
+        // The self-contained ops each resync at most one folder of their own.
+        let one = |f: Option<i64>| f.into_iter().collect();
         if kind == "send" {
-            return self.execute_send(payload).await;
+            return self.execute_send(payload).await.map(one);
         }
         if kind == "rsvp" {
-            return self.execute_rsvp(payload).await;
+            return self.execute_rsvp(payload).await.map(one);
         }
         if kind == "unsubscribe" {
-            return self.execute_unsubscribe(payload).await;
+            return self.execute_unsubscribe(payload).await.map(one);
         }
         if kind == "save_draft" {
-            return self.execute_save_draft(payload).await;
+            return self.execute_save_draft(payload).await.map(one);
+        }
+        // Folder-level ops carry no UIDs, so they short-circuit before the
+        // message coordinates are read.
+        if kind == "rename_folder" {
+            return self.execute_rename_folder(payload).await;
+        }
+        if kind == "delete_folder" {
+            return self.execute_delete_folder(payload).await;
         }
         let imap_name = payload["imapName"].as_str().unwrap_or_default().to_string();
         let folder_id = payload["folderId"].as_i64();
@@ -1284,7 +1366,7 @@ impl Engine {
             })
             .unwrap_or_default();
         if imap_name.is_empty() || uids.is_empty() {
-            return Ok(None);
+            return Ok(Vec::new());
         }
         let uid_set = uids
             .iter()
@@ -1293,6 +1375,8 @@ impl Engine {
             .join(",");
 
         self.ensure_selected(&imap_name).await?;
+
+        let mut affected: Vec<i64> = folder_id.into_iter().collect();
 
         match kind {
             "set_flag" => {
@@ -1343,11 +1427,91 @@ impl Engine {
                     self.move_uids(&uid_set, &dest).await?;
                 }
             }
+            // File into a folder the user picked. Unlike archive/delete/junk the
+            // destination travels in the payload rather than being resolved from
+            // a role here, so the op stays self-describing however long it waits
+            // in the queue.
+            "move" => {
+                let dest = payload["destImapName"].as_str().unwrap_or_default();
+                // Nothing to do without a destination, or when the mail is
+                // already there.
+                if !dest.is_empty() && !dest.eq_ignore_ascii_case(&imap_name) {
+                    if payload["createDest"].as_bool().unwrap_or(false) {
+                        let session = self.session().await?;
+                        // ALREADYEXISTS is the normal case on a retry, or when
+                        // another client got there first — and a name the server
+                        // truly rejects fails loudly on the move right below.
+                        if let Err(e) = session.create(dest).await {
+                            tracing::debug!(error = %e, folder = %dest, "CREATE failed; moving anyway");
+                        }
+                    }
+                    self.move_uids(&uid_set, dest).await?;
+                    if let Some(dest_folder_id) = payload["destFolderId"].as_i64() {
+                        affected.push(dest_folder_id);
+                    }
+                }
+            }
             other => {
                 return Err(SkimError::other("ops", format!("unknown op kind: {other}")));
             }
         }
+        Ok(affected)
+    }
+
+    /// True when the server still has this mailbox. Used to tell "the rename
+    /// hasn't happened yet" from "it happened and we missed the reply".
+    async fn mailbox_exists(&mut self, imap_name: &str) -> bool {
+        self.probe_status(imap_name).await.is_ok()
+    }
+
+    /// Rename a mailbox. The local row was renamed at enqueue time, so the
+    /// payload carries the old name — that is still what the server calls it.
+    async fn execute_rename_folder(&mut self, payload: &serde_json::Value) -> Result<Vec<i64>> {
+        let from = payload["imapName"].as_str().unwrap_or_default().to_string();
+        let to = payload["destImapName"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        let folder_id: Vec<i64> = payload["folderId"].as_i64().into_iter().collect();
+        if from.is_empty() || to.is_empty() || from == to {
+            return Ok(Vec::new());
+        }
+        // A server may refuse to rename the mailbox it currently has selected,
+        // and STATUS is illegal on it too.
+        self.ensure_selected("INBOX").await?;
+        // An earlier attempt may have succeeded with its reply lost to a dropped
+        // connection; renaming again would fail on a name that no longer exists.
+        if !self.mailbox_exists(&from).await {
+            return Ok(folder_id);
+        }
+        let session = self.session().await?;
+        session.rename(&from, &to).await.map_err(imap_err)?;
         Ok(folder_id)
+    }
+
+    /// Delete a mailbox, but only while the server agrees it is empty: on
+    /// everything except Gmail, DELETE takes the mail inside with it, and mail
+    /// can arrive between the user's click and this op draining.
+    async fn execute_delete_folder(&mut self, payload: &serde_json::Value) -> Result<Vec<i64>> {
+        let name = payload["imapName"].as_str().unwrap_or_default().to_string();
+        if name.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.ensure_selected("INBOX").await?;
+        match self.probe_status(&name).await {
+            Ok(st) if st.exists > 0 => {
+                return Err(SkimError::other(
+                    "folder",
+                    format!("{name} is no longer empty"),
+                ));
+            }
+            Ok(_) => {}
+            // Already gone — an earlier attempt landed, or someone else deleted it.
+            Err(_) => return Ok(Vec::new()),
+        }
+        let session = self.session().await?;
+        session.delete(&name).await.map_err(imap_err)?;
+        Ok(Vec::new())
     }
 
     /// Send a queued draft over SMTP, mirror it to Sent (non-Gmail), and
@@ -1749,7 +1913,14 @@ impl Engine {
             Ok(()) => Ok(()),
             Err(e) => {
                 tracing::debug!(error = %e, "UID MOVE unsupported; using COPY+DELETE");
-                session.uid_copy(uid_set, dest).await.map_err(imap_err)?;
+                // async-imap quotes the mailbox for UID MOVE but interpolates it
+                // raw for UID COPY, so a destination with a space ("Deleted
+                // Items", any folder the user picked) would produce a malformed
+                // command on this path. Quote it ourselves.
+                session
+                    .uid_copy(uid_set, quote_mailbox(dest))
+                    .await
+                    .map_err(imap_err)?;
                 self.delete_and_expunge(uid_set).await
             }
         }
@@ -1979,6 +2150,61 @@ fn display_name(imap_name: &str, _provider: &str) -> String {
     decode_imap_utf7(stripped)
 }
 
+/// Quote a mailbox name as an IMAP quoted-string, mirroring what async-imap
+/// does internally for the commands that bother to.
+fn quote_mailbox(name: &str) -> String {
+    let mut out = String::with_capacity(name.len() + 2);
+    out.push('"');
+    for c in name.chars() {
+        if c == '"' || c == '\\' {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('"');
+    out
+}
+
+/// Encode a mailbox name as RFC 3501 modified UTF-7 ("Важное" → "&BBIEMAQ2BD0EPgQ1-").
+/// The inverse of [`decode_imap_utf7`]: needed for CREATE, since a name the user
+/// typed can hold anything their locale allows.
+pub fn encode_imap_utf7(s: &str) -> String {
+    use base64::Engine;
+    let engine = base64::engine::GeneralPurpose::new(
+        &base64::alphabet::STANDARD,
+        base64::engine::GeneralPurposeConfig::new().with_encode_padding(false),
+    );
+    let mut out = String::with_capacity(s.len());
+    let mut run: Vec<u16> = Vec::new();
+    // Flush the pending non-ASCII run as one "&<modified base64>-" section.
+    let flush = |run: &mut Vec<u16>, out: &mut String| {
+        if run.is_empty() {
+            return;
+        }
+        let bytes: Vec<u8> = run.iter().flat_map(|u| u.to_be_bytes()).collect();
+        out.push('&');
+        out.push_str(&engine.encode(&bytes).replace('/', ","));
+        out.push('-');
+        run.clear();
+    };
+    for c in s.chars() {
+        // Printable US-ASCII goes through verbatim; '&' is escaped as "&-".
+        if ('\u{20}'..='\u{7e}').contains(&c) {
+            flush(&mut run, &mut out);
+            if c == '&' {
+                out.push_str("&-");
+            } else {
+                out.push(c);
+            }
+        } else {
+            let mut buf = [0u16; 2];
+            run.extend_from_slice(c.encode_utf16(&mut buf));
+        }
+    }
+    flush(&mut run, &mut out);
+    out
+}
+
 /// Decode RFC 3501 modified UTF-7 mailbox names ("&BBIEMAQ2BD0EPgQ1-" → "Важное").
 fn decode_imap_utf7(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -2088,7 +2314,7 @@ mod backfill_tests {
 
 #[cfg(test)]
 mod utf7_tests {
-    use super::decode_imap_utf7;
+    use super::{decode_imap_utf7, encode_imap_utf7, quote_mailbox};
 
     #[test]
     fn decodes_modified_utf7_names() {
@@ -2099,5 +2325,41 @@ mod utf7_tests {
         assert_eq!(decode_imap_utf7("&Jjo-!"), "☺!");
         // malformed input survives untouched
         assert_eq!(decode_imap_utf7("&broken"), "&broken");
+    }
+
+    #[test]
+    fn encodes_modified_utf7_names() {
+        assert_eq!(encode_imap_utf7("INBOX"), "INBOX");
+        assert_eq!(encode_imap_utf7("Work/Taxes"), "Work/Taxes");
+        assert_eq!(encode_imap_utf7("Важное"), "&BBIEMAQ2BD0EPgQ1-");
+        assert_eq!(encode_imap_utf7("Семья"), "&BCEENQQ8BEwETw-");
+        assert_eq!(encode_imap_utf7("Tom & Jerry"), "Tom &- Jerry");
+        assert_eq!(encode_imap_utf7("☺!"), "&Jjo-!");
+    }
+
+    #[test]
+    fn encode_decode_round_trips() {
+        for name in [
+            "INBOX",
+            "Taxes 2025",
+            "Work/Clients/Acme",
+            "Важное",
+            "Tom & Jerry",
+            "☺",
+            // Outside the BMP: encodes as a surrogate pair.
+            "Rechnungen 🧾",
+            "混在 mixed Текст",
+        ] {
+            assert_eq!(decode_imap_utf7(&encode_imap_utf7(name)), name, "{name}");
+        }
+    }
+
+    #[test]
+    fn quotes_mailbox_names() {
+        assert_eq!(quote_mailbox("Archive"), "\"Archive\"");
+        assert_eq!(quote_mailbox("Deleted Items"), "\"Deleted Items\"");
+        assert_eq!(quote_mailbox("[Gmail]/All Mail"), "\"[Gmail]/All Mail\"");
+        assert_eq!(quote_mailbox("say \"hi\""), "\"say \\\"hi\\\"\"");
+        assert_eq!(quote_mailbox("back\\slash"), "\"back\\\\slash\"");
     }
 }

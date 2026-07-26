@@ -3,6 +3,7 @@
   // AI chat (the "Ask Skim AI" row on any query).
   import { aiErrorText, aiStream, api, type Citation } from "../lib/api";
   import { aiLinks } from "../lib/ai-links";
+  import { folderLabel } from "../lib/folders";
   import { getLocale, t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
   import { createSlowStart } from "../lib/slow-start.svelte";
@@ -200,22 +201,25 @@
         run: () => ui.openShortcuts(),
       },
     ];
-    const roleKey: Record<string, string> = {
-      inbox: "nav.inbox",
-      starred: "nav.starred",
-      sent: "nav.sent",
-      drafts: "nav.drafts",
-      archive: "nav.archive",
-      trash: "nav.trash",
-      junk: "nav.junk",
-    };
+    // Filing needs something to file — offering the row with nothing selected
+    // would be a dead end.
+    if (mail.selectedThread) {
+      const thread = mail.selectedThread;
+      list.push({
+        id: "move",
+        label: t("palette.move"),
+        hint: "V",
+        run: async () => {
+          const ids = await api.threadMessageIds(thread.id);
+          if (ids.length > 0) ui.openMove({ threadId: thread.id, messageIds: ids });
+        },
+      });
+    }
     for (const folder of mail.folders) {
       if (folder.role === "all") continue;
-      const name =
-        folder.role && roleKey[folder.role] ? t(roleKey[folder.role]) : folder.displayName;
       list.push({
         id: `goto-${folder.id}`,
-        label: t("palette.goto", { folder: name }),
+        label: t("palette.goto", { folder: folderLabel(folder) }),
         run: () => mail.selectFolder(folder.id),
       });
     }

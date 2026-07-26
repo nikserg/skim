@@ -20,6 +20,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0007_unified_indexes.sql"),
     include_str!("migrations/0008_security.sql"),
     include_str!("migrations/0009_backfill.sql"),
+    include_str!("migrations/0010_folder_delimiter.sql"),
 ];
 
 /// Handle to the single SQLite connection (WAL mode). All access goes through

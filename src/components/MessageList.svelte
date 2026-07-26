@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { folderLabel } from "../lib/folders";
   import { t } from "../lib/i18n/index.svelte";
   import { ai } from "../lib/stores/ai.svelte";
   import { mail } from "../lib/stores/mail.svelte";
@@ -7,20 +8,23 @@
 
   const title = $derived.by(() => {
     const f = mail.selectedFolder;
-    if (!f) return t("nav.inbox");
-    const roleKey: Record<string, string> = {
-      inbox: "nav.inbox",
-      starred: "nav.starred",
-      sent: "nav.sent",
-      drafts: "nav.drafts",
-      archive: "nav.archive",
-      trash: "nav.trash",
-      junk: "nav.junk",
-    };
-    return f.role && roleKey[f.role] ? t(roleKey[f.role]) : f.displayName;
+    return f ? folderLabel(f) : t("nav.inbox");
   });
 
   const unread = $derived(mail.selectedFolder?.unreadCount ?? 0);
+
+  // Only the user's own folders can be renamed or deleted — provider folders
+  // (Inbox, Trash, Spam…) are not ours to touch. Hidden in the unified view too:
+  // a virtual folder stands for one real folder per account, and renaming all of
+  // them at once is not what anyone means by "rename this".
+  const editableFolder = $derived(
+    !mail.unified && mail.selectedFolder?.role === null ? mail.selectedFolder : null,
+  );
+
+  function openEditor() {
+    const f = editableFolder;
+    if (f) ui.openFolderEditor({ id: f.id, name: f.displayName });
+  }
 
   // AI Recap is an inbox catch-up: only there, only with unread mail.
   const recapAvailable = $derived(
@@ -85,6 +89,13 @@
 <section class="list">
   <header class="head">
     <h1>{title}</h1>
+    {#if editableFolder}
+      <button class="edit" onclick={openEditor} title={t("folder.edit")} aria-label={t("folder.edit")}>
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round">
+          <path d="M11.2 2.6l2.2 2.2M9.9 3.9l2.2 2.2-6.4 6.4-2.9.7.7-2.9 6.4-6.4z" />
+        </svg>
+      </button>
+    {/if}
     <div class="head-right">
       {#if recapAvailable}
         <button class="recap-chip" onclick={openRecap}>✦ {t("ai.recap")}</button>
@@ -149,6 +160,33 @@
     align-items: center;
     gap: 10px;
     min-width: 0;
+  }
+  /* Sits right after the folder name, quiet until the header is hovered —
+     it is a rare action and shouldn't compete with the title. */
+  .edit {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    margin-right: auto;
+    border-radius: var(--radius-s);
+    color: var(--text-faint);
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+  .head:hover .edit,
+  .edit:focus-visible {
+    opacity: 1;
+  }
+  .edit:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .edit {
+      transition: none;
+    }
   }
   .nav-hint {
     display: inline-flex;

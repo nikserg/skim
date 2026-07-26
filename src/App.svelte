@@ -6,6 +6,8 @@
   import ComposeForm from "./components/ComposeForm.svelte";
   import AiRecap from "./components/AiRecap.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
+  import FolderEditor from "./components/FolderEditor.svelte";
+  import FolderPicker from "./components/FolderPicker.svelte";
   import ShortcutsOverlay from "./components/ShortcutsOverlay.svelte";
   import Onboarding from "./components/onboarding/Onboarding.svelte";
   import { api } from "./lib/api";
@@ -178,6 +180,16 @@
     }
   }
 
+  /** Open the folder picker for the highlighted thread — works with the reading
+   *  pane closed, which is why the picker lives here and not in it. */
+  async function openMoveForSelected() {
+    const thread = mail.selectedThread;
+    if (!thread) return;
+    const ids = await api.threadMessageIds(thread.id);
+    if (ids.length === 0) return;
+    ui.openMove({ threadId: thread.id, messageIds: ids });
+  }
+
   async function replyToSelected(mode: "reply" | "reply_all" | "forward" = "reply") {
     const thread = mail.selectedThread;
     if (!thread) return;
@@ -229,7 +241,16 @@
       mail.selectedThreadId = null;
       return;
     }
-    if (palette.open || ui.shortcutsOpen || isTyping() || e.ctrlKey || e.metaKey || e.altKey)
+    if (
+      palette.open ||
+      ui.shortcutsOpen ||
+      ui.movePicker !== null ||
+      ui.folderEditor !== null ||
+      isTyping() ||
+      e.ctrlKey ||
+      e.metaKey ||
+      e.altKey
+    )
       return;
     // The in-pane draft editor owns the keyboard — don't let list shortcuts
     // (archive/reply/star…) act on the draft being edited.
@@ -250,6 +271,9 @@
         return;
       case "KeyU":
         void actOnSelected("unread");
+        return;
+      case "KeyV":
+        void openMoveForSelected();
         return;
       case "KeyR":
         void replyToSelected("reply");
@@ -324,6 +348,8 @@
         {/if}
       </main>
       <CommandPalette />
+      <FolderPicker />
+      <FolderEditor />
       {#if ui.shortcutsOpen}
         <ShortcutsOverlay />
       {/if}

@@ -71,6 +71,22 @@ export const api = {
   archiveMessages: (messageIds: number[]) => invoke<void>("archive_messages", { messageIds }),
   deleteMessages: (messageIds: number[]) => invoke<void>("delete_messages", { messageIds }),
   reportSpam: (messageIds: number[]) => invoke<void>("report_spam", { messageIds }),
+  /** Folders these messages can be filed into (their own account's, minus the
+   *  ones they already sit in and the roles that aren't real destinations). */
+  moveTargets: (messageIds: number[]) => invoke<Folder[]>("move_targets", { messageIds }),
+  /** File messages into `destFolderId`, or into a folder named `newFolderName`
+   *  that is created as part of the move. Exactly one of the two is given. */
+  moveMessages: (messageIds: number[], destFolderId: number | null, newFolderName?: string) =>
+    invoke<void>("move_messages", {
+      messageIds,
+      destFolderId,
+      newFolderName: newFolderName ?? null,
+    }),
+  /** How much mail a folder holds — deleting is only offered for an empty one. */
+  folderMessageCount: (folderId: number) => invoke<number>("folder_message_count", { folderId }),
+  renameFolder: (folderId: number, newName: string) =>
+    invoke<void>("rename_folder", { folderId, newName }),
+  deleteFolder: (folderId: number) => invoke<void>("delete_folder", { folderId }),
   unsubscribe: (messageId: number) =>
     invoke<"submitted" | "opened">("unsubscribe", { messageId }),
   saveAttachment: (attachmentId: number) =>

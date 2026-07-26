@@ -11,6 +11,15 @@ let readingAi: ReadingAiActions | null = null;
  * the palette chat reads it once when a session starts. */
 let openMessageId: number | null = null;
 
+/** What the folder picker is about to move. Carried in the store rather than as
+ *  props, so the toolbar button, the V shortcut and the palette all open the
+ *  same picker with the same context. */
+export type MoveRequest = { threadId: number; messageIds: number[] };
+
+/** Folder whose name is being edited (or which is being deleted). Always one of
+ *  the user's own folders — provider folders have no editor. */
+export type FolderEdit = { id: number; name: string };
+
 const state = $state({
   /** Warm (quiet-zine) vs cold (classic) neutrals. */
   temperature: "warm" as Temperature,
@@ -24,6 +33,10 @@ const state = $state({
   sidebarCollapsed: false,
   /** Command-palette AI chat expanded to near-fullscreen. */
   paletteExpanded: false,
+  /** Open folder picker, and the thread it will file. */
+  movePicker: null as MoveRequest | null,
+  /** Open rename/delete dialog, and the folder it acts on. */
+  folderEditor: null as FolderEdit | null,
 });
 
 /** Parse a persisted theme string into the two axes, migrating legacy values.
@@ -147,6 +160,24 @@ export const ui = {
   togglePaletteExpanded() {
     state.paletteExpanded = !state.paletteExpanded;
     void api.setSetting("palette_expanded", state.paletteExpanded ? "on" : "off").catch(() => {});
+  },
+  get movePicker() {
+    return state.movePicker;
+  },
+  openMove(request: MoveRequest) {
+    state.movePicker = request;
+  },
+  closeMove() {
+    state.movePicker = null;
+  },
+  get folderEditor() {
+    return state.folderEditor;
+  },
+  openFolderEditor(folder: FolderEdit) {
+    state.folderEditor = folder;
+  },
+  closeFolderEditor() {
+    state.folderEditor = null;
   },
   get readingAi() {
     return readingAi;

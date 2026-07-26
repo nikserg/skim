@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api } from "../lib/api";
+  import { folderIcon, folderLabel, ownFoldersHeading } from "../lib/folders";
   import { t } from "../lib/i18n/index.svelte";
   import { ai } from "../lib/stores/ai.svelte";
   import { mail } from "../lib/stores/mail.svelte";
@@ -13,28 +14,6 @@
     await api.openComposeWindow(draft.id);
   }
 
-  const roleKey: Record<string, string> = {
-    inbox: "nav.inbox",
-    starred: "nav.starred",
-    sent: "nav.sent",
-    drafts: "nav.drafts",
-    archive: "nav.archive",
-    trash: "nav.trash",
-    junk: "nav.junk",
-    all: "nav.all_mail",
-  };
-
-  const roleIcon: Record<string, string> = {
-    inbox: "M2 8l5-5h2l5 5v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8zm0 0h3.5a2.5 2.5 0 0 0 5 0H14",
-    starred:
-      "M8 1.5l2 4.1 4.5.6-3.3 3.2.8 4.5L8 11.8l-4 2.1.8-4.5L1.5 6.2 6 5.6 8 1.5z",
-    sent: "M14 2L2 7l4.5 2L8 14l6-12zM6.5 9L14 2",
-    drafts: "M3 2h7l3 3v9H3V2zm7 0v3h3M5.5 8h5M5.5 11h5",
-    archive: "M2 3h12v3H2V3zm1 3v7h10V6M6.5 9h3",
-    trash: "M3 4h10M6.5 4V2.5h3V4M4.5 4l.5 9.5h6l.5-9.5M6.7 6.5v5M9.3 6.5v5",
-    junk: "M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM3.5 3.5l9 9",
-  };
-
   // "Отправленные" и "Черновики" содержат письма, написанные самим
   // пользователем, — счётчик непрочитанных для них бессмысленен.
   const noUnreadRoles = new Set(["sent", "drafts"]);
@@ -44,6 +23,12 @@
     mail.folders.filter((f) => f.role !== null && f.role !== "all" && f.role !== "starred"),
   );
   const labels = $derived(mail.folders.filter((f) => f.role === null));
+  // In the unified view every connected mailbox is in scope.
+  const ownHeading = $derived(
+    ownFoldersHeading(
+      (mail.unified ? mail.accounts : mail.account ? [mail.account] : []).map((a) => a.provider),
+    ),
+  );
   const collapsed = $derived(ui.sidebarCollapsed);
 </script>
 
@@ -65,7 +50,7 @@
 
     <div class="section">
       {#each mainFolders as folder (folder.id)}
-        {@const name = folder.role && roleKey[folder.role] ? t(roleKey[folder.role]) : folder.displayName}
+        {@const name = folderLabel(folder)}
         <button
           class="item"
           class:selected={mail.selectedFolderId === folder.id}
@@ -73,7 +58,7 @@
           title={collapsed ? name : undefined}
         >
           <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round">
-            <path d={roleIcon[folder.role ?? "inbox"] ?? roleIcon.inbox} />
+            <path d={folderIcon(folder.role)} />
           </svg>
           <span class="name">{name}</span>
           {#if folder.unreadCount > 0 && showsUnread(folder.role)}
@@ -85,7 +70,7 @@
 
     {#if labels.length > 0}
       <div class="section">
-        <div class="microlabel heading">{t("nav.labels")}</div>
+        <div class="microlabel heading">{ownHeading}</div>
         {#each labels as folder (folder.id)}
           <button
             class="item"

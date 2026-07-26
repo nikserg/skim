@@ -539,6 +539,345 @@ pub async fn report_spam(
     .await
 }
 
+/// The accounts these messages belong to — one entry unless a selection somehow
+/// spans mailboxes, and the folders they currently sit in.
+fn message_origin(
+    conn: &mut rusqlite::Connection,
+    ids: &[i64],
+) -> rusqlite::Result<(Vec<String>, Vec<i64>)> {
+    let groups = bodies::resolve_uids(conn, ids)?;
+    let sources: Vec<i64> = groups.iter().map(|g| g.folder_id).collect();
+    let mut accounts: Vec<String> = groups.into_iter().map(|g| g.account_id).collect();
+    accounts.sort();
+    accounts.dedup();
+    Ok((accounts, sources))
+}
+
+/// Turn a name the user typed into the pair the database stores: the wire name
+/// (server's hierarchy separator, modified UTF-7) and the display name. Keeping
+/// the two in step is what stops a folder we created or renamed from turning
+/// into a second sidebar row on the next `discover_folders` sweep.
+fn wire_folder_name(
+    conn: &rusqlite::Connection,
+    account_id: &str,
+    typed: &str,
+) -> rusqlite::Result<(String, String)> {
+    let delimiter: Option<String> = conn.query_row(
+        "SELECT folder_delimiter FROM accounts WHERE id = ?1",
+        rusqlite::params![account_id],
+        |r| r.get(0),
+    )?;
+    // The user types "/" for nesting; the server may want ".".
+    let delimiter = delimiter
+        .filter(|d| !d.is_empty())
+        .unwrap_or_else(|| "/".into());
+    let display_name = typed.replace('/', &delimiter);
+    let imap_name = crate::mail::sync::encode_imap_utf7(&display_name);
+    Ok((imap_name, display_name))
+}
+
+/// A folder the user is allowed to rename or delete: one of their own, i.e.
+/// without a special-use role. Inbox, Sent, Trash and friends belong to the
+/// provider and are refused here, not just hidden in the UI.
+fn own_folder(
+    conn: &rusqlite::Connection,
+    folder_id: i64,
+) -> rusqlite::Result<Option<(String, String, String)>> {
+    use rusqlite::OptionalExtension;
+    conn.query_row(
+        "SELECT account_id, imap_name, display_name FROM folders
+         WHERE id = ?1 AND role IS NULL",
+        rusqlite::params![folder_id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )
+    .optional()
+}
+
+/// Queue a folder-level op (no messages involved) and kick the sync engine.
+async fn queue_folder_op(
+    state: &AppState,
+    account_id: &str,
+    kind: &'static str,
+    payload: serde_json::Value,
+) -> Result<()> {
+    let account = account_id.to_string();
+    state
+        .db
+        .call(move |conn| bodies::enqueue_op(conn, &account, kind, &payload))
+        .await?;
+    let engines = state.engines.lock().await;
+    if let Some(handle) = engines.get(account_id) {
+        handle.run_ops();
+    }
+    Ok(())
+}
+
+/// How much mail a folder holds. The rename/delete dialog asks before offering
+/// to delete: deleting a mailbox destroys its contents on every server that
+/// isn't Gmail, so we only ever offer it for an empty one.
+#[tauri::command]
+pub async fn folder_message_count(state: State<'_, AppState>, folder_id: i64) -> Result<i64> {
+    state
+        .db
+        .call(move |conn| {
+            conn.query_row(
+                "SELECT count(*) FROM messages WHERE folder_id = ?1",
+                rusqlite::params![folder_id],
+                |r| r.get(0),
+            )
+        })
+        .await
+}
+
+/// Rename one of the user's own folders. Applied locally at once and queued for
+/// the server, like every other mutation.
+#[tauri::command]
+pub async fn rename_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    folder_id: i64,
+    new_name: String,
+) -> Result<()> {
+    let typed = new_name.trim().to_string();
+    if typed.is_empty() {
+        return Err(SkimError::other("folder", "folder name is empty"));
+    }
+    let payload = state
+        .db
+        .call(move |conn| {
+            let Some((account_id, from_imap, from_display)) = own_folder(conn, folder_id)? else {
+                return Ok(None);
+            };
+            let (to_imap, to_display) = wire_folder_name(conn, &account_id, &typed)?;
+            if to_imap == from_imap {
+                return Ok(None); // nothing to do
+            }
+            conn.execute(
+                // Clearing the STATUS snapshot makes the next sweep actually
+                // open the folder once, so a UIDVALIDITY the server changed
+                // during RENAME is noticed instead of skipped.
+                "UPDATE folders
+                    SET imap_name = ?2, display_name = ?3, status_uidvalidity = NULL
+                  WHERE id = ?1",
+                rusqlite::params![folder_id, to_imap, to_display],
+            )?;
+            Ok(Some((
+                account_id,
+                json!({
+                    "folderId": folder_id,
+                    // The old pair doubles as the rollback value if the op
+                    // never lands.
+                    "imapName": from_imap,
+                    "displayName": from_display,
+                    "destImapName": to_imap,
+                }),
+            )))
+        })
+        .await?;
+    let Some((account_id, payload)) = payload else {
+        return Ok(());
+    };
+    let _ = app.emit("folders:updated", json!({}));
+    queue_folder_op(state.inner(), &account_id, "rename_folder", payload).await
+}
+
+/// Delete one of the user's own folders — only while it is empty. IMAP DELETE
+/// takes the mail inside with it on everything but Gmail, and Skim has no undo,
+/// so this stays a way to undo a mistyped folder rather than a way to destroy
+/// mail in bulk.
+#[tauri::command]
+pub async fn delete_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    folder_id: i64,
+) -> Result<()> {
+    let queued = state
+        .db
+        .call(move |conn| {
+            let Some((account_id, imap_name, _)) = own_folder(conn, folder_id)? else {
+                return Ok(None);
+            };
+            let count: i64 = conn.query_row(
+                "SELECT count(*) FROM messages WHERE folder_id = ?1",
+                rusqlite::params![folder_id],
+                |r| r.get(0),
+            )?;
+            if count > 0 {
+                return Ok(Some((account_id, imap_name, count)));
+            }
+            // Local row goes now; if the server op fails for good,
+            // discover_folders puts it back on the next sweep.
+            conn.execute(
+                "DELETE FROM folders WHERE id = ?1",
+                rusqlite::params![folder_id],
+            )?;
+            Ok(Some((account_id, imap_name, 0)))
+        })
+        .await?;
+    let Some((account_id, imap_name, count)) = queued else {
+        return Ok(());
+    };
+    if count > 0 {
+        return Err(SkimError::other("folder", "folder is not empty"));
+    }
+    let _ = app.emit("folders:updated", json!({}));
+    queue_folder_op(
+        state.inner(),
+        &account_id,
+        "delete_folder",
+        json!({ "folderId": folder_id, "imapName": imap_name }),
+    )
+    .await
+}
+
+/// Folders these messages can be filed into. Resolved here rather than in the
+/// UI because neither view can work it out on its own: unified-inbox folders
+/// carry synthetic negative ids, and a thread row never says which folder its
+/// messages live in.
+///
+/// Excluded: the folders the messages are already in, the "all mail" role (it is
+/// deliberately never synced), Starred (a server-side view, not a destination)
+/// and Drafts. Inbox stays — moving back into it is how you un-archive.
+#[tauri::command]
+pub async fn move_targets(
+    state: State<'_, AppState>,
+    message_ids: Vec<i64>,
+) -> Result<Vec<Folder>> {
+    state
+        .db
+        .call(move |conn| {
+            let groups = bodies::resolve_uids(conn, &message_ids)?;
+            let mut accounts: Vec<&str> = groups.iter().map(|g| g.account_id.as_str()).collect();
+            accounts.sort_unstable();
+            accounts.dedup();
+            // A cross-account move is a re-upload, not a MOVE — out of scope, so
+            // offer nothing rather than something that cannot work.
+            let [account_id] = accounts[..] else {
+                return Ok(Vec::new());
+            };
+            let sources: Vec<i64> = groups.iter().map(|g| g.folder_id).collect();
+            let folders = queries::list_folders(conn, account_id)?
+                .into_iter()
+                .filter(|f| !sources.contains(&f.id))
+                .filter(|f| {
+                    !matches!(
+                        f.role.as_deref(),
+                        Some("all") | Some("starred") | Some("drafts")
+                    )
+                })
+                .collect();
+            Ok(folders)
+        })
+        .await
+}
+
+/// File messages into another folder of the same account. With
+/// `new_folder_name` the folder is created as part of the move: the row is
+/// inserted locally right away so the sidebar shows it, and the server-side
+/// CREATE rides inside the queued op so it works offline like everything else.
+#[tauri::command]
+pub async fn move_messages(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    message_ids: Vec<i64>,
+    dest_folder_id: Option<i64>,
+    new_folder_name: Option<String>,
+) -> Result<()> {
+    // Resolve the account before writing anything: creating the folder needs it,
+    // and it rules out a cross-account move up front.
+    let ids = message_ids.clone();
+    let (accounts, sources) = state
+        .db
+        .call(move |conn| message_origin(conn, &ids))
+        .await?;
+    let account_id = match accounts.as_slice() {
+        [only] => only.clone(),
+        [] => return Err(SkimError::other("mail", "no messages to move")),
+        _ => {
+            return Err(SkimError::other(
+                "mail",
+                "cannot move mail between accounts",
+            ))
+        }
+    };
+
+    let (dest_folder_id, dest_imap_name, create_dest) = match new_folder_name {
+        Some(typed) => {
+            let typed = typed.trim().to_string();
+            if typed.is_empty() {
+                return Err(SkimError::other("mail", "folder name is empty"));
+            }
+            let account = account_id.clone();
+            let (id, imap_name) = state
+                .db
+                .call(move |conn| {
+                    // Store the wire name so discover_folders' ON CONFLICT
+                    // reconciles onto this very row instead of adding a second
+                    // one for the same mailbox.
+                    let (imap_name, display_name) = wire_folder_name(conn, &account, &typed)?;
+                    conn.execute(
+                        "INSERT OR IGNORE INTO folders
+                           (account_id, imap_name, role, display_name, sort_order)
+                         VALUES (?1, ?2, NULL, ?3, 100)",
+                        rusqlite::params![account, imap_name, display_name],
+                    )?;
+                    let id: i64 = conn.query_row(
+                        "SELECT id FROM folders WHERE account_id = ?1 AND imap_name = ?2",
+                        rusqlite::params![account, imap_name],
+                        |r| r.get(0),
+                    )?;
+                    Ok((id, imap_name))
+                })
+                .await?;
+            let _ = app.emit("folders:updated", json!({}));
+            (id, imap_name, true)
+        }
+        None => {
+            let Some(id) = dest_folder_id else {
+                return Err(SkimError::other("mail", "no destination folder"));
+            };
+            let account = account_id.clone();
+            let imap_name: String = state
+                .db
+                .call(move |conn| {
+                    use rusqlite::OptionalExtension;
+                    // Matching on the account too is the cross-account guard.
+                    conn.query_row(
+                        "SELECT imap_name FROM folders WHERE id = ?1 AND account_id = ?2",
+                        rusqlite::params![id, account],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                })
+                .await?
+                .ok_or_else(|| SkimError::other("mail", "destination folder not found"))?;
+            (id, imap_name, false)
+        }
+    };
+
+    // Filing mail where it already is does nothing — and must not go through
+    // queue_op, whose optimistic step deletes the local rows for a move that
+    // will then no-op on the server, hiding the mail until a full resync.
+    // Reachable by typing the current folder's own name into the create row.
+    if sources.contains(&dest_folder_id) {
+        return Ok(());
+    }
+
+    queue_op(
+        &app,
+        state.inner(),
+        message_ids,
+        "move",
+        json!({
+            "destFolderId": dest_folder_id,
+            "destImapName": dest_imap_name,
+            "createDest": create_dest,
+        }),
+        bodies::remove_messages_local,
+    )
+    .await
+}
+
 /// Unsubscribe from a mailing list using the message's `List-Unsubscribe`
 /// header. Acts for the user: a one-click POST (RFC 8058) or an unsubscribe
 /// email goes through the offline op queue; a plain https link is opened in the
