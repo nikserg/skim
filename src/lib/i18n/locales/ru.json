@@ -107,6 +107,7 @@
   "reading.save": "Сохранить",
   "reading.open": "Открыть",
   "reading.loading": "Загрузка…",
+  "reading.fetching": "Загружаем с сервера…",
   "reading.load_failed": "Не удалось загрузить письмо",
   "reading.retry": "Повторить",
   "security.banner": "В этом письме есть признаки фишинга",

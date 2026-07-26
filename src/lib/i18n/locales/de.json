@@ -101,6 +101,7 @@
   "reading.save": "Speichern",
   "reading.open": "Öffnen",
   "reading.loading": "Lade…",
+  "reading.fetching": "Wird vom Server geladen…",
   "reading.load_failed": "Nachricht konnte nicht geladen werden",
   "reading.retry": "Erneut versuchen",
   "security.banner": "Diese Nachricht zeigt Anzeichen von Phishing",

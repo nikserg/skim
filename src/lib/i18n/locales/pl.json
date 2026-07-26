@@ -107,6 +107,7 @@
   "reading.save": "Zapisz",
   "reading.open": "Otwórz",
   "reading.loading": "Wczytywanie…",
+  "reading.fetching": "Pobieranie z serwera…",
   "reading.load_failed": "Nie udało się wczytać wiadomości",
   "reading.retry": "Ponów",
   "security.banner": "Ta wiadomość ma oznaki phishingu",

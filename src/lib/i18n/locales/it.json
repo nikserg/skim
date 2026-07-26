@@ -101,6 +101,7 @@
   "reading.save": "Salva",
   "reading.open": "Apri",
   "reading.loading": "Caricamento…",
+  "reading.fetching": "Scaricamento dal server…",
   "reading.load_failed": "Impossibile caricare il messaggio",
   "reading.retry": "Riprova",
   "security.banner": "Questo messaggio mostra segni di phishing",

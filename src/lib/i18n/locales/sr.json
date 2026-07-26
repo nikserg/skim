@@ -104,6 +104,7 @@
   "reading.save": "Sačuvaj",
   "reading.open": "Otvori",
   "reading.loading": "Učitavanje…",
+  "reading.fetching": "Preuzimanje sa servera…",
   "reading.load_failed": "Poruka nije mogla da se učita",
   "reading.retry": "Pokušaj ponovo",
   "security.banner": "Ova poruka ima znake fišinga",
