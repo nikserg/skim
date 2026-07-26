@@ -435,6 +435,13 @@
     });
   }
 
+  // The picker itself does the optimistic removal once a destination is picked
+  // — until then nothing has happened yet.
+  function openMove() {
+    if (!detail) return;
+    ui.openMove({ threadId: detail.id, messageIds: allIds });
+  }
+
   function toggleStar() {
     if (!detail) return;
     const on = !anyStarred;
@@ -531,6 +538,11 @@
         <!-- Warning octagon: junk / report spam. -->
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M5.4 1.8h5.2l3.6 3.6v5.2l-3.6 3.6H5.4L1.8 10.6V5.4L5.4 1.8z" /><path d="M8 4.6v4M8 11.1v.1" /></svg>
         <kbd>!</kbd>
+      </button>
+      <button class="tool" onclick={openMove} title={t("reading.move")}>
+        <!-- Folder with an arrow going in: file this somewhere. -->
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M1.5 3.5h4l1.5 2h7.5v7h-13v-9z" /><path d="M8 7.5v3.5M6.4 9.4L8 11l1.6-1.6" /></svg>
+        <kbd>V</kbd>
       </button>
       <button class="tool" class:starred={anyStarred} onclick={toggleStar} title={anyStarred ? t("reading.unstar") : t("reading.star")}>
         <svg width="15" height="15" viewBox="0 0 16 16" fill={anyStarred ? "currentColor" : "none"} stroke="currentColor" stroke-width="1.2"><path d="M8 1.5l2 4.1 4.5.6-3.3 3.2.8 4.5L8 11.8l-4 2.1.8-4.5L1.5 6.2 6 5.6 8 1.5z" /></svg>

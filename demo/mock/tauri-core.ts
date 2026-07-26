@@ -192,6 +192,16 @@ export function invoke<T = any>(cmd: string, args: any = {}): Promise<T> {
       return ok(db.renderedBody(args.messageId));
     case "thread_message_ids":
       return ok([args.threadId * 10 + 1]);
+    // Move destinations: the account's folders minus the one the mail is in
+    // (Inbox, in every demo scenario) and the roles that aren't destinations.
+    case "folder_message_count":
+      return ok((db.THREADS_BY_FOLDER[args.folderId] ?? []).length);
+    case "move_targets":
+      return ok(
+        (MULTI() ? db.FOLDERS2 : db.FOLDERS).filter(
+          (f) => !["inbox", "starred", "drafts", "all"].includes(f.role ?? ""),
+        ),
+      );
     case "take_pending_open":
       return ok(null);
     case "search_messages":

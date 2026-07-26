@@ -28,6 +28,12 @@ export const FOLDERS = [
   { id: 4, accountId: "acc-1", imapName: "Drafts", role: "drafts", displayName: "Drafts", unreadCount: 0, sortOrder: 3 },
   { id: 5, accountId: "acc-1", imapName: "Archive", role: "archive", displayName: "Archive", unreadCount: 0, sortOrder: 4 },
   { id: 6, accountId: "acc-1", imapName: "Trash", role: "trash", displayName: "Trash", unreadCount: 0, sortOrder: 5 },
+  // Two of the user's own folders (role null). They exercise the parts the
+  // role folders can't: the "Folders"/"Labels" sidebar section, move
+  // destinations, and the rename/delete dialog — which only offers deleting
+  // while a folder is empty, so one of these is deliberately empty.
+  { id: 30, accountId: "acc-1", imapName: "Clients", role: null, displayName: "Clients", unreadCount: 0, sortOrder: 100 },
+  { id: 31, accountId: "acc-1", imapName: "Receipts", role: null, displayName: "Receipts", unreadCount: 0, sortOrder: 100 },
 ];
 
 // --- Inbox threads (the list on the left) ---------------------------------
@@ -221,6 +227,8 @@ const ACC2_INBOX_THREADS = [
 
 // Drilling into the second mailbox lists its inbox by real folder id.
 THREADS_BY_FOLDER[11] = ACC2_INBOX_THREADS;
+// "Clients" holds mail (so it can't be deleted); "Receipts" (31) stays empty.
+THREADS_BY_FOLDER[30] = [INBOX_THREADS[1]];
 
 // The one logical folder set the unified view shows. Virtual ids mirror the
 // backend's fixed role ids (inbox −1, starred −2, sent −3, …).

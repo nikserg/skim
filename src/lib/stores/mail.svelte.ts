@@ -112,7 +112,13 @@ async function attachListeners() {
   await listen<{ kind?: string; message?: string }>("ops:failed", (e) => {
     const kind = e.payload?.kind;
     const key =
-      kind === "rsvp" ? "ops.rsvp_failed" : kind === "send" ? "ops.send_failed" : "ops.failed";
+      kind === "rsvp"
+        ? "ops.rsvp_failed"
+        : kind === "send"
+          ? "ops.send_failed"
+          : kind === "move"
+            ? "ops.move_failed"
+            : "ops.failed";
     showOpError(t(key));
     void refreshThreads();
     void refreshFolders();
