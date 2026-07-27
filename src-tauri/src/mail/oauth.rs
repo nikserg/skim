@@ -15,6 +15,28 @@ use tokio::net::TcpListener;
 
 const USERINFO_ENDPOINT: &str = "https://openidconnect.googleapis.com/v1/userinfo";
 
+/// How long a token call may take before we give up.
+///
+/// A refresh runs under the shared token mutex, inside the body-fetch leash —
+/// so it has to fail well before that leash does, or a stalled token endpoint
+/// becomes a stalled reading pane.
+pub const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// One client for every token call.
+///
+/// `Client::new()` per call meant a fresh TLS handshake with no connection
+/// reuse on a path the user's click waits behind — and no timeout at all, so a
+/// black-holed endpoint held on for as long as the OS kept the socket open.
+fn http() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(HTTP_TIMEOUT)
+            .build()
+            .unwrap_or_default()
+    })
+}
+
 /// The identity provider that issues the OAuth tokens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OauthProvider {
@@ -198,7 +220,7 @@ pub async fn authorize(
     .map_err(|_| SkimError::other("oauth", "authorization timed out"))??;
 
     // Exchange the code.
-    let client = reqwest::Client::new();
+    let client = http();
     let mut form = vec![
         ("client_id", config.client_id.clone()),
         ("code", code),
@@ -242,7 +264,7 @@ pub async fn authorize(
         )
     })?;
 
-    let email = resolve_email(&client, config.provider, &tokens).await?;
+    let email = resolve_email(client, config.provider, &tokens).await?;
 
     Ok(OauthOutcome {
         email,
@@ -354,7 +376,7 @@ pub async fn refresh_access_token(
     config: &OauthConfig,
     refresh_token: &str,
 ) -> Result<RefreshedToken> {
-    let client = reqwest::Client::new();
+    let client = http();
     let mut form = vec![
         ("client_id", config.client_id.clone()),
         ("refresh_token", refresh_token.to_string()),
@@ -489,6 +511,13 @@ mod tests {
             client_id: "client-123".into(),
             client_secret: String::new(),
         }
+    }
+
+    #[test]
+    fn every_token_call_shares_one_client() {
+        // Guards against `Client::new()` creeping back in: a per-call client
+        // means a fresh TLS handshake on the path a click waits behind.
+        assert!(std::ptr::eq(http(), http()));
     }
 
     #[test]

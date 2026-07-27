@@ -15,7 +15,7 @@ use futures::StreamExt;
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
 const INBOX_WINDOW: u32 = 500;
@@ -54,6 +54,21 @@ const SLOW_FETCH_LOG: std::time::Duration = std::time::Duration::from_secs(3);
 // request — longer than FETCH_REQUEST_BUDGET so the worker's own error wins, but
 // still bounded in case the worker is stuck on some other un-timed op.
 const BODY_FETCH_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
+// A body worth pulling the moment it lands. Ordinary correspondence and HTML
+// newsletters fit; anything larger is attachment-bearing mail, where a short
+// wait on open is expected anyway and where writing files to disk for a message
+// nobody may ever open is a real cost.
+const PREFETCH_MAX_BYTES: i64 = 256 * 1024;
+// Bodies per arrival. IDLE fires per message, so a normal batch is one or two;
+// the cap only bites after a reconnect that swept up a burst, where the newest
+// few are the ones about to be read. A click can queue behind the batch, so
+// keep it short.
+const PREFETCH_MAX_MESSAGES: usize = 3;
+// Everything one arrival's prefetch may spend on the wire, batch included.
+// This is the whole risk the feature carries: the batch holds the fetch
+// connection, so a click landing mid-batch waits this long at worst — which is
+// why it is a budget for the batch and not a leash per message.
+const PREFETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
 pub enum SyncCommand {
     SyncAll,
@@ -62,6 +77,12 @@ pub enum SyncCommand {
         message_pk: i64,
         respond: oneshot::Sender<Result<()>>,
     },
+    /// Pull the bodies of messages that just arrived, before they are clicked.
+    PrefetchBodies {
+        message_pks: Vec<i64>,
+    },
+    /// Get the fetch connection ready for a click that is probably coming.
+    WarmFetch,
     RunOps,
     Stop,
 }
@@ -84,6 +105,11 @@ impl SyncHandle {
     pub fn stop(&self) {
         let _ = self.tx.send(SyncCommand::Stop);
         let _ = self.fetch_tx.send(SyncCommand::Stop);
+    }
+    /// Wake the fetch connection now, so the click it is waiting for doesn't
+    /// have to pay for a login. Free when the connection is already warm.
+    pub fn warm_fetch(&self) {
+        let _ = self.fetch_tx.send(SyncCommand::WarmFetch);
     }
     pub async fn fetch_body(&self, message_pk: i64) -> Result<()> {
         let (respond, rx) = oneshot::channel();
@@ -120,6 +146,49 @@ struct Engine {
     /// five minutes anyway, so it never sits idle long enough to go stale
     /// unnoticed.
     last_ok: std::time::Instant,
+    /// Where to send prefetch requests — the fetch connection, so a sync pass
+    /// never waits for them. `None` on the fetch engine itself, which is the
+    /// other end of this channel.
+    prefetch_tx: Option<mpsc::UnboundedSender<SyncCommand>>,
+    /// How long the last login spent resolving credentials. Set inside
+    /// [`Engine::session`], which is the only place that can see the wait on
+    /// the shared token mutex and the HTTPS refresh behind it.
+    last_cred_ms: u128,
+}
+
+/// Where one body fetch's time actually went.
+///
+/// A single total is unattributable: twenty seconds could be a TLS handshake,
+/// a token refresh queued behind the other connection, or a genuinely large
+/// message. Numbers only — never anything from the message itself.
+#[derive(Default, Clone, Copy)]
+struct FetchPhases {
+    /// Looking up the message's folder and UID — also the wait for the one
+    /// SQLite connection, which a sync pass can be holding.
+    db_ms: u128,
+    /// Shared OAuth mutex plus the token refresh behind it. Zero on a reused
+    /// session, and included in `login_ms`.
+    cred_ms: u128,
+    /// Connect, TLS and authentication. Zero on a reused session.
+    login_ms: u128,
+    select_ms: u128,
+    fetch_ms: u128,
+    bytes: usize,
+}
+
+impl std::fmt::Display for FetchPhases {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "db {}ms, cred {}ms, login {}ms, select {}ms, fetch {}ms, {}KiB",
+            self.db_ms,
+            self.cred_ms,
+            self.login_ms,
+            self.select_ms,
+            self.fetch_ms,
+            self.bytes / 1024
+        )
+    }
 }
 
 /// A folder's server-side STATUS snapshot. When an untouched folder reports the
@@ -133,6 +202,9 @@ struct FolderStatus {
 }
 
 pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> SyncHandle {
+    let app_visible = app
+        .get_webview_window("main")
+        .is_some_and(|w| w.is_visible().unwrap_or(false));
     let (tx, mut rx) = mpsc::unbounded_channel::<SyncCommand>();
     let (fetch_tx, mut fetch_rx) = mpsc::unbounded_channel::<SyncCommand>();
     let handle = SyncHandle {
@@ -140,10 +212,10 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
         fetch_tx: fetch_tx.clone(),
     };
 
-    spawn_idle_watcher(account.clone(), tx.clone());
-
-    // One OAuth token cache, shared by both connections.
+    // One OAuth token cache, shared by every connection this account owns.
     let oauth: Arc<Mutex<Option<(String, i64)>>> = Arc::new(Mutex::new(None));
+
+    spawn_idle_watcher(account.clone(), tx.clone(), oauth.clone());
 
     // Dedicated connection for interactive body fetches. It only ever handles
     // FetchBody, on its own IMAP session, so opening a message stays instant
@@ -158,6 +230,8 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
             selected: None,
             oauth_token: oauth.clone(),
             last_ok: std::time::Instant::now(),
+            prefetch_tx: None,
+            last_cred_ms: 0,
         };
         tauri::async_runtime::spawn(async move {
             while let Some(cmd) = fetch_rx.recv().await {
@@ -168,24 +242,18 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
                         respond,
                     } => {
                         let started = std::time::Instant::now();
-                        // Nothing else ever touches this connection, so between
-                        // two opened messages it can sit idle long enough for
-                        // the server to drop it — and we only find out when the
-                        // user clicks. One NOOP settles that in a round-trip;
-                        // paying for the discovery out of the user's fetch is
-                        // what used to leave the reading pane on "Loading…".
-                        let probed = fetcher.last_ok.elapsed() > PROBE_AFTER_IDLE;
-                        if probed && !fetcher.session_is_alive().await {
-                            fetcher.reset_session();
-                        }
+                        let probed = fetcher.probe_if_idle().await;
                         let probe_ms = started.elapsed().as_millis();
                         let reused = fetcher.session.is_some();
-                        let mut result = fetcher.fetch_body(message_pk, BODY_FETCH_TIMEOUT).await;
+                        let mut phases = FetchPhases::default();
+                        let mut result = fetcher
+                            .fetch_body(message_pk, BODY_FETCH_TIMEOUT, &mut phases)
+                            .await;
                         let mut retried = false;
                         if let Err(e) = &result {
                             // A cancelled command leaves the response stream
                             // desynced, so the session is finished either way.
-                            let worth_retrying = reused && is_connection_error(e);
+                            let worth_retrying = worth_retrying(reused, e);
                             fetcher.reset_session();
                             // The probe makes this rare — it now only catches a
                             // server that dropped us in between. It still has to
@@ -196,7 +264,8 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
                             if worth_retrying && !left.is_zero() {
                                 tracing::warn!(message_pk, error = %e, "body fetch failed on a reused session, reconnecting");
                                 retried = true;
-                                result = fetcher.fetch_body(message_pk, left).await;
+                                phases = FetchPhases::default();
+                                result = fetcher.fetch_body(message_pk, left, &mut phases).await;
                                 if result.is_err() {
                                     fetcher.reset_session();
                                 }
@@ -214,7 +283,7 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
                                 "skim-slow.log",
                                 &format!(
                                     "slow body fetch: {}ms total, probe {probe_ms}ms (probed={probed}), \
-                                     reused={reused}, retried={retried}, outcome={}",
+                                     reused={reused}, retried={retried}, {phases}, outcome={}",
                                     took.as_millis(),
                                     match &result {
                                         Ok(()) => "ok".to_string(),
@@ -224,6 +293,26 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
                             );
                         }
                         let _ = respond.send(result);
+                    }
+                    SyncCommand::PrefetchBodies { message_pks } => {
+                        fetcher.prefetch_bodies(&message_pks).await;
+                    }
+                    SyncCommand::WarmFetch => {
+                        // The same leash a click gets: a warm-up performs
+                        // exactly the work that click would have, so it may
+                        // never hold this serial worker longer than one.
+                        match tokio::time::timeout(BODY_FETCH_TIMEOUT, fetcher.warm()).await {
+                            Ok(Ok(())) => {}
+                            Ok(Err(e)) => {
+                                tracing::debug!(error = %e, "warming the fetch connection failed")
+                            }
+                            Err(_) => {
+                                // The dropped future left the response stream
+                                // desynced, so this session is finished.
+                                tracing::debug!("warming the fetch connection timed out");
+                                fetcher.reset_session();
+                            }
+                        }
                     }
                     _ => {}
                 }
@@ -242,6 +331,8 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
             selected: None,
             oauth_token: oauth,
             last_ok: std::time::Instant::now(),
+            prefetch_tx: Some(fetch_tx.clone()),
+            last_cred_ms: 0,
         };
 
         let mut poll = tokio::time::interval(POLL_INTERVAL);
@@ -261,10 +352,13 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
                             engine.sync_inbox().await;
                         }
                         Some(SyncCommand::RunOps) => engine.drain_ops().await,
-                        // Interactive body fetches run on the dedicated fetch
-                        // connection (see `spawn`), never here — opening a
+                        // Body work — interactive fetches, arrival prefetch and
+                        // the warm-up that precedes them — runs on the dedicated
+                        // fetch connection (see `spawn`), never here: opening a
                         // message must not queue behind a long sync.
-                        Some(SyncCommand::FetchBody { .. }) => {}
+                        Some(SyncCommand::FetchBody { .. })
+                        | Some(SyncCommand::PrefetchBodies { .. })
+                        | Some(SyncCommand::WarmFetch) => {}
                     }
                 }
                 _ = poll.tick() => {
@@ -275,6 +369,14 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
         }
         engine.logout().await;
     });
+
+    // A normal launch or a just-added account: the user is looking at the app,
+    // so pay the login now rather than under their first click. Autostart runs
+    // with the window hidden — nobody is waiting, and by the time they are the
+    // socket would be stale anyway.
+    if app_visible {
+        handle.warm_fetch();
+    }
 
     handle
 }
@@ -358,6 +460,121 @@ impl Engine {
         }
     }
 
+    /// Drop the session if it has been quiet long enough that the far end may
+    /// have hung up. Returns whether a probe was actually spent.
+    ///
+    /// Nothing else ever touches the fetch connection, so between two opened
+    /// messages it can sit idle long enough for the server to drop it — and we
+    /// would only find out when the user clicks. One NOOP settles that in a
+    /// round-trip; paying for the discovery out of the user's fetch is what
+    /// used to leave the reading pane on "Loading…".
+    async fn probe_if_idle(&mut self) -> bool {
+        let probed = self.last_ok.elapsed() > PROBE_AFTER_IDLE;
+        if probed && !self.session_is_alive().await {
+            self.reset_session();
+        }
+        probed
+    }
+
+    /// Get this connection ready for the click that is probably coming: prove
+    /// the socket is alive (or replace it) and leave the inbox selected, so the
+    /// click itself is one FETCH.
+    ///
+    /// Free when everything is already warm — no network at all — which is what
+    /// lets it hang off a signal as frequent as the window regaining focus.
+    async fn warm(&mut self) -> Result<()> {
+        self.probe_if_idle().await;
+        let (_, imap_name) = self.inbox_folder().await?;
+        if self.session.is_some() && self.selected.as_deref() == Some(imap_name.as_str()) {
+            // Already warm. Return without touching `last_ok`: this path proved
+            // nothing, and pushing it forward would suppress the probe that
+            // guards the user's next click.
+            return Ok(());
+        }
+        // Logging in — and refreshing the OAuth token — happens here, in the
+        // background, instead of under the click.
+        self.ensure_selected(&imap_name).await?;
+        // Both the login and the SELECT are round-trips, so the connection is
+        // demonstrably alive as of now.
+        self.last_ok = std::time::Instant::now();
+        Ok(())
+    }
+
+    /// Pull the bodies of messages that just landed, so opening one is a local
+    /// read. Best-effort: nothing here is worth reporting to the user, who has
+    /// not asked for anything yet.
+    async fn prefetch_bodies(&mut self, message_pks: &[i64]) {
+        let targets = match self.prefetch_candidates(message_pks).await {
+            Ok(t) if !t.is_empty() => t,
+            _ => return,
+        };
+        self.probe_if_idle().await;
+        let started = std::time::Instant::now();
+        let (mut done, mut bytes) = (0usize, 0usize);
+        for pk in &targets {
+            // Spend what is left of the batch's budget, never more: a click can
+            // be queued behind this, and it is not why the user is here.
+            let left = PREFETCH_TIMEOUT.saturating_sub(started.elapsed());
+            if left.is_zero() {
+                break;
+            }
+            let mut phases = FetchPhases::default();
+            if let Err(e) = self.fetch_body(*pk, left, &mut phases).await {
+                tracing::debug!(error = %e, "prefetching a body failed");
+                // A cancelled command leaves the response stream desynced, and
+                // the click this was meant to serve must not inherit that.
+                self.reset_session();
+                break;
+            }
+            done += 1;
+            bytes += phases.bytes;
+        }
+        let took = started.elapsed();
+        if took > SLOW_FETCH_LOG {
+            crate::append_log(
+                "skim-slow.log",
+                &format!(
+                    "slow prefetch: {}/{} bodies, {}ms, {}KiB",
+                    done,
+                    targets.len(),
+                    took.as_millis(),
+                    bytes / 1024
+                ),
+            );
+        }
+    }
+
+    /// Which of the just-arrived messages still need a body and are worth one.
+    async fn prefetch_candidates(&self, message_pks: &[i64]) -> Result<Vec<i64>> {
+        let pks = message_pks.to_vec();
+        let rows = self
+            .db
+            .call(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, uid, size FROM messages WHERE id = ?1 AND body_state = 0",
+                )?;
+                let mut rows = Vec::new();
+                for pk in pks {
+                    if let Some(row) = stmt
+                        .query_map(rusqlite::params![pk], |r| {
+                            Ok((
+                                r.get::<_, i64>(0)?,
+                                r.get::<_, u32>(1)?,
+                                r.get::<_, Option<i64>>(2)?,
+                            ))
+                        })?
+                        .next()
+                        .transpose()?
+                    {
+                        rows.push(row);
+                    }
+                }
+                Ok(rows)
+            })
+            .await?;
+        Ok(prefetch_targets(&rows))
+    }
+
     async fn run_sync(&mut self) {
         self.emit_status("syncing", None);
         match self.sync_all_folders().await {
@@ -373,10 +590,10 @@ impl Engine {
         }
     }
 
-    async fn sync_inbox(&mut self) {
+    /// This account's inbox, as `(folder id, IMAP name)`.
+    async fn inbox_folder(&self) -> Result<(i64, String)> {
         let account_id = self.account.id.clone();
-        let inbox = self
-            .db
+        self.db
             .call(move |conn| {
                 conn.query_row(
                     "SELECT id, imap_name FROM folders WHERE account_id = ?1 AND role = 'inbox'",
@@ -384,7 +601,11 @@ impl Engine {
                     |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
                 )
             })
-            .await;
+            .await
+    }
+
+    async fn sync_inbox(&mut self) {
+        let inbox = self.inbox_folder().await;
         if let Ok((folder_id, imap_name)) = inbox {
             if let Err(e) = self.sync_folder(folder_id, &imap_name).await {
                 tracing::warn!(error = %e, "inbox sync failed");
@@ -404,9 +625,14 @@ impl Engine {
             // Hold the shared token cache only across the (possibly refreshing)
             // credential resolve, so the two connections can't refresh at once.
             let creds = {
+                let started = std::time::Instant::now();
                 let cache = self.oauth_token.clone();
                 let mut cache = cache.lock().await;
-                resolve_credentials(&self.account, &mut cache).await?
+                let creds = resolve_credentials(&self.account, &mut cache).await;
+                // Recorded even on the error path: a slow *failing* refresh is
+                // exactly the case worth seeing in the log.
+                self.last_cred_ms = started.elapsed().as_millis();
+                creds?
             };
             let session = imap_client::login(
                 &self.account.imap_host,
@@ -763,6 +989,15 @@ impl Engine {
                     .app
                     .emit("mail:new", json!({ "count": inserted.len() }));
                 crate::notify::notify_new_mail(&self.app, &self.db, &inserted).await;
+                // Pull the bodies before they are clicked. Fire-and-forget onto
+                // the fetch connection: a just-arrived message is guaranteed to
+                // be uncached, and the notification the user is about to tap
+                // must not wait for this — nor must the rest of the pass.
+                if let Some(tx) = &self.prefetch_tx {
+                    let _ = tx.send(SyncCommand::PrefetchBodies {
+                        message_pks: inserted.clone(),
+                    });
+                }
             }
             changed |= self.reconcile_flags(folder_id).await?;
         }
@@ -1093,7 +1328,13 @@ impl Engine {
     /// Any `Err` may have cancelled a command mid-flight, which leaves the
     /// response stream desynced: callers must `reset_session()` before reusing
     /// this engine.
-    async fn fetch_body(&mut self, message_pk: i64, timeout: std::time::Duration) -> Result<()> {
+    async fn fetch_body(
+        &mut self,
+        message_pk: i64,
+        timeout: std::time::Duration,
+        phases: &mut FetchPhases,
+    ) -> Result<()> {
+        let started = std::time::Instant::now();
         let coords: Option<(String, u32, i64)> = self
             .db
             .call(move |conn| {
@@ -1108,6 +1349,9 @@ impl Engine {
             })
             .await
             .unwrap_or(None);
+        // Also the wait for the one SQLite connection, which a sync pass can be
+        // holding — invisible in a total, and not something the leash covers.
+        phases.db_ms = started.elapsed().as_millis();
         let Some((imap_name, uid, body_state)) = coords else {
             return Err(SkimError::other("mail", "message no longer exists"));
         };
@@ -1121,7 +1365,20 @@ impl Engine {
         // it unbounded. A stalled socket there held the reading pane for as long
         // as the OS kept the connection open.
         let raw: Option<Vec<u8>> = tokio::time::timeout(timeout, async {
+            // Log in first, then SELECT, so the two are timed apart; on a warm
+            // connection both are no-ops. `ensure_selected` would otherwise do
+            // the login inside itself and hide it in `select_ms`.
+            let at = std::time::Instant::now();
+            self.last_cred_ms = 0;
+            self.session().await?;
+            phases.login_ms = at.elapsed().as_millis();
+            phases.cred_ms = self.last_cred_ms;
+
+            let at = std::time::Instant::now();
             self.ensure_selected(&imap_name).await?;
+            phases.select_ms = at.elapsed().as_millis();
+
+            let at = std::time::Instant::now();
             let session = self.session().await?;
             let mut stream = session
                 .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
@@ -1130,10 +1387,17 @@ impl Engine {
             let mut raw: Option<Vec<u8>> = None;
             while let Some(item) = stream.next().await {
                 let f = item.map_err(imap_err)?;
+                // Servers weave *unsolicited* flag-only FETCH responses for the
+                // same message into the reply. They carry no body, and letting
+                // one land after the real answer is how a healthy connection
+                // could report "server returned no message body".
                 if f.uid == Some(uid) {
-                    raw = f.body().map(|b| b.to_vec());
+                    if let Some(body) = f.body() {
+                        raw = Some(body.to_vec());
+                    }
                 }
             }
+            phases.fetch_ms = at.elapsed().as_millis();
             Ok::<_, SkimError>(raw)
         })
         .await
@@ -1142,6 +1406,7 @@ impl Engine {
         let Some(raw) = raw else {
             return Err(SkimError::other("mail", "server returned no message body"));
         };
+        phases.bytes = raw.len();
 
         let parsed = parse::parse_body(&raw);
 
@@ -2044,15 +2309,18 @@ impl Engine {
 
 // ---- IDLE watcher -------------------------------------------------------
 
-fn spawn_idle_watcher(account: Account, tx: mpsc::UnboundedSender<SyncCommand>) {
+fn spawn_idle_watcher(
+    account: Account,
+    tx: mpsc::UnboundedSender<SyncCommand>,
+    oauth_token: Arc<Mutex<Option<(String, i64)>>>,
+) {
     tauri::async_runtime::spawn(async move {
-        let mut oauth_cache: Option<(String, i64)> = None;
         let mut backoff = 5u64;
         loop {
             if tx.is_closed() {
                 break;
             }
-            match idle_session(&account, &tx, &mut oauth_cache).await {
+            match idle_session(&account, &tx, &oauth_token).await {
                 Ok(()) => backoff = 5,
                 Err(e) => {
                     tracing::debug!(error = %e, "IDLE connection ended");
@@ -2067,9 +2335,16 @@ fn spawn_idle_watcher(account: Account, tx: mpsc::UnboundedSender<SyncCommand>) 
 async fn idle_session(
     account: &Account,
     tx: &mpsc::UnboundedSender<SyncCommand>,
-    oauth_cache: &mut Option<(String, i64)>,
+    oauth_token: &Arc<Mutex<Option<(String, i64)>>>,
 ) -> Result<()> {
-    let creds = resolve_credentials(account, oauth_cache).await?;
+    // Same lock discipline as `Engine::session`: Microsoft rotates the refresh
+    // token on every use and `resolve_credentials` persists the new one, so two
+    // connections reconnecting at once (which is exactly what a wake from sleep
+    // looks like) must not both spend the same one.
+    let creds = {
+        let mut cache = oauth_token.lock().await;
+        resolve_credentials(account, &mut cache).await?
+    };
     let mut session = imap_client::login(
         &account.imap_host,
         account.imap_port,
@@ -2184,6 +2459,34 @@ where
 /// already answered just spends the user's time on the same answer.
 fn is_connection_error(e: &SkimError) -> bool {
     !matches!(e.code(), "mail" | "db" | "io" | "internal")
+}
+
+/// Whether a failed body fetch is worth one reconnect.
+///
+/// Beyond the outright connection errors, a *reused* session's `mail` answer is
+/// not trustworthy either: it may have been dead or left desynced by an earlier
+/// cancelled command, in which case "no body" is the previous conversation
+/// talking rather than the server. A fresh session's answer is final — and if
+/// the message really is gone, the next flag reconciliation drops the row.
+fn worth_retrying(reused: bool, e: &SkimError) -> bool {
+    reused && (is_connection_error(e) || e.code() == "mail")
+}
+
+/// Which just-arrived messages are worth pulling before they are clicked:
+/// newest first, small enough to be cheap, and only where the server told us
+/// the size — a missing RFC822.SIZE means an unbounded download, and this runs
+/// on the connection the user's next click needs.
+///
+/// Takes `(message pk, uid, size)` as stored; returns pks in fetch order.
+fn prefetch_targets(candidates: &[(i64, u32, Option<i64>)]) -> Vec<i64> {
+    let mut worth: Vec<&(i64, u32, Option<i64>)> = candidates
+        .iter()
+        .filter(|(_, _, size)| size.is_some_and(|s| s > 0 && s <= PREFETCH_MAX_BYTES))
+        .collect();
+    // UID order is arrival order, so the newest is the one about to be read.
+    worth.sort_unstable_by_key(|(_, uid, _)| std::cmp::Reverse(*uid));
+    worth.truncate(PREFETCH_MAX_MESSAGES);
+    worth.iter().map(|(pk, _, _)| *pk).collect()
 }
 
 fn detect_role(imap_name: &str, attrs_lower: &str) -> Option<String> {
@@ -2408,10 +2711,12 @@ mod backfill_tests {
 #[cfg(test)]
 mod fetch_tests {
     use super::{
-        is_connection_error, noop_probe, BODY_FETCH_TIMEOUT, BODY_FETCH_WAIT, FETCH_REQUEST_BUDGET,
-        PROBE_AFTER_IDLE, PROBE_TIMEOUT,
+        is_connection_error, noop_probe, prefetch_targets, worth_retrying, BODY_FETCH_TIMEOUT,
+        BODY_FETCH_WAIT, FETCH_REQUEST_BUDGET, POLL_INTERVAL, PREFETCH_MAX_BYTES,
+        PREFETCH_MAX_MESSAGES, PREFETCH_TIMEOUT, PROBE_AFTER_IDLE, PROBE_TIMEOUT,
     };
     use crate::error::SkimError;
+    use crate::mail::oauth;
     use std::time::Duration;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -2426,13 +2731,65 @@ mod fetch_tests {
         // A probe that fired more often than the reading pause it guards would
         // cost a round-trip on every second message in a thread.
         assert!(PROBE_AFTER_IDLE > PROBE_TIMEOUT);
+        // A prefetch batch holds the fetch connection, so a click can queue
+        // behind it — and the next poll must not lap the previous batch.
+        assert!(PREFETCH_TIMEOUT < POLL_INTERVAL);
+        // A token refresh runs inside the body-fetch leash; it has to give up
+        // early enough to leave room for the connect and FETCH it precedes.
+        assert!(oauth::HTTP_TIMEOUT < BODY_FETCH_TIMEOUT);
+    }
+
+    /// States the wire cost of one arrival, so raising either cap has to be a
+    /// deliberate decision rather than a quiet one.
+    #[test]
+    fn one_prefetch_batch_stays_under_a_megabyte() {
+        assert!(PREFETCH_MAX_MESSAGES as i64 * PREFETCH_MAX_BYTES <= 1024 * 1024);
+    }
+
+    #[test]
+    fn prefetch_skips_what_it_cannot_bound() {
+        let candidates = [
+            (1, 10, Some(1024)),
+            // No RFC822.SIZE: fetching it is an unbounded download on the
+            // connection the user's next click needs.
+            (2, 11, None),
+            (3, 12, Some(0)),
+            (4, 13, Some(PREFETCH_MAX_BYTES + 1)),
+            (5, 14, Some(PREFETCH_MAX_BYTES)),
+        ];
+        assert_eq!(prefetch_targets(&candidates), vec![5, 1]);
+    }
+
+    #[test]
+    fn prefetch_takes_the_newest_first() {
+        let candidates: Vec<(i64, u32, Option<i64>)> =
+            (1..=8).map(|i| (i, i as u32 + 100, Some(2048))).collect();
+        let picked = prefetch_targets(&candidates);
+        assert_eq!(picked.len(), PREFETCH_MAX_MESSAGES);
+        assert_eq!(picked, vec![8, 7, 6]);
+    }
+
+    #[test]
+    fn an_empty_body_from_a_reused_session_earns_one_fresh_one() {
+        let no_body = SkimError::other("mail", "server returned no message body");
+        // A reused session may have been dead or desynced, so its answer about
+        // the message is the old conversation talking.
+        assert!(worth_retrying(true, &no_body));
+        // A fresh session's answer is final — retrying it just spends the
+        // user's time re-asking a question that was already answered.
+        assert!(!worth_retrying(false, &no_body));
+        assert!(worth_retrying(true, &SkimError::other("imap", "boom")));
+        // A failed local write is not the connection's fault either way.
+        assert!(!worth_retrying(true, &SkimError::other("db", "boom")));
+        assert!(!worth_retrying(false, &SkimError::other("imap", "boom")));
     }
 
     #[test]
     fn only_connection_errors_earn_a_reconnect() {
         // "mail" is the engine's code for answers *about the message* — it was
-        // deleted, or the server returned no body. Logging in again changes
-        // nothing about either, nor about a failed local write.
+        // deleted, or the server returned no body. The connection itself is
+        // fine, so this alone never earns a reconnect; `worth_retrying` is what
+        // decides that a *reused* session's answer is worth a second opinion.
         assert!(!is_connection_error(&SkimError::other(
             "mail",
             "message no longer exists"

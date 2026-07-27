@@ -158,13 +158,29 @@ pub fn run() {
             }
         })
         .on_window_event(|window, event| {
-            // Closing the main window hides it to the tray; quitting is a
-            // tray-menu action. Compose windows close normally.
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" {
-                    api.prevent_close();
-                    let _ = window.hide();
+            match event {
+                // Closing the main window hides it to the tray; quitting is a
+                // tray-menu action. Compose windows close normally.
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    if window.label() == "main" {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
                 }
+                // Coming back to the app is the best warning we get that a
+                // message is about to be opened — and after a wake from sleep
+                // it arrives while the user is still finding their place in the
+                // list. Reconnecting the body-fetch socket here means the click
+                // costs a FETCH instead of a login. Free when already warm.
+                tauri::WindowEvent::Focused(true) if window.label() == "main" => {
+                    let app = window.app_handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        for handle in app.state::<AppState>().engines.lock().await.values() {
+                            handle.warm_fetch();
+                        }
+                    });
+                }
+                _ => {}
             }
         })
         .setup(|app| {
