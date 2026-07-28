@@ -10,9 +10,12 @@
   import FolderPicker from "./components/FolderPicker.svelte";
   import ShortcutsOverlay from "./components/ShortcutsOverlay.svelte";
   import Onboarding from "./components/onboarding/Onboarding.svelte";
-  import { api } from "./lib/api";
+  import { untrack } from "svelte";
+  import type { ChatSession } from "./lib/ai-chat";
+  import { api, type Citation } from "./lib/api";
   import { setLocale } from "./lib/i18n/index.svelte";
   import { ai } from "./lib/stores/ai.svelte";
+  import { aiSessions } from "./lib/stores/aiSession.svelte";
   import { mail, UNIFIED } from "./lib/stores/mail.svelte";
   import { palette } from "./lib/stores/palette.svelte";
   import { ui } from "./lib/stores/ui.svelte";
@@ -25,6 +28,46 @@
   $effect(() => {
     if (mail.selectedThreadId !== null && ui.recapOpen) ui.closeRecap();
   });
+
+  // ---- AI recap ----
+  // The digest is a chat session like any other, so it survives the panel
+  // closing and can be popped into a window of its own. The panel only decides
+  // which folder is being digested.
+  const recap = $derived(aiSessions.recap);
+  $effect(() => {
+    // The panel closing ends the digest — whichever way it was closed (✕, Esc,
+    // opening a message). A digest that moved into a window is not this panel's
+    // any more, so `aiSessions.recap` no longer sees it and it keeps streaming.
+    if (!ui.recapOpen) {
+      const stale = untrack(() => aiSessions.recap);
+      if (stale) aiSessions.drop(stale);
+      return;
+    }
+    const folderId = mail.selectedFolderId;
+    if (folderId === null) return;
+    // A fresh digest per folder — but never a second scan of a folder that
+    // already has one, even if that one is off in a window. Untracked so this
+    // reacts to the folder alone, not to the session it starts.
+    if (!untrack(() => aiSessions.recapFor(folderId))) aiSessions.startRecap(folderId);
+  });
+
+  function closeRecap() {
+    ui.closeRecap();
+  }
+
+  function popOutRecap(session: ChatSession) {
+    void aiSessions.detach(session);
+    // detach() marks the session synchronously, so the panel closing here can't
+    // be mistaken for the user dismissing the digest.
+    ui.closeRecap();
+  }
+
+  async function openRecapCitation(c: Citation) {
+    // openLocation maps the real folder onto the current scope — in the
+    // unified view that's the virtual counterpart, not the folder itself.
+    await mail.openLocation(c.folderId, c.threadId, c.messageId);
+    ui.closeRecap();
+  }
 
   // ---- In-pane draft editor (Drafts folder) ----
   // Selecting a draft opens the compose surface in the reading pane instead of
@@ -109,7 +152,6 @@
           const normalized = ui.hydrate(settings.theme);
           if (settings.theme !== normalized) void api.setSetting("theme", normalized).catch(() => {});
           if (settings.sidebar_collapsed) ui.setSidebarCollapsed(settings.sidebar_collapsed === "on");
-          if (settings.palette_expanded) ui.setPaletteExpanded(settings.palette_expanded === "on");
         } catch {
           // settings are best-effort at boot
         }
@@ -342,7 +384,17 @@
             />
           {/key}
         {:else if ui.recapOpen && mail.selectedThreadId === null}
-          <AiRecap />
+          <!-- The session is started by the effect above, a tick after the panel
+               opens; until then the pane stays blank rather than flashing. -->
+          {#if recap}
+            <AiRecap
+              session={recap}
+              onsend={(q) => aiSessions.send(recap, q)}
+              oncitation={openRecapCitation}
+              onclose={closeRecap}
+              onpopout={() => popOutRecap(recap)}
+            />
+          {/if}
         {:else}
           <ReadingPane />
         {/if}

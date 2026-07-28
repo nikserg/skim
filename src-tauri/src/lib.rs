@@ -9,9 +9,10 @@ pub mod notify;
 pub mod secrets;
 pub mod state;
 
+use serde_json::json;
 use state::AppState;
 use std::path::PathBuf;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 /// Roaming app-data dir (`%APPDATA%\com.skim.app`) — the same place Tauri's
 /// `app_data_dir()` resolves to on Windows, computed without an `AppHandle` so
@@ -165,6 +166,22 @@ pub fn run() {
                     if window.label() == "main" {
                         api.prevent_close();
                         let _ = window.hide();
+                    }
+                }
+                // A chat window is only a view onto a chat the main window owns.
+                // However it was closed — the ✕, Esc, Alt+F4 — that chat goes
+                // back to being shown inline, so say so.
+                tauri::WindowEvent::Destroyed => {
+                    if let Some(id) = window
+                        .label()
+                        .strip_prefix("ai-chat-")
+                        .and_then(|rest| rest.parse::<u64>().ok())
+                    {
+                        let app = window.app_handle();
+                        let _ = app.emit("ai-chat:closed", json!({ "id": id }));
+                        // The chat is going back into the app, so put the app
+                        // where the user can see it — it may be in the tray.
+                        show_main_window(app);
                     }
                 }
                 // Coming back to the app is the best warning we get that a
@@ -331,6 +348,7 @@ pub fn run() {
             commands::mail::open_attachment,
             commands::mail::sync_now,
             commands::mail::take_pending_open,
+            commands::mail::open_thread_in_main,
             commands::compose::create_draft,
             commands::compose::get_draft,
             commands::compose::update_draft,
@@ -359,6 +377,7 @@ pub fn run() {
             commands::ai::ai_chat,
             commands::ai::ai_analyze_style,
             commands::ai::ai_recap,
+            commands::ai::open_ai_window,
             commands::search::search_messages,
             commands::search::thread_message_ids,
             commands::settings::get_settings,
@@ -368,7 +387,7 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-fn show_main_window(app: &tauri::AppHandle) {
+pub(crate) fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();

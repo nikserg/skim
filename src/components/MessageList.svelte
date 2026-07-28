@@ -2,6 +2,7 @@
   import { folderLabel } from "../lib/folders";
   import { t } from "../lib/i18n/index.svelte";
   import { ai } from "../lib/stores/ai.svelte";
+  import { aiSessions } from "../lib/stores/aiSession.svelte";
   import { mail } from "../lib/stores/mail.svelte";
   import { ui } from "../lib/stores/ui.svelte";
   import MessageRow from "./MessageRow.svelte";
@@ -32,6 +33,13 @@
   );
 
   function openRecap() {
+    // This folder's digest is already open in a window of its own — show it
+    // there rather than scanning the same mail a second time.
+    const detached = aiSessions.recapFor(mail.selectedFolderId);
+    if (detached?.detached) {
+      void aiSessions.detach(detached);
+      return;
+    }
     // The digest occupies the reading pane — clear the selection.
     mail.selectedThreadId = null;
     ui.openRecap();

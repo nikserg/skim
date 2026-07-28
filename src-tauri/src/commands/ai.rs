@@ -9,7 +9,7 @@ use crate::secrets;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -397,6 +397,77 @@ pub fn ai_cancel(state: State<'_, AppState>, request_id: String) -> Result<()> {
         }
     }
     Ok(())
+}
+
+// ---- pop-out chat windows -------------------------------------------------
+
+/// How far each further pop-out is nudged off the centred one, in logical px,
+/// so a second window doesn't land exactly on top of the first.
+const WINDOW_CASCADE: f64 = 28.0;
+
+/// Give a chat its own window. The session stays where it is — the main window
+/// owns the conversation and the request, and this window is a view onto it,
+/// addressed by `session_id`. Closing it is how the chat comes back inline, so
+/// `lib.rs` reports the window's destruction to the frontend.
+///
+/// Async on purpose: building a webview from a synchronous command runs it on
+/// the main thread, where it waits for an event loop that is waiting for the
+/// command — the window comes up stuck on about:blank. `open_compose_window`
+/// has the same shape for the same reason.
+#[tauri::command]
+pub async fn open_ai_window(app: AppHandle, session_id: u64, title: String) -> Result<()> {
+    let label = format!("ai-chat-{session_id}");
+    // Asking again for a chat that already has a window means "show me that
+    // window", not "open a second one onto the same conversation".
+    if let Some(existing) = app.get_webview_window(&label) {
+        let _ = existing.unminimize();
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+    let title = match window_title(title.trim()) {
+        t if t.is_empty() => "Skim AI".to_string(),
+        t => t,
+    };
+    let open = app
+        .webview_windows()
+        .keys()
+        .filter(|label| label.starts_with("ai-chat-"))
+        .count();
+    let window = tauri::WebviewWindowBuilder::new(
+        &app,
+        label,
+        tauri::WebviewUrl::App(format!("index.html#/chat/{session_id}").into()),
+    )
+    .title(title)
+    .inner_size(640.0, 760.0)
+    .min_inner_size(420.0, 420.0)
+    .decorations(false)
+    .center()
+    .build()
+    .map_err(|e| SkimError::other("window", e.to_string()))?;
+
+    if open > 0 {
+        // Cascade off the centre; wrap after a few so windows stay on screen.
+        let scale = window.scale_factor().unwrap_or(1.0);
+        let step = (WINDOW_CASCADE * scale) as i32 * (open % 6) as i32;
+        if step > 0 {
+            if let Ok(pos) = window.outer_position() {
+                let _ =
+                    window.set_position(tauri::PhysicalPosition::new(pos.x + step, pos.y + step));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Trim a subject/question down to something a taskbar button can show.
+fn window_title(raw: &str) -> String {
+    let single_line = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if single_line.chars().count() <= 60 {
+        return single_line;
+    }
+    let head: String = single_line.chars().take(59).collect();
+    format!("{}…", head.trim_end())
 }
 
 /// Make sure a message's body is cached (best effort), then return its
@@ -1020,7 +1091,19 @@ pub async fn ai_analyze_style(
 
 #[cfg(test)]
 mod tests {
-    use super::Provider;
+    use super::{window_title, Provider};
+
+    #[test]
+    fn window_title_collapses_whitespace_and_truncates() {
+        assert_eq!(
+            window_title("Re:  the  budget\nthread"),
+            "Re: the budget thread"
+        );
+        let long = "word ".repeat(40);
+        let title = window_title(&long);
+        assert_eq!(title.chars().count(), 60);
+        assert!(title.ends_with('…'));
+    }
 
     #[test]
     fn provider_parse_round_trips_and_defaults_to_anthropic() {

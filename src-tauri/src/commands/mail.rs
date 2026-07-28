@@ -402,6 +402,24 @@ pub fn take_pending_open(state: State<'_, AppState>) -> Option<PendingOpen> {
         })
 }
 
+/// Open a message in the main window from somewhere else — a citation clicked
+/// in a popped-out AI chat. Reuses the toast-click path: the main window is
+/// already listening for `mail:open-thread`.
+#[tauri::command]
+pub fn open_thread_in_main(
+    app: AppHandle,
+    folder_id: i64,
+    thread_id: Option<i64>,
+    message_id: i64,
+) -> Result<()> {
+    let _ = app.emit(
+        "mail:open-thread",
+        json!({ "folderId": folder_id, "threadId": thread_id, "messageId": message_id }),
+    );
+    crate::show_main_window(&app);
+    Ok(())
+}
+
 /// Optimistic mutation + queued server op, shared by all flag/move actions.
 async fn queue_op(
     app: &AppHandle,

@@ -130,6 +130,10 @@ export const api = {
   removeDraftAttachment: (attachmentId: number) =>
     invoke<void>("remove_draft_attachment", { attachmentId }),
   openComposeWindow: (draftId: number) => invoke<void>("open_compose_window", { draftId }),
+  /** Open a cited email in the main window (from a popped-out AI chat, which
+   *  has no mail UI of its own). Raises the main window too. */
+  openThreadInMain: (folderId: number, threadId: number | null, messageId: number) =>
+    invoke<void>("open_thread_in_main", { folderId, threadId, messageId }),
   suggestAddresses: (query: string) =>
     invoke<AddressSuggestion[]>("suggest_addresses", { query }),
 
@@ -200,6 +204,10 @@ export interface AiModel {
 }
 
 export const aiApi = {
+  /** Open a window onto a chat the main window owns. The window addresses the
+   *  chat by this id; `title` only names the window. */
+  openWindow: (sessionId: number, title: string) =>
+    invoke<void>("open_ai_window", { sessionId, title }),
   setKey: (provider: AiProvider, key: string) => invoke<void>("ai_set_key", { provider, key }),
   /** Configure the OpenAI-compatible endpoint; an empty key is fine. */
   setCustom: (baseUrl: string, key: string, model: string) =>
@@ -218,7 +226,18 @@ export const aiApi = {
 export function aiErrorText(code: string, message: string): string {
   if (code === "ai_key") return t("ai.needs_key");
   if (code === "ai_truncated") return t("ai.truncated");
+  if (code === "ai_no_answer") return t("ai.no_answer");
   return message || t("ai.no_answer");
+}
+
+// Requests still running in this window. Closing the window (a popped-out chat,
+// a compose window) tears down the webview without unmounting anything, so the
+// backend would keep spending tokens on an answer nobody will ever read.
+const inFlight = new Set<string>();
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => {
+    for (const requestId of inFlight) void invoke("ai_cancel", { requestId }).catch(() => {});
+  });
 }
 
 /** Start a streaming AI request. Returns a cancel function. */
@@ -234,9 +253,11 @@ export function aiStream(
 ): () => void {
   const requestId = crypto.randomUUID();
   let cancelled = false;
+  inFlight.add(requestId);
   const channel = new Channel<AiEvent>();
   channel.onmessage = (event) => {
     if (cancelled) return;
+    if (event.type === "done" || event.type === "error") inFlight.delete(requestId);
     switch (event.type) {
       case "delta":
         on.delta(event.text);
@@ -263,6 +284,7 @@ export function aiStream(
   });
   return () => {
     cancelled = true;
+    inFlight.delete(requestId);
     void invoke("ai_cancel", { requestId }).catch(() => {});
   };
 }

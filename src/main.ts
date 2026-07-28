@@ -5,6 +5,7 @@ import "@fontsource/ibm-plex-mono/600.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import { mount } from "svelte";
+import AiChatRoot from "./AiChatRoot.svelte";
 import App from "./App.svelte";
 import ComposeRoot from "./ComposeRoot.svelte";
 
@@ -21,14 +22,13 @@ document.addEventListener("contextmenu", (e) => {
 });
 
 const composeMatch = window.location.hash.match(/^#\/compose\/(\d+)$/);
+const chatMatch = window.location.hash.match(/^#\/chat\/(\d+)$/);
 
+const target = document.getElementById("app")!;
 const app = composeMatch
-  ? mount(ComposeRoot, {
-      target: document.getElementById("app")!,
-      props: { draftId: Number(composeMatch[1]) },
-    })
-  : mount(App, {
-      target: document.getElementById("app")!,
-    });
+  ? mount(ComposeRoot, { target, props: { draftId: Number(composeMatch[1]) } })
+  : chatMatch
+    ? mount(AiChatRoot, { target, props: { sessionId: Number(chatMatch[1]) } })
+    : mount(App, { target });
 
 export default app;

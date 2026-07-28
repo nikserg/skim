@@ -40,7 +40,11 @@
     {
       // Brand name, matching the AI action in ReadingPane — not localized.
       title: "Skim AI",
-      rows: [{ label: t("ai.ask"), keys: ["Q"] }],
+      rows: [
+        { label: t("ai.ask"), keys: ["Q"] },
+        // Only does anything while the palette's AI chat is open.
+        { label: t("ai.open_window"), keys: ["Ctrl K"] },
+      ],
     },
     {
       title: t("shortcuts.global"),

@@ -22,6 +22,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 const MAX_ROUNDS: usize = 6;
 const MAX_TOOL_CALLS: usize = 12;
+/// Said on the round where the tools are taken away — without it a model that
+/// was mid-plan can simply say nothing and the user gets an empty answer.
+const FINAL_ROUND_NUDGE: &str = "No more tool calls are available. Answer the user's question now \
+    from what you have already gathered; if it isn't enough, say what you could not find.";
 /// Output ceiling per round. Models that reason before answering spend this
 /// budget on thinking *and* the answer, so it has to be roomy: at 4k a long
 /// reasoning chain used it all up and the round returned no text at all. It's
@@ -34,6 +38,9 @@ const FETCH_DOWNLOAD_CAP: usize = 512 * 1024;
 /// Chars of a linked page's extracted text handed to the model.
 const FETCH_TEXT_BUDGET: usize = 6_000;
 const SNIPPET_MAX: usize = 160;
+/// How many already-cited emails get a manifest line at the top of a follow-up.
+/// Refs beyond it still resolve through `read_email`; they just aren't listed.
+const MANIFEST_MAX: usize = 30;
 const SEARCH_LIMIT_DEFAULT: i64 = 10;
 const SEARCH_LIMIT_MAX: i64 = 25;
 /// Beyond this many matches the total is reported as "500+".
@@ -433,6 +440,15 @@ pub async fn run(
         }
     };
 
+    // The `[N]` numbering is seeded from earlier turns, but the model can't see
+    // the registry — list those emails so it reads them by number instead of
+    // re-searching for mail whose flags may have changed since (a recap marks
+    // everything it covered as read the moment it lands).
+    let context_prefix = match (prior_manifest(&deps.db, &reg).await, context_prefix) {
+        (Some(manifest), Some(prefix)) => Some(format!("{manifest}\n\n{prefix}")),
+        (manifest, prefix) => manifest.or(prefix),
+    };
+
     // Replay the conversation. Earlier assistant answers come back as plain
     // text — their tool transcript isn't retained across runs — and the newest
     // user turn is the question this round answers. The context prefix is folded
@@ -469,6 +485,11 @@ pub async fn run(
         } else {
             tools_for(&provider, tool_set)
         };
+        // Taking the tools away mid-plan can leave the model waiting to call one
+        // and saying nothing at all. Tell it the plan has to end here.
+        if force_final && matches!(turns.last(), Some(Turn::ToolResults(_))) {
+            turns.push(Turn::User(FINAL_ROUND_NUDGE.to_string()));
+        }
 
         let turn = call_provider(
             &provider,
@@ -524,6 +545,15 @@ pub async fn run(
             });
         }
         turns.push(Turn::ToolResults(results));
+    }
+
+    // Every caller treats a blank answer as a failure and synthesizes its own
+    // message; say so here instead, so the reason is attributable.
+    if full_text.trim().is_empty() {
+        return Err(SkimError::other(
+            "ai_no_answer",
+            "the model returned no answer",
+        ));
     }
 
     let cited = cited_indices(&full_text);
@@ -1136,6 +1166,76 @@ async fn read_thread(
 
 // ---- shared helpers -------------------------------------------------------
 
+/// What a manifest row needs beyond the citation itself: `(date, snippet)`,
+/// keyed by message id.
+type ManifestMeta = HashMap<i64, (i64, String)>;
+
+/// A numbered list of the emails already surfaced earlier in this chat, in the
+/// same row shape `search_emails` returns. The registry knows these `[N]` map to
+/// real messages, but nothing told the *model* that — so a recap follow-up went
+/// hunting for unread mail the recap had just marked read. This is that list.
+fn manifest_text(cited: &[&Citation], meta: &ManifestMeta) -> Option<String> {
+    let mut lines: Vec<String> = cited
+        .iter()
+        .filter_map(|c| {
+            // Missing means the email is gone since it was cited — skip it
+            // rather than offering a ref that `read_email` can't open.
+            let (date, snippet) = meta.get(&c.message_id)?;
+            Some(format!(
+                "[{}] {} | {} | {} — {}",
+                c.index,
+                format_date(*date),
+                c.from,
+                c.subject,
+                prompts::truncate(snippet, SNIPPET_MAX).replace('\n', " "),
+            ))
+        })
+        .collect();
+    if lines.is_empty() {
+        return None;
+    }
+    lines.insert(
+        0,
+        "Emails already retrieved earlier in this conversation. Keep citing them by these [N]:"
+            .to_string(),
+    );
+    lines.push(
+        "Open any of them with `read_email` and its number — they are already found, so do not \
+         search for them again. Their flags may have changed since they were shown (a recap marks \
+         the mail it covered as read), so never look for them with unread=true."
+            .to_string(),
+    );
+    Some(lines.join("\n"))
+}
+
+/// Build the manifest for the citations seeded from earlier turns. Reads only
+/// `date` and `snippet` from SQLite — no bodies, no IMAP fetch.
+async fn prior_manifest(db: &Db, reg: &Registry) -> Option<String> {
+    let all: Vec<&Citation> = reg.by_index.values().collect();
+    let cited = &all[all.len().saturating_sub(MANIFEST_MAX)..];
+    if cited.is_empty() {
+        return None;
+    }
+    let ids: Vec<i64> = cited.iter().map(|c| c.message_id).collect();
+    let meta: ManifestMeta = db
+        .call(move |conn| {
+            let mut stmt = conn
+                .prepare_cached("SELECT date, COALESCE(snippet, '') FROM messages WHERE id = ?1")?;
+            let mut out = ManifestMeta::new();
+            for id in ids {
+                if let Ok(row) = stmt.query_row(rusqlite::params![id], |r| {
+                    Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+                }) {
+                    out.insert(id, row);
+                }
+            }
+            Ok(out)
+        })
+        .await
+        .ok()?;
+    manifest_text(cited, &meta)
+}
+
 /// Ensure a message's body is cached (best effort over IMAP), then return its
 /// prompt block. Free-function twin of `commands::ai::email_block` that takes
 /// owned handles so it can run inside the agent's spawned task.
@@ -1389,6 +1489,21 @@ mod tests {
         assert_eq!(reg.assign(10, |i| cite(i, 10)), 1);
         // A newly found email is numbered after the highest seeded index.
         assert_eq!(reg.assign(99, |i| cite(i, 99)), 5);
+    }
+
+    #[test]
+    fn manifest_lists_prior_citations_by_their_numbers() {
+        let (c1, c4) = (cite(1, 10), cite(4, 40));
+        let mut meta = ManifestMeta::new();
+        meta.insert(10, (0, "first line".into()));
+        // 40 is deliberately absent: an email deleted since it was cited.
+        let out = manifest_text(&[&c1, &c4], &meta).unwrap();
+        assert!(out.contains("[1] 1970-01-01 | sender | subj 10 — first line"));
+        assert!(!out.contains("[4]"));
+        // The whole point: don't go looking for these with the unread filter.
+        assert!(out.contains("unread=true"));
+        // Nothing left to list once the last email is gone.
+        assert!(manifest_text(&[&c4], &meta).is_none());
     }
 
     #[test]

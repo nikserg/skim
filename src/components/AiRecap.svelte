@@ -1,270 +1,144 @@
 <script lang="ts">
   // AI Recap: a catch-up digest of the folder's unread mail. Occupies the
-  // reading pane while open; covered messages are marked read on success.
-  // Once the digest lands, the user can keep the conversation going — follow-ups
-  // route through the mailbox chat (`ai_chat`), seeded with the recap's turns and
-  // citations, exactly like the Ctrl+K assistant.
-  import { aiErrorText, aiStream, api, type Citation } from "../lib/api";
+  // reading pane while open, or the whole of its own window once popped out.
+  // A view only — the session, the scan and any follow-up in flight live in the
+  // main window's store, which is what lets the digest keep streaming while it
+  // moves between the two.
+  //
+  // The conversation opens with a hidden seed turn and the digest itself
+  // (turns 0 and 1); anything after that is a follow-up the user asked.
+  import type { Citation } from "../lib/api";
   import { aiLinks } from "../lib/ai-links";
+  import type { ChatSession } from "../lib/ai-chat";
   import { t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
   import { createSlowStart } from "../lib/slow-start.svelte";
-  import { mail } from "../lib/stores/mail.svelte";
   import { ui } from "../lib/stores/ui.svelte";
+  import ChatViewToggle from "./ChatViewToggle.svelte";
 
-  /** Synthetic opening turn so the digest reads as an assistant reply the user
-   * can follow up on. Sent to the model, never rendered. */
-  const RECAP_SEED = "Recap my unread inbox.";
-
-  interface ChatTurn {
-    role: "user" | "assistant";
-    content: string;
-    citations: Citation[];
+  interface Props {
+    session: ChatSession;
+    /** True in the chat window: drops the panel header for the way back. */
+    standalone?: boolean;
+    onsend: (question: string) => void;
+    oncitation: (citation: Citation) => void;
+    /** Panel only. */
+    onclose?: () => void;
+    onpopout?: () => void;
+    /** Window only: put the digest back in the reading pane. */
+    onreturn?: () => void;
   }
-  interface ChatStep {
-    id: string;
-    kind: string;
-    arg: string;
-    count: number | null;
-    done: boolean;
-  }
+  let {
+    session,
+    standalone = false,
+    onsend,
+    oncitation,
+    onclose,
+    onpopout,
+    onreturn,
+  }: Props = $props();
 
-  let status = $state<"scanning" | "streaming" | "done" | "error">("scanning");
-  let text = $state("");
-  let citations = $state<Citation[]>([]);
-  let progress = $state<{ current: number; total: number } | null>(null);
-  /** How many unread messages were scanned — for the digest eyebrow count. */
-  let scannedTotal = $state(0);
-  let markedCount = $state(0);
-  let cancel: (() => void) | null = null;
-
-  /** Follow-up conversation, seeded once the digest is done. */
-  let chat = $state<{
-    turns: ChatTurn[];
-    answer: string;
-    steps: ChatStep[];
-    status: "idle" | "streaming" | "done" | "error";
-    errorText: string;
-  } | null>(null);
   let followup = $state("");
-  let cancelChat: (() => void) | null = null;
   let bodyEl: HTMLDivElement | undefined = $state();
-  // Cold-start hint, shared between the initial scan and the follow-up chat
-  // since only one of them can be in flight at a time (the chat only exists
-  // once the scan is done).
-  const slowStart = createSlowStart();
 
+  const streaming = $derived(session.status === "streaming");
+  /** The digest itself, once it has landed. */
+  const digest = $derived(session.turns[1]?.content ?? session.answer);
+  const cited = $derived(session.turns[1]?.citations ?? []);
+  const done = $derived(session.turns.length >= 2);
+  /** Still counting unread mail: no digest text has arrived yet. */
+  const scanning = $derived(streaming && !done && session.answer === "");
+
+  // Cold-start hint, shared between the scan and the follow-ups since only one
+  // of them can be in flight at a time.
+  const slowStart = createSlowStart();
+  let wasStreaming = false;
   $effect(() => {
-    const folderId = mail.selectedFolderId;
-    if (folderId === null) return;
-    // Fresh recap for this folder — drop any prior conversation and streams.
-    cancelChat?.();
-    cancelChat = null;
-    chat = null;
-    followup = "";
-    status = "scanning";
-    text = "";
-    citations = [];
-    progress = null;
-    scannedTotal = 0;
-    markedCount = 0;
-    slowStart.clear();
-    cancel = aiStream(
-      "ai_recap",
-      { folderId },
-      {
-        progress: (current, total) => {
-          progress = { current, total };
-          if (total > scannedTotal) scannedTotal = total;
-          // A cold model start can leave the counter frozen at N/N after the
-          // scan itself finishes — re-arm on every progress tick.
-          slowStart.arm();
-        },
-        delta: (chunk) => {
-          slowStart.clear();
-          status = "streaming";
-          progress = null;
-          text += chunk;
-        },
-        done: (cited) => {
-          slowStart.clear();
-          // No digest means nothing to seed the chat with — show why rather
-          // than an empty panel.
-          if (!text.trim()) {
-            status = "error";
-            text = t("ai.no_answer");
-            return;
-          }
-          status = "done";
-          citations = cited;
-          markRead(cited);
-          // The digest becomes the first assistant reply; its citations seed the
-          // [N] numbering so follow-ups can resolve those same emails.
-          chat = {
-            turns: [
-              { role: "user", content: RECAP_SEED, citations: [] },
-              { role: "assistant", content: text, citations: cited },
-            ],
-            answer: "",
-            steps: [],
-            status: "idle",
-            errorText: "",
-          };
-        },
-        error: (code, message) => {
-          slowStart.clear();
-          status = "error";
-          text = aiErrorText(code, message);
-        },
-      },
-    );
-    return () => {
-      cancel?.();
-      cancelChat?.();
-    };
+    if (streaming && !wasStreaming) slowStart.arm();
+    if (!streaming) slowStart.clear();
+    wasStreaming = streaming;
+    // A cold model start can leave the counter frozen at N/N after the scan
+    // itself finishes — re-arm on every progress tick.
+    if (session.progress) slowStart.arm();
+  });
+  $effect(() => {
+    if (session.answer !== "" || session.steps.length > 0) slowStart.clear();
   });
 
   // Keep the panel pinned to the newest turn / streaming delta.
   $effect(() => {
-    if (!chat) return;
-    void chat.answer;
-    void chat.turns.length;
-    void chat.steps.length;
+    void session.answer;
+    void session.turns.length;
+    void session.steps.length;
     if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
   });
 
-  function markRead(cited: Citation[]) {
-    const ids = cited.map((c) => c.messageId);
-    if (ids.length === 0) return;
-    markedCount = ids.length;
-    for (const c of cited) {
-      if (c.threadId !== null) mail.patchThreadRow(c.threadId, { isRead: true });
-    }
-    void api.markRead(ids, true);
-  }
-
-  function askChat(question: string) {
-    if (!chat) return;
-    cancelChat?.();
-    chat.turns = [...chat.turns, { role: "user", content: question, citations: [] }];
-    chat.answer = "";
-    chat.steps = [];
-    chat.status = "streaming";
-    chat.errorText = "";
-    const history = chat.turns.map((tn) => ({ role: tn.role, content: tn.content }));
-    // Citations across all turns, deduped by their [N] number, so the agent can
-    // re-resolve/read those emails on a follow-up and keep numbers stable.
-    const byIndex = new Map<number, Citation>();
-    for (const tn of chat.turns) for (const c of tn.citations) byIndex.set(c.index, c);
-    const priorCitations = [...byIndex.values()];
-    slowStart.arm();
-    // A round that produced nothing is a failure however it ended: show why and
-    // drop the unanswered question back into the box so it can be retried.
-    const fail = (why: string) => {
-      slowStart.clear();
-      if (!chat) return;
-      const last = chat.turns[chat.turns.length - 1];
-      if (last?.role === "user") {
-        followup = last.content;
-        chat.turns = chat.turns.slice(0, -1);
-      }
-      chat.answer = "";
-      chat.steps = [];
-      chat.status = "error";
-      chat.errorText = why;
-    };
-    cancelChat = aiStream(
-      "ai_chat",
-      { turns: history, priorCitations, contextMessageId: null },
-      {
-        delta: (chunk) => {
-          slowStart.clear();
-          if (chat) chat.answer += chunk;
-        },
-        toolCall: (id, kind, arg) => {
-          slowStart.clear();
-          if (chat) chat.steps = [...chat.steps, { id, kind, arg, count: null, done: false }];
-        },
-        toolDone: (id, count) => {
-          if (chat)
-            chat.steps = chat.steps.map((s) => (s.id === id ? { ...s, count, done: true } : s));
-        },
-        done: (cited) => {
-          slowStart.clear();
-          if (!chat) return;
-          // A blank answer is a failed round, not a turn.
-          if (!chat.answer.trim()) {
-            fail(t("ai.no_answer"));
-            return;
-          }
-          chat.turns = [...chat.turns, { role: "assistant", content: chat.answer, citations: cited }];
-          chat.answer = "";
-          chat.steps = [];
-          chat.status = "done";
-        },
-        error: (code, message) => fail(aiErrorText(code, message)),
-      },
-    );
-  }
+  // A round that failed hands its question back — pick it up so it can be
+  // retried with one keystroke.
+  $effect(() => {
+    if (session.pending) followup = session.pending;
+  });
 
   function submitFollowup(e: SubmitEvent) {
     e.preventDefault();
     const q = followup.trim();
-    if (!q || chat?.status === "streaming") return;
+    if (!q || streaming) return;
     followup = "";
-    askChat(q);
-  }
-
-  async function openCitation(c: Citation) {
-    // openLocation maps the real folder onto the current scope — in the
-    // unified view that's the virtual counterpart, not the folder itself.
-    await mail.openLocation(c.folderId, c.threadId, c.messageId);
-    ui.closeRecap();
+    onsend(q);
   }
 </script>
 
-<section class="recap">
-  <header class="head">
-    <span class="title">✦ {t("ai.recap_title")}</span>
-    <button class="close" onclick={() => ui.closeRecap()} aria-label={t("settings.close")}>
-      <svg width="11" height="11" viewBox="0 0 10 10"><path d="M0 0L10 10M10 0L0 10" stroke="currentColor" stroke-width="1.2" /></svg>
-    </button>
-  </header>
+<section class="recap" class:standalone>
+  {#if standalone}
+    <div class="tools">
+      <ChatViewToggle mode="in" onclick={() => onreturn?.()} />
+    </div>
+  {:else}
+    <header class="head">
+      <span class="title">✦ {t("ai.recap_title")}</span>
+      <div class="head-tools">
+        <ChatViewToggle mode="out" onclick={() => onpopout?.()} />
+        <button class="close" onclick={() => onclose?.()} aria-label={t("settings.close")}>
+          <svg width="11" height="11" viewBox="0 0 10 10"><path d="M0 0L10 10M10 0L0 10" stroke="currentColor" stroke-width="1.2" /></svg>
+        </button>
+      </div>
+    </header>
+  {/if}
 
   <div class="body" bind:this={bodyEl}>
-    {#if status === "scanning"}
+    {#if scanning}
       <div class="progress">
         <span class="spinner"></span>
         {#if slowStart.slow}
           {t("ai.loading_model")}
         {:else}
           {t("ai.recap_reading")}
-          {#if progress}{progress.current}/{progress.total}{/if}
+          {#if session.progress}{session.progress.current}/{session.progress.total}{/if}
         {/if}
       </div>
-    {:else if status === "error"}
-      <div class="error">{text}</div>
+    {:else if !done && session.status === "error"}
+      <div class="error">{session.errorText}</div>
     {:else}
       {#if ui.temperature === "warm"}
         <div class="eyebrow">
-          // {t("ai.recap_eyebrow", { n: citations.length || scannedTotal })} //
+          // {t("ai.recap_eyebrow", { n: cited.length || session.scannedTotal })} //
         </div>
       {/if}
       <div class="clip">
         <div class="clip-paper">
-          <div class="text md-body" use:aiLinks>{@html mdLite(text)}</div>
+          <div class="text md-body" use:aiLinks>{@html mdLite(digest)}</div>
         </div>
       </div>
-      {#if status === "done"}
-        {#if markedCount > 0}
-          <div class="marked microlabel">✓ {t("ai.recap_marked", { n: markedCount })}</div>
+      {#if done}
+        {#if session.markedCount > 0}
+          <div class="marked microlabel">✓ {t("ai.recap_marked", { n: session.markedCount })}</div>
         {/if}
-        {#if citations.length > 0}
+        {#if cited.length > 0}
           <div class="sources">
-            <span class="microlabel">{t("ai.sources")} · {citations.length}</span>
+            <span class="microlabel">{t("ai.sources")} · {cited.length}</span>
             <div class="chips">
-              {#each citations as c (c.index)}
-                <button class="chip" onclick={() => openCitation(c)}>
+              {#each cited as c (c.index)}
+                <button class="chip" onclick={() => oncitation(c)}>
                   <span class="index">{c.index}</span>
                   {c.subject || c.from}
                 </button>
@@ -273,89 +147,87 @@
           </div>
         {/if}
 
-        {#if chat}
-          <div class="followups">
-            {#each chat.turns.slice(2) as turn, ti (ti)}
-              {#if turn.role === "user"}
-                <div class="chat-question">{turn.content}</div>
-              {:else}
-                <div class="chat-answer">
-                  <div class="microlabel chat-label">✦ {t("ai.answer")}</div>
-                  <div class="chat-text md-body" use:aiLinks>{@html mdLite(turn.content)}</div>
-                </div>
-                {#if turn.citations.length > 0}
-                  <div class="sources">
-                    <span class="microlabel">{t("ai.sources")} · {turn.citations.length}</span>
-                    <div class="chips">
-                      {#each turn.citations as c (c.index)}
-                        <button class="chip" onclick={() => openCitation(c)}>
-                          <span class="index">{c.index}</span>
-                          {c.subject || c.from}
-                        </button>
-                      {/each}
-                    </div>
-                  </div>
-                {/if}
-              {/if}
-            {/each}
-
-            {#if chat.status === "streaming"}
-              {#if chat.steps.length > 0}
-                <div class="steps">
-                  {#each chat.steps as step (step.id)}
-                    <div class="step" class:done={step.done}>
-                      <span class="step-icon"
-                        >{step.kind === "read" ? "📧" : step.kind === "fetch" ? "🌐" : "🔍"}</span
-                      >
-                      <span class="step-label"
-                        >{step.kind === "read"
-                          ? t("ai.step.read", { arg: step.arg })
-                          : step.kind === "fetch"
-                            ? t("ai.step.fetch", { arg: step.arg })
-                            : t("ai.step.search", { arg: step.arg })}</span
-                      >
-                      {#if step.done}
-                        {#if step.count !== null}
-                          <span class="step-detail">{t("ai.step.found", { n: step.count })}</span>
-                        {:else}
-                          <span class="step-detail">✓</span>
-                        {/if}
-                      {:else}
-                        <span class="step-spin thinking">…</span>
-                      {/if}
-                    </div>
-                  {/each}
-                </div>
-              {/if}
+        <div class="followups">
+          {#each session.turns.slice(2) as turn, ti (ti)}
+            {#if turn.role === "user"}
+              <div class="chat-question">{turn.content}</div>
+            {:else}
               <div class="chat-answer">
                 <div class="microlabel chat-label">✦ {t("ai.answer")}</div>
-                {#if chat.answer === ""}
-                  <span class="thinking">{slowStart.slow ? t("ai.loading_model") : t("ai.thinking")}</span>
-                {:else}
-                  <div class="chat-text md-body" use:aiLinks>{@html mdLite(chat.answer)}</div>
-                {/if}
+                <div class="chat-text md-body" use:aiLinks>{@html mdLite(turn.content)}</div>
               </div>
+              {#if turn.citations.length > 0}
+                <div class="sources">
+                  <span class="microlabel">{t("ai.sources")} · {turn.citations.length}</span>
+                  <div class="chips">
+                    {#each turn.citations as c (c.index)}
+                      <button class="chip" onclick={() => oncitation(c)}>
+                        <span class="index">{c.index}</span>
+                        {c.subject || c.from}
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
             {/if}
+          {/each}
 
-            {#if chat.status === "error"}
-              <div class="chat-answer error-turn">
-                <div class="chat-text">{chat.errorText}</div>
+          {#if streaming}
+            {#if session.steps.length > 0}
+              <div class="steps">
+                {#each session.steps as step (step.id)}
+                  <div class="step" class:done={step.done}>
+                    <span class="step-icon"
+                      >{step.kind === "read" ? "📧" : step.kind === "fetch" ? "🌐" : "🔍"}</span
+                    >
+                    <span class="step-label"
+                      >{step.kind === "read"
+                        ? t("ai.step.read", { arg: step.arg })
+                        : step.kind === "fetch"
+                          ? t("ai.step.fetch", { arg: step.arg })
+                          : t("ai.step.search", { arg: step.arg })}</span
+                    >
+                    {#if step.done}
+                      {#if step.count !== null}
+                        <span class="step-detail">{t("ai.step.found", { n: step.count })}</span>
+                      {:else}
+                        <span class="step-detail">✓</span>
+                      {/if}
+                    {:else}
+                      <span class="step-spin thinking">…</span>
+                    {/if}
+                  </div>
+                {/each}
               </div>
             {/if}
-          </div>
-        {/if}
+            <div class="chat-answer">
+              <div class="microlabel chat-label">✦ {t("ai.answer")}</div>
+              {#if session.answer === ""}
+                <span class="thinking">{slowStart.slow ? t("ai.loading_model") : t("ai.thinking")}</span>
+              {:else}
+                <div class="chat-text md-body" use:aiLinks>{@html mdLite(session.answer)}</div>
+              {/if}
+            </div>
+          {/if}
+
+          {#if session.status === "error"}
+            <div class="chat-answer error-turn">
+              <div class="chat-text">{session.errorText}</div>
+            </div>
+          {/if}
+        </div>
       {/if}
     {/if}
   </div>
 
-  {#if chat}
+  {#if done}
     <form class="followup-form" onsubmit={submitFollowup}>
       <span class="spark">✦</span>
       <input
         bind:value={followup}
         placeholder={t("ai.ask_followup")}
         spellcheck="false"
-        disabled={chat.status === "streaming"}
+        disabled={streaming}
       />
     </form>
   {/if}
@@ -369,12 +241,32 @@
     flex-direction: column;
     background: var(--surface);
   }
+  /* Own window: the titlebar names it, so the panel header gives way to a
+     floating button back. */
+  .recap.standalone {
+    position: relative;
+    min-height: 0;
+  }
+  .tools {
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    z-index: 1;
+  }
+  .standalone .body {
+    padding-top: 40px;
+  }
   .head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 18px 24px 12px;
     border-bottom: 1px solid var(--accent-dim);
+  }
+  .head-tools {
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
   .title {
     color: var(--accent);
