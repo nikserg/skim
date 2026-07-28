@@ -9,7 +9,7 @@
   // (turns 0 and 1); anything after that is a follow-up the user asked.
   import type { Citation } from "../lib/api";
   import { aiLinks } from "../lib/ai-links";
-  import type { ChatSession } from "../lib/ai-chat";
+  import { isAlive, type ChatSession } from "../lib/ai-chat";
   import { t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
   import { createSlowStart } from "../lib/slow-start.svelte";
@@ -62,7 +62,7 @@
     if (session.progress) slowStart.arm();
   });
   $effect(() => {
-    if (session.answer !== "" || session.steps.length > 0) slowStart.clear();
+    if (isAlive(session)) slowStart.clear();
   });
 
   // Keep the panel pinned to the newest turn / streaming delta.
@@ -111,6 +111,10 @@
         <span class="spinner"></span>
         {#if slowStart.slow}
           {t("ai.loading_model")}
+        {:else if session.reasoning}
+          <!-- The scan is over and the digest is being thought through: the
+               counter would sit frozen at N/N saying "reading". -->
+          {t("ai.thinking")}
         {:else}
           {t("ai.recap_reading")}
           {#if session.progress}{session.progress.current}/{session.progress.total}{/if}

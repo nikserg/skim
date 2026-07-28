@@ -7,7 +7,7 @@ use super::{AssistantTurn, ChatMessage, ToolCall};
 use crate::error::{Result, SkimError};
 use futures::StreamExt;
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 /// Where an OpenAI-compatible request goes.
@@ -149,17 +149,27 @@ fn drain_data(buffer: &mut String, flush: bool) -> Vec<String> {
     out
 }
 
-/// Stream a completion, invoking `on_delta` for each text fragment.
+/// Stream a completion, invoking `on_delta` for each text fragment and
+/// `on_reasoning` while the model thinks before it answers.
 /// Returns the finish reason. Honors one retry on rate-limit/upstream errors.
+///
+/// A thinking model sends its reasoning first, in frames whose `content` is
+/// empty, which from the outside looks exactly like a model still loading; a
+/// local one can reason for a minute. The reasoning text itself is dropped, it
+/// must never reach the answer body, but its arrival is worth reporting, and
+/// that is all `on_reasoning` says. It fires per frame, not once per round;
+/// the caller decides what to make of that. [`super::anthropic`] reports
+/// thinking through the same pair of callbacks.
 pub async fn stream(
     ep: &Endpoint,
     key: &str,
     request: &Request,
     mut on_delta: impl FnMut(&str),
+    on_reasoning: &mut impl FnMut(),
 ) -> Result<Option<String>> {
     let mut attempt = 0;
     loop {
-        match stream_once(ep, key, request, &mut on_delta).await {
+        match stream_once(ep, key, request, &mut on_delta, on_reasoning).await {
             Err(e) if e.code() == "ai_overloaded" && attempt == 0 => {
                 attempt = 1;
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -174,6 +184,7 @@ async fn stream_once(
     key: &str,
     request: &Request,
     on_delta: &mut impl FnMut(&str),
+    on_reasoning: &mut impl FnMut(),
 ) -> Result<Option<String>> {
     let resp = post_chat(ep, key, &chat_body(request))
         .send()
@@ -208,6 +219,9 @@ async fn stream_once(
                 return Err(SkimError::other("ai", error.message));
             }
             for choice in event.choices {
+                if choice.delta.thinking() {
+                    on_reasoning();
+                }
                 if let Some(text) = choice.delta.content {
                     if !text.is_empty() {
                         on_delta(&text);
@@ -238,10 +252,41 @@ struct Choice {
     finish_reason: Option<String>,
 }
 
+/// One `choices[].delta`, shared by both wire shapes: `tool_calls` is simply
+/// absent from a plain completion, and serde defaults it to `None`.
 #[derive(Deserialize, Default)]
 struct Delta {
     #[serde(default)]
     content: Option<String>,
+    #[serde(default)]
+    reasoning: Option<Value>,
+    #[serde(default)]
+    reasoning_content: Option<Value>,
+    #[serde(default)]
+    tool_calls: Option<Vec<ToolCallDelta>>,
+}
+
+impl Delta {
+    fn thinking(&self) -> bool {
+        carries_reasoning(&self.reasoning) || carries_reasoning(&self.reasoning_content)
+    }
+}
+
+/// Did the endpoint put actual reasoning under this key? Deliberately untyped:
+/// the text is never read, and gateways spell it as a string, an object, or a
+/// list of blocks. Typing it as a string would make one of those shapes fail
+/// the whole frame, taking its `content` and `tool_calls` down with it.
+///
+/// A bare `true` or a number is not reasoning: some endpoints carry a flag
+/// under this name on every frame, and reading that as "the model is thinking"
+/// would fire on the very first one, before the model produced anything.
+fn carries_reasoning(field: &Option<Value>) -> bool {
+    match field {
+        Some(Value::String(s)) => !s.is_empty(),
+        Some(Value::Array(a)) => !a.is_empty(),
+        Some(Value::Object(o)) => !o.is_empty(),
+        _ => false,
+    }
 }
 
 #[derive(Deserialize)]
@@ -252,17 +297,19 @@ struct ApiError {
 // ---- tool-calling ---------------------------------------------------------
 
 /// Stream one assistant round that may include tool calls. Text streams to
-/// `on_delta`; `tool_calls` are accumulated and returned. One retry on
-/// rate-limit/upstream errors (before any bytes stream).
+/// `on_delta` and reasoning is reported through `on_reasoning` (see [`stream`]);
+/// `tool_calls` are accumulated and returned. One retry on rate-limit/upstream
+/// errors (before any bytes stream).
 pub async fn stream_tools(
     ep: &Endpoint,
     key: &str,
     request: &ToolRequest,
     on_delta: &mut impl FnMut(&str),
+    on_reasoning: &mut impl FnMut(),
 ) -> Result<AssistantTurn> {
     let mut attempt = 0;
     loop {
-        match stream_tools_once(ep, key, request, on_delta).await {
+        match stream_tools_once(ep, key, request, on_delta, on_reasoning).await {
             Err(e) if e.code() == "ai_overloaded" && attempt == 0 => {
                 attempt = 1;
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -318,6 +365,7 @@ async fn stream_tools_once(
     key: &str,
     request: &ToolRequest,
     on_delta: &mut impl FnMut(&str),
+    on_reasoning: &mut impl FnMut(),
 ) -> Result<AssistantTurn> {
     let resp = post_chat(ep, key, &tool_body(request))
         .send()
@@ -354,6 +402,9 @@ async fn stream_tools_once(
                 return Err(SkimError::other("ai", error.message));
             }
             for choice in event.choices {
+                if choice.delta.thinking() {
+                    on_reasoning();
+                }
                 if let Some(t) = choice.delta.content {
                     if !t.is_empty() {
                         on_delta(&t);
@@ -404,17 +455,9 @@ struct ToolChunk {
 #[derive(Deserialize)]
 struct ToolChoice {
     #[serde(default)]
-    delta: ToolDeltaBody,
+    delta: Delta,
     #[serde(default)]
     finish_reason: Option<String>,
-}
-
-#[derive(Deserialize, Default)]
-struct ToolDeltaBody {
-    #[serde(default)]
-    content: Option<String>,
-    #[serde(default)]
-    tool_calls: Option<Vec<ToolCallDelta>>,
 }
 
 #[derive(Deserialize)]
@@ -534,6 +577,56 @@ mod tests {
         let mut buffer = "data: {\"a\":1}".to_string();
         assert_eq!(drain_data(&mut buffer, true), vec!["{\"a\":1}"]);
         assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn reasoning_is_spotted_under_either_spelling() {
+        let delta = |json: &str| serde_json::from_str::<Delta>(json).unwrap();
+        // `reasoning` is what OpenRouter and Ollama's /v1 send; DeepSeek and
+        // vLLM spell it `reasoning_content`.
+        assert!(delta(r#"{"content":"","reasoning":"let me think"}"#).thinking());
+        assert!(delta(r#"{"content":"","reasoning_content":"let me think"}"#).thinking());
+        // Answer text is not reasoning, and an empty field is not a sign of life.
+        assert!(!delta(r#"{"content":"hello"}"#).thinking());
+        assert!(!delta(r#"{"reasoning":""}"#).thinking());
+        assert!(!delta(r#"{"reasoning":null}"#).thinking());
+    }
+
+    #[test]
+    fn only_reasoning_content_counts_as_reasoning() {
+        let delta = |json: &str| serde_json::from_str::<Delta>(json).unwrap();
+        // A gateway may carry reasoning as an object or a list of blocks. The
+        // frame must still parse: dropping it would drop its `content` too.
+        let chunk: Chunk = serde_json::from_str(
+            r#"{"choices":[{"delta":{"content":"hi","reasoning":{"text":"hmm"}}}]}"#,
+        )
+        .unwrap();
+        assert_eq!(chunk.choices[0].delta.content.as_deref(), Some("hi"));
+        assert!(chunk.choices[0].delta.thinking());
+        assert!(delta(r#"{"reasoning_content":[{"type":"thinking"}]}"#).thinking());
+
+        // An empty container is a placeholder, and a bare flag is not content:
+        // an endpoint that sends either on every frame must not read as a model
+        // reasoning from the very first one.
+        assert!(!delta(r#"{"reasoning":{}}"#).thinking());
+        assert!(!delta(r#"{"reasoning":[]}"#).thinking());
+        assert!(!delta(r#"{"reasoning":false}"#).thinking());
+        assert!(!delta(r#"{"reasoning":true}"#).thinking());
+        assert!(!delta(r#"{"reasoning":0}"#).thinking());
+    }
+
+    #[test]
+    fn one_delta_shape_serves_both_wire_formats() {
+        // `tool_calls` is simply absent from a plain completion.
+        let plain: Chunk =
+            serde_json::from_str(r#"{"choices":[{"delta":{"content":"hi"}}]}"#).unwrap();
+        assert!(plain.choices[0].delta.tool_calls.is_none());
+
+        let tools: ToolChunk = serde_json::from_str(
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1"}]}}]}"#,
+        )
+        .unwrap();
+        assert_eq!(tools.choices[0].delta.tool_calls.as_ref().unwrap().len(), 1);
     }
 
     #[test]

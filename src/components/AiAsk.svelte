@@ -4,7 +4,7 @@
   // is owned by the main window's store, so this can be mounted, unmounted and
   // mirrored into a second window without touching the conversation.
   import { aiLinks } from "../lib/ai-links";
-  import type { ChatSession } from "../lib/ai-chat";
+  import { isAlive, type ChatSession } from "../lib/ai-chat";
   import { t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
   import { createSlowStart } from "../lib/slow-start.svelte";
@@ -42,7 +42,7 @@
     wasStreaming = now;
   });
   $effect(() => {
-    if (session.answer !== "" || session.steps.length > 0) slowStart.clear();
+    if (isAlive(session)) slowStart.clear();
   });
 
   function send(q: string) {

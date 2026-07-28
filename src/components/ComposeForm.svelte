@@ -278,6 +278,8 @@
         replyToMessageId: draft.replyToMessageId,
       },
       {
+        // The model started reasoning: it is working, not still loading.
+        reasoning: () => slowStart.clear(),
         delta: (text) => {
           slowStart.clear();
           streamed += text;

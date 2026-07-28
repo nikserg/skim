@@ -91,16 +91,23 @@ pub async fn validate_key(key: &str) -> Result<()> {
     }
 }
 
-/// Stream a completion, invoking `on_delta` for each text fragment.
+/// Stream a completion, invoking `on_delta` for each text fragment and
+/// `on_reasoning` while the model thinks before it answers.
 /// Returns the stop reason. Honors one retry on 429/529.
+///
+/// Thinking is reported on the *arrival* of a reasoning block, not on its
+/// contents: the API only returns the reasoning text when a request asks for
+/// it (`thinking.display`), and the current models think by default, so the
+/// blocks routinely arrive empty. Their arrival is the signal.
 pub async fn stream(
     key: &str,
     request: &Request,
     mut on_delta: impl FnMut(&str),
+    on_reasoning: &mut impl FnMut(),
 ) -> Result<Option<String>> {
     let mut attempt = 0;
     loop {
-        match stream_once(key, request, &mut on_delta).await {
+        match stream_once(key, request, &mut on_delta, on_reasoning).await {
             Err(e) if e.code() == "ai_overloaded" && attempt == 0 => {
                 attempt = 1;
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -114,6 +121,7 @@ async fn stream_once(
     key: &str,
     request: &Request,
     on_delta: &mut impl FnMut(&str),
+    on_reasoning: &mut impl FnMut(),
 ) -> Result<Option<String>> {
     let body = json!({
         "model": request.model,
@@ -163,34 +171,63 @@ async fn stream_once(
                 let Some(data) = line.strip_prefix("data:") else {
                     continue;
                 };
-                let Ok(event) = serde_json::from_str::<SseEvent>(data.trim()) else {
-                    continue;
-                };
-                match event {
-                    SseEvent::ContentBlockDelta { delta } => {
-                        if let Some(text) = delta.text {
-                            on_delta(&text);
-                        }
-                    }
-                    SseEvent::MessageDelta { delta } => {
-                        if let Some(reason) = delta.stop_reason {
-                            stop_reason = Some(reason);
-                        }
-                    }
-                    SseEvent::Error { error } => {
-                        return Err(SkimError::other("ai", error.message));
-                    }
-                    SseEvent::Other => {}
-                }
+                apply_text_sse(data.trim(), &mut stop_reason, on_delta, on_reasoning)?;
             }
         }
     }
     Ok(stop_reason)
 }
 
+/// Fold one SSE payload into this round's state. Unparseable frames are
+/// skipped: the stream stays useful across schema additions. Split out of the
+/// socket loop so the parsing can be tested on its own, the way `apply_sse`
+/// already is for the tool path.
+fn apply_text_sse(
+    data: &str,
+    stop_reason: &mut Option<String>,
+    on_delta: &mut impl FnMut(&str),
+    on_reasoning: &mut impl FnMut(),
+) -> Result<()> {
+    let Ok(event) = serde_json::from_str::<SseEvent>(data) else {
+        return Ok(());
+    };
+    match event {
+        // A thinking model reasons before it answers. The block's arrival is
+        // the whole signal: its text is empty unless the request asked for it.
+        SseEvent::ContentBlockStart { content_block } => {
+            if content_block.is_reasoning() {
+                on_reasoning();
+            }
+        }
+        SseEvent::ContentBlockDelta { delta } => {
+            if let Some(text) = delta.text {
+                on_delta(&text);
+            }
+            // Recovers the signal from a reasoning delta that arrives before
+            // its start frame.
+            if delta.thinking.is_some() {
+                on_reasoning();
+            }
+        }
+        SseEvent::MessageDelta { delta } => {
+            if let Some(reason) = delta.stop_reason {
+                *stop_reason = Some(reason);
+            }
+        }
+        SseEvent::Error { error } => {
+            return Err(SkimError::other("ai", error.message));
+        }
+        SseEvent::Other => {}
+    }
+    Ok(())
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum SseEvent {
+    ContentBlockStart {
+        content_block: BlockStart,
+    },
     ContentBlockDelta {
         delta: Delta,
     },
@@ -204,10 +241,30 @@ enum SseEvent {
     Other,
 }
 
+/// Only the kind of an opening block matters on this path: answer text arrives
+/// as deltas, and reasoning text is never rendered.
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum BlockStart {
+    Thinking,
+    RedactedThinking,
+    #[serde(other)]
+    Other,
+}
+
+impl BlockStart {
+    fn is_reasoning(&self) -> bool {
+        matches!(self, BlockStart::Thinking | BlockStart::RedactedThinking)
+    }
+}
+
 #[derive(Deserialize)]
 struct Delta {
     #[serde(default)]
     text: Option<String>,
+    /// `thinking_delta` fragments, never rendered: only their arrival is used.
+    #[serde(default)]
+    thinking: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -235,16 +292,18 @@ pub struct ToolRequest {
 }
 
 /// Stream one assistant round that may include tool calls. Text is streamed to
-/// `on_delta`; `tool_use` blocks are accumulated and returned. One retry on
-/// 429/529 (before any bytes stream, so no double-emit).
+/// `on_delta` and reasoning is reported through `on_reasoning` (see [`stream`]);
+/// `tool_use` blocks are accumulated and returned. One retry on 429/529 (before
+/// any bytes stream, so no double-emit).
 pub async fn stream_tools(
     key: &str,
     request: &ToolRequest,
     on_delta: &mut impl FnMut(&str),
+    on_reasoning: &mut impl FnMut(),
 ) -> Result<AssistantTurn> {
     let mut attempt = 0;
     loop {
-        match stream_tools_once(key, request, on_delta).await {
+        match stream_tools_once(key, request, on_delta, on_reasoning).await {
             Err(e) if e.code() == "ai_overloaded" && attempt == 0 => {
                 attempt = 1;
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -277,6 +336,7 @@ async fn stream_tools_once(
     key: &str,
     request: &ToolRequest,
     on_delta: &mut impl FnMut(&str),
+    on_reasoning: &mut impl FnMut(),
 ) -> Result<AssistantTurn> {
     let mut body = json!({
         "model": request.model,
@@ -333,7 +393,13 @@ async fn stream_tools_once(
                 let Some(data) = line.strip_prefix("data:") else {
                     continue;
                 };
-                apply_sse(data.trim(), &mut blocks, &mut stop_reason, on_delta)?;
+                apply_sse(
+                    data.trim(),
+                    &mut blocks,
+                    &mut stop_reason,
+                    on_delta,
+                    on_reasoning,
+                )?;
             }
         }
     }
@@ -348,6 +414,7 @@ fn apply_sse(
     blocks: &mut BTreeMap<usize, BlockAccum>,
     stop_reason: &mut Option<String>,
     on_delta: &mut impl FnMut(&str),
+    on_reasoning: &mut impl FnMut(),
 ) -> Result<()> {
     let Ok(event) = serde_json::from_str::<ToolSse>(data) else {
         return Ok(());
@@ -373,10 +440,14 @@ fn apply_sse(
                     },
                 );
             }
+            // Both reasoning shapes report on arrival: the block's own text is
+            // empty unless the request asked for it, and a redacted one carries
+            // no readable text at all. See [`stream`].
             ToolBlockStart::Thinking {
                 thinking,
                 signature,
             } => {
+                on_reasoning();
                 blocks.insert(
                     index,
                     BlockAccum::Thinking {
@@ -386,6 +457,7 @@ fn apply_sse(
                 );
             }
             ToolBlockStart::RedactedThinking { data } => {
+                on_reasoning();
                 blocks.insert(index, BlockAccum::Redacted { data });
             }
             ToolBlockStart::Other => {}
@@ -416,10 +488,13 @@ fn apply_sse(
             // nothing to accumulate.
             Some(BlockAccum::Redacted { .. }) => {}
             None => {
-                // Delta before its start frame — recover text.
+                // Delta before its start frame — recover text, and report
+                // reasoning that would otherwise be lost with its block.
                 if let Some(t) = delta.text {
                     on_delta(&t);
                     blocks.insert(index, BlockAccum::Text(t));
+                } else if delta.thinking.is_some() {
+                    on_reasoning();
                 }
             }
         },
@@ -547,24 +622,97 @@ mod tests {
         assert_eq!(msgs, vec![json!({ "role": "user", "content": "hi" })]);
     }
 
-    /// Feed SSE payloads through the parser, returning the assembled turn plus
-    /// everything that reached `on_delta`.
-    fn run_sse(frames: &[Value]) -> (AssistantTurn, String) {
+    /// Feed SSE payloads through the tool-path parser, returning the assembled
+    /// turn, everything that reached `on_delta`, and how many times reasoning
+    /// was reported. The count is part of the result on purpose: a spurious
+    /// report has nowhere to hide if the harness only looks at the text.
+    fn run_sse(frames: &[Value]) -> (AssistantTurn, String, usize) {
         let mut blocks = BTreeMap::new();
         let mut stop_reason = None;
         let mut streamed = String::new();
+        let mut reasoning = 0;
         {
             let mut on_delta = |s: &str| streamed.push_str(s);
+            let mut on_reasoning = || reasoning += 1;
             for f in frames {
-                apply_sse(&f.to_string(), &mut blocks, &mut stop_reason, &mut on_delta).unwrap();
+                apply_sse(
+                    &f.to_string(),
+                    &mut blocks,
+                    &mut stop_reason,
+                    &mut on_delta,
+                    &mut on_reasoning,
+                )
+                .unwrap();
             }
         }
-        (assemble_turn(blocks, stop_reason), streamed)
+        (assemble_turn(blocks, stop_reason), streamed, reasoning)
+    }
+
+    /// Same, for the non-tool path that serves the recap, the composer and the
+    /// style scan. Returns the streamed answer, the reasoning count, and the
+    /// stop reason.
+    fn run_text_sse(frames: &[Value]) -> (String, usize, Option<String>) {
+        let mut stop_reason = None;
+        let mut streamed = String::new();
+        let mut reasoning = 0;
+        {
+            let mut on_delta = |s: &str| streamed.push_str(s);
+            let mut on_reasoning = || reasoning += 1;
+            for f in frames {
+                apply_text_sse(
+                    &f.to_string(),
+                    &mut stop_reason,
+                    &mut on_delta,
+                    &mut on_reasoning,
+                )
+                .unwrap();
+            }
+        }
+        (streamed, reasoning, stop_reason)
+    }
+
+    #[test]
+    fn text_path_reports_reasoning_and_streams_only_the_answer() {
+        let (streamed, reasoning, stop_reason) = run_text_sse(&[
+            json!({"type": "content_block_start", "index": 0,
+                   "content_block": {"type": "thinking", "thinking": ""}}),
+            json!({"type": "content_block_delta", "index": 0,
+                   "delta": {"type": "thinking_delta", "thinking": "let me check"}}),
+            json!({"type": "content_block_start", "index": 1,
+                   "content_block": {"type": "text", "text": ""}}),
+            json!({"type": "content_block_delta", "index": 1,
+                   "delta": {"type": "text_delta", "text": "Found it."}}),
+            json!({"type": "message_delta", "delta": {"stop_reason": "end_turn"}}),
+        ]);
+        // The current models think by default and return no reasoning text
+        // unless the request asks for it, so the block arrives empty: its
+        // arrival is the signal, not its contents.
+        assert!(reasoning >= 1);
+        assert_eq!(streamed, "Found it.");
+        assert_eq!(stop_reason.as_deref(), Some("end_turn"));
+    }
+
+    #[test]
+    fn text_path_stays_quiet_on_everything_else() {
+        // Reading `content_block_start` must not make ordinary blocks look like
+        // reasoning, and an unknown frame must still be skipped, not fail.
+        let (streamed, reasoning, stop_reason) = run_text_sse(&[
+            json!({"type": "message_start", "message": {"id": "msg_1"}}),
+            json!({"type": "content_block_start", "index": 0,
+                   "content_block": {"type": "tool_use", "id": "t1", "name": "search"}}),
+            json!({"type": "content_block_start", "index": 1,
+                   "content_block": {"type": "text", "text": "hi"}}),
+            json!({"type": "some_future_event", "whatever": true}),
+            json!({"type": "content_block_stop", "index": 1}),
+        ]);
+        assert_eq!(reasoning, 0);
+        assert_eq!(streamed, "");
+        assert!(stop_reason.is_none());
     }
 
     #[test]
     fn thinking_is_captured_but_never_streamed() {
-        let (turn, streamed) = run_sse(&[
+        let (turn, streamed, reasoning) = run_sse(&[
             json!({"type": "content_block_start", "index": 0,
                    "content_block": {"type": "thinking", "thinking": ""}}),
             json!({"type": "content_block_delta", "index": 0,
@@ -577,9 +725,11 @@ mod tests {
                    "delta": {"type": "text_delta", "text": "Found it."}}),
             json!({"type": "message_delta", "delta": {"stop_reason": "end_turn"}}),
         ]);
-        // The answer is only the text block — reasoning must not leak into it.
+        // The answer is only the text block — reasoning must not leak into it,
+        // but it is reported out of band.
         assert_eq!(turn.text, "Found it.");
         assert_eq!(streamed, "Found it.");
+        assert_eq!(reasoning, 1);
         match turn.thinking.as_slice() {
             [ThinkingBlock::Thinking { text, signature }] => {
                 assert_eq!(text, "let me check");
@@ -590,10 +740,44 @@ mod tests {
     }
 
     #[test]
+    fn reasoning_is_reported_on_arrival_even_with_no_text() {
+        // The current models think by default and return no reasoning text
+        // unless the request asks for it, so this is the shape that actually
+        // arrives: an empty block, then the answer. It must still report.
+        let (turn, streamed, reasoning) = run_sse(&[
+            json!({"type": "content_block_start", "index": 0,
+                   "content_block": {"type": "thinking", "thinking": ""}}),
+            json!({"type": "content_block_start", "index": 1,
+                   "content_block": {"type": "text", "text": ""}}),
+            json!({"type": "content_block_delta", "index": 1,
+                   "delta": {"type": "text_delta", "text": "Found it."}}),
+        ]);
+        assert_eq!(reasoning, 1);
+        assert_eq!(streamed, "Found it.");
+        assert_eq!(turn.text, "Found it.");
+    }
+
+    #[test]
+    fn an_answer_never_reads_as_reasoning() {
+        // A round with no thinking at all must report none, however the text
+        // block is shaped (an empty opening text block is the norm).
+        let (turn, streamed, reasoning) = run_sse(&[
+            json!({"type": "content_block_start", "index": 0,
+                   "content_block": {"type": "text", "text": ""}}),
+            json!({"type": "content_block_delta", "index": 0,
+                   "delta": {"type": "text_delta", "text": "Straight answer."}}),
+            json!({"type": "message_delta", "delta": {"stop_reason": "end_turn"}}),
+        ]);
+        assert_eq!(reasoning, 0);
+        assert_eq!(streamed, "Straight answer.");
+        assert_eq!(turn.text, "Straight answer.");
+    }
+
+    #[test]
     fn thinking_that_eats_the_budget_yields_no_text() {
         // The bug this guards: reasoning spends the whole max_tokens ceiling,
         // so the round ends with a stop reason and nothing to show.
-        let (turn, streamed) = run_sse(&[
+        let (turn, streamed, reasoning) = run_sse(&[
             json!({"type": "content_block_start", "index": 0,
                    "content_block": {"type": "thinking", "thinking": ""}}),
             json!({"type": "content_block_delta", "index": 0,
@@ -603,19 +787,23 @@ mod tests {
         assert!(turn.text.is_empty());
         assert!(streamed.is_empty());
         assert_eq!(turn.stop_reason.as_deref(), Some("max_tokens"));
+        // Nothing to show, but the user was told the model was working.
+        assert_eq!(reasoning, 1);
         // Unsigned, so it can't be replayed and is dropped.
         assert!(turn.thinking.is_empty());
     }
 
     #[test]
     fn redacted_thinking_survives_for_replay() {
-        let (turn, _) = run_sse(&[
+        let (turn, _, reasoning) = run_sse(&[
             json!({"type": "content_block_start", "index": 0,
                    "content_block": {"type": "redacted_thinking", "data": "encrypted"}}),
             json!({"type": "content_block_start", "index": 1,
                    "content_block": {"type": "text", "text": "ok"}}),
         ]);
         assert_eq!(turn.text, "ok");
+        // Encrypted reasoning is still reasoning: the round is not silent.
+        assert_eq!(reasoning, 1);
         match turn.thinking.as_slice() {
             [ThinkingBlock::Redacted { data }] => assert_eq!(data, "encrypted"),
             other => panic!("expected one redacted block, got {other:?}"),
@@ -624,7 +812,7 @@ mod tests {
 
     #[test]
     fn thinking_does_not_disturb_tool_calls() {
-        let (turn, _) = run_sse(&[
+        let (turn, _, reasoning) = run_sse(&[
             json!({"type": "content_block_start", "index": 0,
                    "content_block": {"type": "thinking", "thinking": "x", "signature": "s"}}),
             json!({"type": "content_block_start", "index": 1,
@@ -637,6 +825,8 @@ mod tests {
         assert_eq!(turn.tool_calls.len(), 1);
         assert_eq!(turn.tool_calls[0].input["query"], "alta");
         assert_eq!(turn.thinking.len(), 1);
+        // The tool block must not be mistaken for reasoning.
+        assert_eq!(reasoning, 1);
     }
 
     #[test]

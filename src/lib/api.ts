@@ -171,6 +171,7 @@ export interface Citation {
 
 export type AiEvent =
   | { type: "delta"; text: string }
+  | { type: "reasoning" }
   | { type: "progress"; current: number; total: number }
   | { type: "toolCall"; id: string; kind: string; arg: string }
   | { type: "toolDone"; id: string; count: number | null }
@@ -181,6 +182,10 @@ export interface AiHandlers {
   delta: (text: string) => void;
   done: (citations: Citation[]) => void;
   error: (code: string, message: string) => void;
+  /** The model started reasoning: nothing to render, but it is working and
+   *  not still loading. Sent once per round, by every provider, and required
+   *  on purpose: a surface that shows a waiting state has to answer for it. */
+  reasoning: () => void;
   progress?: (current: number, total: number) => void;
   toolCall?: (id: string, kind: string, arg: string) => void;
   toolDone?: (id: string, count: number | null) => void;
@@ -261,6 +266,9 @@ export function aiStream(
     switch (event.type) {
       case "delta":
         on.delta(event.text);
+        break;
+      case "reasoning":
+        on.reasoning();
         break;
       case "progress":
         on.progress?.(event.current, event.total);
