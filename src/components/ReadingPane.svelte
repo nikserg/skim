@@ -814,12 +814,14 @@
     margin-left: 6px;
   }
 
+  /* Edge to edge: the message gets the whole pane, and the scrollbar sits at
+     the right of the window rather than in the middle of it. The old 840px
+     column cropped any mail laid out wider than that, with nothing to scroll
+     it back into view, while leaving the rest of a wide window unused. */
   .scroll {
     flex: 1;
     overflow-y: auto;
     padding: 8px 36px 28px;
-    max-width: 840px;
-    width: 100%;
   }
 
   .subject {
