@@ -19,7 +19,7 @@ pub enum AiEvent {
     },
     /// The model is reasoning before it answers. Nothing to render: it only
     /// says the model is alive, so the UI can stop guessing that a silent
-    /// round means one still loading. Sent once per round, whatever the
+    /// round means one still loading. Sent once per request, whatever the
     /// provider reported (see [`reasoning_once`]).
     Reasoning,
     Progress {
@@ -388,11 +388,12 @@ fn spawn_stream(
     }
 }
 
-/// One `Reasoning` event per round, whatever the provider reports. The
-/// streaming clients call `on_reasoning` per frame, because "is this the first
-/// one" is not their business: a round can open several reasoning blocks, and
-/// the frames carry no text to count anyway. Collapsing that to a single event
-/// belongs here, once, for every provider and every command.
+/// One `Reasoning` event per request: the latch is built once per command, so
+/// it spans every round of an agent loop too. The streaming clients call
+/// `on_reasoning` per frame, because "is this the first one" is not their
+/// business: a round can open several reasoning blocks, and the frames carry no
+/// text to count anyway. Collapsing that to a single event belongs here, once,
+/// for every provider and every command.
 fn reasoning_once(channel: &Channel<AiEvent>) -> impl FnMut() + '_ {
     let mut reported = false;
     move || {

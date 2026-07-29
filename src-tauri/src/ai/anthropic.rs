@@ -97,8 +97,13 @@ pub async fn validate_key(key: &str) -> Result<()> {
 ///
 /// Thinking is reported on the *arrival* of a reasoning block, not on its
 /// contents: the API only returns the reasoning text when a request asks for
-/// it (`thinking.display`), and the current models think by default, so the
-/// blocks routinely arrive empty. Their arrival is the signal.
+/// it (`thinking.display`), so the blocks routinely arrive empty. Their
+/// arrival is the signal.
+///
+/// Whether one arrives at all is up to the model. We never send a `thinking`
+/// parameter, so only the tier that reasons by default (Claude 5, hence
+/// [`DEFAULT_MODEL`]) opens such a block. An older model opens none and nothing
+/// is reported, which is exactly the behaviour we had before.
 pub async fn stream(
     key: &str,
     request: &Request,
