@@ -49,6 +49,9 @@ export interface ChatSession {
   turns: ChatTurn[];
   /** The in-flight answer, streaming in. */
   answer: string;
+  /** The model reasoned this round: it is alive and working, even though
+   *  there is nothing to show yet. Reasoning itself is never rendered. */
+  reasoning: boolean;
   steps: ChatStep[];
   status: "idle" | "streaming" | "error";
   errorText: string;
@@ -66,6 +69,10 @@ export type ChatEvent =
   | { t: "start" }
   | { t: "progress"; current: number; total: number }
   | { t: "delta"; text: string }
+  /** The model is reasoning: nothing to render, but it is not stuck. */
+  | { t: "reasoning" }
+  /** The user stopped the round: keep the conversation, drop what was in flight. */
+  | { t: "cancelled" }
   | { t: "toolCall"; id: string; kind: string; arg: string }
   | { t: "toolDone"; id: string; count: number | null }
   | { t: "answer"; content: string; citations: Citation[] }
@@ -92,6 +99,7 @@ export function newSession(
     markedCount: 0,
     turns: [],
     answer: "",
+    reasoning: false,
     steps: [],
     status: "idle",
     errorText: "",
@@ -102,6 +110,13 @@ export function newSession(
   };
 }
 
+/** Has the model shown any sign of life this round? Reasoning, an answer under
+ *  way, or a tool it reached for all mean the same thing to the UI: it is
+ *  working, so a "still loading" hint has no business being up. */
+export function isAlive(s: ChatSession): boolean {
+  return s.reasoning || s.answer !== "" || s.steps.length > 0;
+}
+
 /** Advance a session. Called on the owning side as the request streams, and on
  *  the window side as the same events arrive over IPC. */
 export function applyChatEvent(s: ChatSession, ev: ChatEvent): void {
@@ -109,6 +124,7 @@ export function applyChatEvent(s: ChatSession, ev: ChatEvent): void {
     case "user":
       s.turns = [...s.turns, { role: "user", content: ev.content, citations: [] }];
       s.answer = "";
+      s.reasoning = false;
       s.steps = [];
       s.status = "streaming";
       s.errorText = "";
@@ -117,6 +133,7 @@ export function applyChatEvent(s: ChatSession, ev: ChatEvent): void {
       break;
     case "start":
       s.answer = "";
+      s.reasoning = false;
       s.steps = [];
       s.status = "streaming";
       s.errorText = "";
@@ -130,6 +147,20 @@ export function applyChatEvent(s: ChatSession, ev: ChatEvent): void {
       s.progress = null;
       s.answer += ev.text;
       break;
+    case "reasoning":
+      // Reasoning means the scan is over too, same as `delta`: drop the
+      // counter here rather than leaving it to a template that happens to
+      // test `reasoning` before `progress`.
+      s.progress = null;
+      s.reasoning = true;
+      break;
+    case "cancelled":
+      s.answer = "";
+      s.reasoning = false;
+      s.steps = [];
+      s.progress = null;
+      s.status = "idle";
+      break;
     case "toolCall":
       s.steps = [...s.steps, { id: ev.id, kind: ev.kind, arg: ev.arg, count: null, done: false }];
       break;
@@ -141,6 +172,7 @@ export function applyChatEvent(s: ChatSession, ev: ChatEvent): void {
     case "answer":
       s.turns = [...s.turns, { role: "assistant", content: ev.content, citations: ev.citations }];
       s.answer = "";
+      s.reasoning = false;
       s.steps = [];
       s.status = "idle";
       break;
@@ -152,6 +184,7 @@ export function applyChatEvent(s: ChatSession, ev: ChatEvent): void {
         { role: "assistant", content: ev.content, citations: ev.citations },
       ];
       s.answer = "";
+      s.reasoning = false;
       s.steps = [];
       s.progress = null;
       s.status = "idle";
@@ -168,6 +201,7 @@ export function applyChatEvent(s: ChatSession, ev: ChatEvent): void {
         s.turns = s.turns.slice(0, -1);
       }
       s.answer = "";
+      s.reasoning = false;
       s.steps = [];
       s.progress = null;
       s.status = "error";

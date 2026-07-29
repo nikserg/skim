@@ -9,7 +9,7 @@
   // (turns 0 and 1); anything after that is a follow-up the user asked.
   import type { Citation } from "../lib/api";
   import { aiLinks } from "../lib/ai-links";
-  import type { ChatSession } from "../lib/ai-chat";
+  import { isAlive, type ChatSession } from "../lib/ai-chat";
   import { t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
   import { createSlowStart } from "../lib/slow-start.svelte";
@@ -61,8 +61,10 @@
     // itself finishes — re-arm on every progress tick.
     if (session.progress) slowStart.arm();
   });
+  // Guarded in the template too: this effect runs after the DOM update, so on
+  // its own the label would flash "loading" for one frame.
   $effect(() => {
-    if (session.answer !== "" || session.steps.length > 0) slowStart.clear();
+    if (isAlive(session)) slowStart.clear();
   });
 
   // Keep the panel pinned to the newest turn / streaming delta.
@@ -109,8 +111,12 @@
     {#if scanning}
       <div class="progress">
         <span class="spinner"></span>
-        {#if slowStart.slow}
+        {#if slowStart.slow && !isAlive(session)}
           {t("ai.loading_model")}
+        {:else if session.reasoning}
+          <!-- The scan is over and the digest is being thought through: the
+               counter would sit frozen at N/N saying "reading". -->
+          {t("ai.thinking")}
         {:else}
           {t("ai.recap_reading")}
           {#if session.progress}{session.progress.current}/{session.progress.total}{/if}
@@ -203,7 +209,7 @@
             <div class="chat-answer">
               <div class="microlabel chat-label">✦ {t("ai.answer")}</div>
               {#if session.answer === ""}
-                <span class="thinking">{slowStart.slow ? t("ai.loading_model") : t("ai.thinking")}</span>
+                <span class="thinking">{slowStart.slow && !isAlive(session) ? t("ai.loading_model") : t("ai.thinking")}</span>
               {:else}
                 <div class="chat-text md-body" use:aiLinks>{@html mdLite(session.answer)}</div>
               {/if}

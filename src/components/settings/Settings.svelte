@@ -111,6 +111,8 @@
   let styleProfile = $state("");
   let styleScanning = $state(false);
   let styleProgress = $state<{ current: number; total: number } | null>(null);
+  /** The model is thinking: the scan is done, the profile is not being written yet. */
+  let styleReasoning = $state(false);
   let styleError = $state("");
   let cancelScan: (() => void) | null = null;
 
@@ -181,11 +183,19 @@
     styleError = "";
     styleProfile = "";
     styleProgress = null;
+    styleReasoning = false;
     cancelScan = aiStream(
       "ai_analyze_style",
       {},
       {
         progress: (current, total) => (styleProgress = { current, total }),
+        // The scan is over, but nothing is being written yet: say so rather
+        // than leaving the counter frozen at N/N or claiming a profile is
+        // already being distilled.
+        reasoning: () => {
+          styleProgress = null;
+          styleReasoning = true;
+        },
         delta: (text) => {
           styleProgress = null;
           styleProfile += text;
@@ -808,6 +818,8 @@
                       <span class="spinner"></span>
                       {#if styleProgress}
                         {t("settings.style_mine_scan")} {styleProgress.current}/{styleProgress.total}
+                      {:else if styleReasoning && !styleProfile}
+                        {t("ai.thinking")}
                       {:else}
                         {t("settings.style_mine_writing")}
                       {/if}

@@ -4,7 +4,7 @@
   // only — the session and the request live in the main window's store.
   import type { Citation } from "../lib/api";
   import { aiLinks } from "../lib/ai-links";
-  import type { ChatSession } from "../lib/ai-chat";
+  import { isAlive, type ChatSession } from "../lib/ai-chat";
   import { t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
   import { createSlowStart } from "../lib/slow-start.svelte";
@@ -40,8 +40,10 @@
     if (!now) slowStart.clear();
     wasStreaming = now;
   });
+  // Guarded in the template too: this effect runs after the DOM update, so on
+  // its own the label would flash "loading" for one frame.
   $effect(() => {
-    if (session.answer !== "" || session.steps.length > 0) slowStart.clear();
+    if (isAlive(session)) slowStart.clear();
   });
 
   function submitFollowup(e: SubmitEvent) {
@@ -135,7 +137,7 @@
       <div class="chat-answer">
         <div class="microlabel chat-label">✦ {t("ai.answer")}</div>
         {#if session.answer === ""}
-          <span class="thinking">{slowStart.slow ? t("ai.loading_model") : t("ai.thinking")}</span>
+          <span class="thinking">{slowStart.slow && !isAlive(session) ? t("ai.loading_model") : t("ai.thinking")}</span>
         {:else}
           <div class="chat-text md-body" use:aiLinks>{@html mdLite(session.answer)}</div>
         {/if}

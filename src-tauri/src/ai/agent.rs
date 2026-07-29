@@ -386,10 +386,10 @@ fn tools_for(provider: &Provider, set: ToolSet) -> Vec<Value> {
 
 // ---- the loop -------------------------------------------------------------
 
-/// Run the agent. Streams answer text via `on_delta`, and a per-tool trace via
-/// `on_tool_call` (id, kind `"search"`/`"read"`, human arg) and `on_tool_done`
-/// (id, email count for searches). Returns the emails actually cited in the
-/// answer.
+/// Run the agent. Streams answer text via `on_delta`, reports thinking via
+/// `on_reasoning`, and a per-tool trace via `on_tool_call` (id, kind
+/// `"search"`/`"read"`, human arg) and `on_tool_done` (id, email count for
+/// searches). Returns the emails actually cited in the answer.
 /// The conversation so far, oldest first. `role` is "user" or "assistant";
 /// the last turn is the question this run answers, earlier ones are history.
 #[allow(clippy::too_many_arguments)]
@@ -404,6 +404,7 @@ pub async fn run(
     tool_set: ToolSet,
     deps: AgentDeps,
     on_delta: &mut impl FnMut(&str),
+    on_reasoning: &mut impl FnMut(),
     on_tool_call: &impl Fn(&str, &str, &str),
     on_tool_done: &impl Fn(&str, Option<u32>),
 ) -> Result<Vec<Citation>> {
@@ -500,6 +501,7 @@ pub async fn run(
             &media,
             tools,
             on_delta,
+            on_reasoning,
             &mut full_text,
         )
         .await?;
@@ -581,6 +583,7 @@ async fn call_provider(
     media: &[MediaBlock],
     tools: Vec<Value>,
     on_delta: &mut impl FnMut(&str),
+    on_reasoning: &mut impl FnMut(),
     full_text: &mut String,
 ) -> Result<AssistantTurn> {
     let mut sink = |d: &str| {
@@ -596,7 +599,7 @@ async fn call_provider(
                 tools,
                 max_tokens: AGENT_MAX_TOKENS,
             };
-            anthropic::stream_tools(key, &req, &mut sink).await
+            anthropic::stream_tools(key, &req, &mut sink, on_reasoning).await
         }
         Provider::OpenAiCompat(ep) => {
             // No native attachment path here; media rides as extracted text
@@ -608,7 +611,7 @@ async fn call_provider(
                 tools,
                 max_tokens: AGENT_MAX_TOKENS,
             };
-            openai_compat::stream_tools(ep, key, &req, &mut sink).await
+            openai_compat::stream_tools(ep, key, &req, &mut sink, on_reasoning).await
         }
     }
 }

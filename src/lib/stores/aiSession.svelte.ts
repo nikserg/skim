@@ -196,6 +196,7 @@ function send(session: ChatSession, question: string) {
 
   const cancel = aiStream(session.kind === "ask" ? "ai_ask" : "ai_chat", args, {
     delta: (text) => apply(session, { t: "delta", text }),
+    reasoning: () => apply(session, { t: "reasoning" }),
     toolCall: (id, kind, arg) => apply(session, { t: "toolCall", id, kind, arg }),
     toolDone: (id, count) => apply(session, { t: "toolDone", id, count }),
     done: (citations) => {
@@ -228,6 +229,7 @@ function startRecap(folderId: number): ChatSession {
     {
       progress: (current, total) => apply(session, { t: "progress", current, total }),
       delta: (text) => apply(session, { t: "delta", text }),
+      reasoning: () => apply(session, { t: "reasoning" }),
       done: (citations) => {
         streams.delete(session.id);
         // No digest means nothing to seed the chat with — show why rather than
@@ -275,11 +277,10 @@ function priorCitations(session: ChatSession): Citation[] {
 function cancel(session: ChatSession) {
   streams.get(session.id)?.();
   streams.delete(session.id);
-  if (session.status === "streaming") {
-    session.status = "idle";
-    session.answer = "";
-    session.steps = [];
-  }
+  // Through `apply`, not by hand: a chat that is popped out only learns about
+  // state changes from the events this pushes over the bridge, so a direct
+  // mutation would leave that window spinning on a request that no longer runs.
+  if (session.status === "streaming") apply(session, { t: "cancelled" });
 }
 
 function drop(session: ChatSession) {

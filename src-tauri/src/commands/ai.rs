@@ -17,6 +17,11 @@ pub enum AiEvent {
     Delta {
         text: String,
     },
+    /// The model is reasoning before it answers. Nothing to render: it only
+    /// says the model is alive, so the UI can stop guessing that a silent
+    /// round means one still loading. Sent once per request, whatever the
+    /// provider reported (see [`reasoning_once`]).
+    Reasoning,
     Progress {
         current: usize,
         total: usize,
@@ -339,6 +344,7 @@ fn spawn_stream(
                 text: delta.to_string(),
             });
         };
+        let mut on_reasoning = reasoning_once(&channel);
         let result = match &ctx.endpoint {
             None => {
                 let request = anthropic::Request {
@@ -348,7 +354,7 @@ fn spawn_stream(
                     media,
                     max_tokens,
                 };
-                anthropic::stream(&ctx.key, &request, &mut on_delta).await
+                anthropic::stream(&ctx.key, &request, &mut on_delta, &mut on_reasoning).await
             }
             Some(ep) => {
                 // OpenAI-compatible endpoints have no native attachment path;
@@ -360,7 +366,8 @@ fn spawn_stream(
                     messages,
                     max_tokens,
                 };
-                openai_compat::stream(ep, &ctx.key, &request, &mut on_delta).await
+                openai_compat::stream(ep, &ctx.key, &request, &mut on_delta, &mut on_reasoning)
+                    .await
             }
         };
         match result {
@@ -378,6 +385,22 @@ fn spawn_stream(
     if let Ok(mut tasks) = state.ai_tasks.lock() {
         tasks.retain(|_, h| !h.is_finished());
         tasks.insert(request_id, task.abort_handle());
+    }
+}
+
+/// One `Reasoning` event per request: the latch is built once per command, so
+/// it spans every round of an agent loop too. The streaming clients call
+/// `on_reasoning` per frame, because "is this the first one" is not their
+/// business: a round can open several reasoning blocks, and the frames carry no
+/// text to count anyway. Collapsing that to a single event belongs here, once,
+/// for every provider and every command.
+fn reasoning_once(channel: &Channel<AiEvent>) -> impl FnMut() + '_ {
+    let mut reported = false;
+    move || {
+        if !reported {
+            reported = true;
+            let _ = channel.send(AiEvent::Reasoning);
+        }
     }
 }
 
@@ -713,6 +736,7 @@ pub async fn ai_ask(
                 text: d.to_string(),
             });
         };
+        let mut on_reasoning = reasoning_once(&channel);
         let on_tool_call = move |id: &str, kind: &str, arg: &str| {
             let _ = ch_call.send(AiEvent::ToolCall {
                 id: id.to_string(),
@@ -737,6 +761,7 @@ pub async fn ai_ask(
             agent::ToolSet::FETCH_ONLY,
             deps,
             &mut on_delta,
+            &mut on_reasoning,
             &on_tool_call,
             &on_tool_done,
         )
@@ -808,6 +833,7 @@ pub async fn ai_chat(
                 text: d.to_string(),
             });
         };
+        let mut on_reasoning = reasoning_once(&channel);
         let on_tool_call = move |id: &str, kind: &str, arg: &str| {
             let _ = ch_call.send(AiEvent::ToolCall {
                 id: id.to_string(),
@@ -832,6 +858,7 @@ pub async fn ai_chat(
             agent::ToolSet::MAILBOX,
             deps,
             &mut on_delta,
+            &mut on_reasoning,
             &on_tool_call,
             &on_tool_done,
         )
@@ -1049,8 +1076,9 @@ pub async fn ai_analyze_style(
                 text: delta.to_string(),
             });
         };
+        let mut on_reasoning = reasoning_once(&channel);
         let result = match &ctx.endpoint {
-            None => anthropic::stream(&ctx.key, &request, &mut on_delta).await,
+            None => anthropic::stream(&ctx.key, &request, &mut on_delta, &mut on_reasoning).await,
             Some(ep) => {
                 let request = openai_compat::Request {
                     model: ctx.model,
@@ -1058,7 +1086,8 @@ pub async fn ai_analyze_style(
                     messages: user_turn(user),
                     max_tokens: STYLE_MAX_TOKENS,
                 };
-                openai_compat::stream(ep, &ctx.key, &request, &mut on_delta).await
+                openai_compat::stream(ep, &ctx.key, &request, &mut on_delta, &mut on_reasoning)
+                    .await
             }
         };
         match result {

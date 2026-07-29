@@ -4,7 +4,7 @@
   // is owned by the main window's store, so this can be mounted, unmounted and
   // mirrored into a second window without touching the conversation.
   import { aiLinks } from "../lib/ai-links";
-  import type { ChatSession } from "../lib/ai-chat";
+  import { isAlive, type ChatSession } from "../lib/ai-chat";
   import { t } from "../lib/i18n/index.svelte";
   import { mdLite } from "../lib/md";
   import { createSlowStart } from "../lib/slow-start.svelte";
@@ -41,8 +41,10 @@
     if (!now) slowStart.clear();
     wasStreaming = now;
   });
+  // Guarded in the template too: this effect runs after the DOM update, so on
+  // its own the label would flash "loading" for one frame.
   $effect(() => {
-    if (session.answer !== "" || session.steps.length > 0) slowStart.clear();
+    if (isAlive(session)) slowStart.clear();
   });
 
   function send(q: string) {
@@ -118,7 +120,7 @@
             </div>
           {/if}
           {#if session.answer === ""}
-            <span class="thinking">{slowStart.slow ? t("ai.loading_model") : t("ai.thinking")}</span>
+            <span class="thinking">{slowStart.slow && !isAlive(session) ? t("ai.loading_model") : t("ai.thinking")}</span>
           {:else}
             <div class="ai-text md-body" use:aiLinks>{@html mdLite(session.answer)}</div>
           {/if}
