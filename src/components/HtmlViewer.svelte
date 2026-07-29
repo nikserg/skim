@@ -159,6 +159,12 @@
      default there — which would defeat a transparent body. */
   html, body { margin: 0; padding: 0; background: ${colors.bg}; }
   body {
+    /* For the height measurement below, which reads this box: keep the
+       children's margins inside. A first or last child's margin would
+       otherwise collapse out of the body, so the body's height would miss
+       what the document still counts and the frame would come up exactly
+       that margin short, which is a scrollbar on the message. */
+    display: flow-root;
     font-family: 'Hanken Grotesk', 'Segoe UI', sans-serif;
     font-size: 14px; line-height: 1.6; color: ${colors.text};
     word-wrap: break-word; overflow-wrap: break-word;
@@ -175,8 +181,44 @@
   function setupDoc(doc: Document) {
     observedDoc = doc;
     const measure = () => {
-      const h = Math.min(Math.max(doc.documentElement.scrollHeight, 40) + 8, 20000);
-      // Guard against feedback loops with percentage-height emails.
+      // Fonts and images keep their callbacks alive across a message switch,
+      // so one can fire for a document that has already been replaced. Its
+      // detached box would read zero and collapse the frame around the mail
+      // now on screen. Ask the frame what it is showing, not `observedDoc`,
+      // which only catches up once the next document has been picked up and
+      // so still names the old one during exactly this window.
+      if (doc !== iframe?.contentDocument) return;
+      // A horizontal scrollbar (a mail laid out wider than a narrow window)
+      // eats into the frame's height. Left uncounted, the frame comes up short
+      // and grows a vertical scrollbar of its own, right beside the pane's.
+      const bar = Math.max(
+        0,
+        (doc.defaultView?.innerHeight ?? 0) - doc.documentElement.clientHeight,
+      );
+      // The body's own height, never documentElement.scrollHeight: that one
+      // returns the larger of the content and the viewport, so it reads back
+      // the height just set on the frame and grows the message a little more
+      // every time the mail reflows. The body tracks the mail alone, and the
+      // flow-root above makes it exact, so the frame ends flush with the
+      // message rather than trailing a strip of canvas under it, which is
+      // also what gives the message back the bottom of its rounded corners.
+      // Both readings are needed: scrollHeight is whole while layout is
+      // fractional, so it can land a pixel short and hand the mail a scrollbar
+      // for nothing, while it alone covers a child reaching past the body.
+      const content = Math.max(
+        doc.body.scrollHeight,
+        Math.ceil(doc.body.getBoundingClientRect().height),
+      );
+      // One pixel back for scrollHeight's own rounding. It is a whole number,
+      // so content reaching a fraction of a pixel past the body (an absolutely
+      // positioned tracker, a negative margin) rounds away and the mail gets a
+      // scrollbar over less than a pixel. The rounded-up box height cannot
+      // cover it, since that box is what the content is reaching past.
+      const h = Math.min(Math.max(content, 40) + bar + 1, 20000);
+      // Guard against feedback loops with percentage-height emails. The pixel
+      // added above is what keeps this tolerance safe: at rest the frame is a
+      // pixel taller than the mail, so refusing a one-pixel gain lands it
+      // exactly flush rather than one short, which would be a scrollbar.
       if (Math.abs(h - height) > 1) height = h;
     };
     measure();
