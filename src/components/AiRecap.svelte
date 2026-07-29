@@ -61,6 +61,8 @@
     // itself finishes — re-arm on every progress tick.
     if (session.progress) slowStart.arm();
   });
+  // Guarded in the template too: this effect runs after the DOM update, so on
+  // its own the label would flash "loading" for one frame.
   $effect(() => {
     if (isAlive(session)) slowStart.clear();
   });
@@ -109,7 +111,7 @@
     {#if scanning}
       <div class="progress">
         <span class="spinner"></span>
-        {#if slowStart.slow}
+        {#if slowStart.slow && !isAlive(session)}
           {t("ai.loading_model")}
         {:else if session.reasoning}
           <!-- The scan is over and the digest is being thought through: the
@@ -207,7 +209,7 @@
             <div class="chat-answer">
               <div class="microlabel chat-label">✦ {t("ai.answer")}</div>
               {#if session.answer === ""}
-                <span class="thinking">{slowStart.slow ? t("ai.loading_model") : t("ai.thinking")}</span>
+                <span class="thinking">{slowStart.slow && !isAlive(session) ? t("ai.loading_model") : t("ai.thinking")}</span>
               {:else}
                 <div class="chat-text md-body" use:aiLinks>{@html mdLite(session.answer)}</div>
               {/if}
