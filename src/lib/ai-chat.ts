@@ -148,6 +148,10 @@ export function applyChatEvent(s: ChatSession, ev: ChatEvent): void {
       s.answer += ev.text;
       break;
     case "reasoning":
+      // Reasoning means the scan is over too, same as `delta`: drop the
+      // counter here rather than leaving it to a template that happens to
+      // test `reasoning` before `progress`.
+      s.progress = null;
       s.reasoning = true;
       break;
     case "cancelled":
