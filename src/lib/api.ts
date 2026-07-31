@@ -140,7 +140,17 @@ export const api = {
   // settings
   getSettings: () => invoke<Record<string, string>>("get_settings"),
   setSetting: (key: string, value: string) => invoke<void>("set_setting", { key, value }),
+  logFrontendError: (message: string) => invoke<void>("log_frontend_error", { message }),
 };
+
+/** Record a frontend failure in `skim-frontend.log`, next to the panic log.
+ *  Best-effort by definition: the reporting path must never become the thing
+ *  that throws. `where` names the site, since a minified stack rarely does. */
+export function reportError(where: string, e: unknown): void {
+  if (!("__TAURI_INTERNALS__" in window)) return;
+  const detail = e instanceof Error && e.stack ? e.stack : errorMessage(e);
+  void api.logFrontendError(`${where}: ${detail}`).catch(() => {});
+}
 
 export interface AddressSuggestion {
   name: string | null;

@@ -382,6 +382,7 @@ pub fn run() {
             commands::search::thread_message_ids,
             commands::settings::get_settings,
             commands::settings::set_setting,
+            commands::settings::log_frontend_error,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

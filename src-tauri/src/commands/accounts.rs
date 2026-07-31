@@ -56,7 +56,10 @@ pub fn microsoft_oauth_available() -> OauthAvailability {
 
 #[tauri::command]
 pub async fn list_accounts(state: State<'_, AppState>) -> Result<Vec<Account>> {
-    state.db.call(|conn| db_accounts::list(conn)).await
+    state
+        .db
+        .read("list_accounts", |conn| db_accounts::list(conn))
+        .await
 }
 
 /// Inbox unread count per account id — fetched when the account switcher

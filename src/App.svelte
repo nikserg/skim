@@ -12,8 +12,8 @@
   import Onboarding from "./components/onboarding/Onboarding.svelte";
   import { untrack } from "svelte";
   import type { ChatSession } from "./lib/ai-chat";
-  import { api, type Citation } from "./lib/api";
-  import { setLocale } from "./lib/i18n/index.svelte";
+  import { api, reportError, type Citation } from "./lib/api";
+  import { setLocale, t } from "./lib/i18n/index.svelte";
   import { ai } from "./lib/stores/ai.svelte";
   import { aiSessions } from "./lib/stores/aiSession.svelte";
   import { mail, UNIFIED } from "./lib/stores/mail.svelte";
@@ -22,7 +22,19 @@
   import { updater } from "./lib/stores/update.svelte";
   import type { Account, Draft } from "./lib/types";
 
+  /** How long the boot is given to answer before the shell is drawn anyway.
+   *  Long enough that a healthy start never flashes an empty frame, short
+   *  enough that a stalled one is still a window the user can use. */
+  const BOOT_PATIENCE_MS = 2000;
+
   let ready = $state(false);
+
+  const inTauri = "__TAURI_INTERNALS__" in window;
+  // Onboarding is only the right screen once we know there is nothing to show.
+  // The shell is now drawn before `boot()` has answered, so an empty account
+  // list can simply mean the answer hasn't arrived yet — and a returning user
+  // must never be greeted by the welcome screen.
+  const needsOnboarding = $derived(mail.accounts.length === 0 && (mail.booted || !inTauri));
 
   // Opening a message dismisses the recap panel.
   $effect(() => {
@@ -141,7 +153,6 @@
 
   $effect(() => {
     void (async () => {
-      const inTauri = "__TAURI_INTERNALS__" in window;
       if (inTauri) {
         let settings: Record<string, string> = {};
         try {
@@ -156,7 +167,17 @@
           // settings are best-effort at boot
         }
         updater.init(settings);
-        await mail.boot();
+        // The shell is drawn whatever the mailbox is doing. `boot()` reads a
+        // database the startup sync is busy filling, so it can be slow, and if
+        // it throws there is nothing later that would ever set `ready` — either
+        // way the window would show a titlebar over nothing, with no way to
+        // tell a busy app from a dead one. Wait a beat for the usual instant
+        // answer, then draw regardless; the mail arrives into a live window.
+        const booting = mail.boot().catch((e: unknown) => {
+          reportError("mail.boot", e);
+          mail.noteError(t("ops.failed"));
+        });
+        await Promise.race([booting, new Promise((done) => setTimeout(done, BOOT_PATIENCE_MS))]);
         void ai.refresh();
       }
       ready = true;
@@ -370,7 +391,7 @@
 <div class="app">
   <Titlebar />
   {#if ready}
-    {#if mail.accounts.length > 0}
+    {#if !needsOnboarding}
       <main class="panes">
         <Sidebar />
         <MessageList />

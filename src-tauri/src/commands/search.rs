@@ -61,7 +61,7 @@ pub async fn search_messages(
     let limit = limit.clamp(1, 50);
     state
         .db
-        .call(move |conn| {
+        .read("search_messages", move |conn| {
             let mut stmt = conn.prepare_cached(
                 "SELECT m.id, m.thread_id, m.folder_id, m.subject, m.from_name, m.from_addr,
                         m.date, snippet(messages_fts, 3, '', '', '…', 12)
@@ -102,7 +102,7 @@ pub async fn search_messages(
 pub async fn thread_message_ids(state: State<'_, AppState>, thread_id: i64) -> Result<Vec<i64>> {
     state
         .db
-        .call(move |conn| {
+        .read("thread_message_ids", move |conn| {
             let mut stmt = conn.prepare_cached("SELECT id FROM messages WHERE thread_id = ?1")?;
             let rows = stmt
                 .query_map(rusqlite::params![thread_id], |r| r.get(0))?

@@ -23,12 +23,23 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0010_folder_delimiter.sql"),
 ];
 
-/// Handle to the single SQLite connection (WAL mode). All access goes through
-/// [`Db::call`], which runs the closure on a blocking thread — SQLite calls
-/// must never block the async runtime.
+/// A read the user is waiting on has this long to answer before it is worth
+/// knowing about. Well past a healthy query; short enough to catch a stall.
+const SLOW_READ: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Handle to the database (WAL mode), with two connections behind it.
+///
+/// Everything that writes shares one connection, serialized by a mutex —
+/// [`Db::call`] and [`Db::with`]. Reads the user is waiting on take the
+/// separate read-only connection instead ([`Db::read`]): WAL lets a reader run
+/// alongside the writer, so opening the app no longer means queuing the first
+/// query behind whatever the startup sync is pouring into the same lock.
+/// Both run their closure on a blocking thread — SQLite calls must never block
+/// the async runtime.
 #[derive(Clone)]
 pub struct Db {
     conn: Arc<Mutex<Connection>>,
+    reader: Arc<Mutex<Connection>>,
 }
 
 impl Db {
@@ -37,28 +48,48 @@ impl Db {
             std::fs::create_dir_all(dir)?;
         }
         let conn = Connection::open(path)?;
-        Self::init(conn)
+        let db = Self::init(conn)?;
+        // Only now: the reader must not race the migrations, and it inherits
+        // WAL from the file the writer has already set it on.
+        let reader = Connection::open(path)?;
+        Self::prepare(&reader)?;
+        reader.pragma_update(None, "query_only", "ON")?;
+        Ok(Self {
+            reader: Arc::new(Mutex::new(reader)),
+            ..db
+        })
     }
 
     pub fn open_in_memory() -> Result<Self> {
+        // A second connection to `:memory:` would be a second, empty database,
+        // so the in-memory handle reads through the writer. Tests don't
+        // contend, and this keeps them honest about what they wrote.
         Self::init(Connection::open_in_memory()?)
     }
 
     fn init(mut conn: Connection) -> Result<Self> {
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        conn.pragma_update(None, "foreign_keys", "ON")?;
+        Self::prepare(&conn)?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
-        conn.busy_timeout(std::time::Duration::from_secs(5))?;
 
         assert_fts5(&conn)?;
         migrate(&mut conn, MIGRATIONS)?;
 
+        let conn = Arc::new(Mutex::new(conn));
         Ok(Self {
-            conn: Arc::new(Mutex::new(conn)),
+            reader: conn.clone(),
+            conn,
         })
     }
 
-    /// Run a closure against the connection on a blocking thread.
+    /// The settings every connection to the database needs.
+    fn prepare(conn: &Connection) -> Result<()> {
+        conn.pragma_update(None, "foreign_keys", "ON")?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        Ok(())
+    }
+
+    /// Run a closure against the writing connection on a blocking thread.
     pub async fn call<T, F>(&self, f: F) -> Result<T>
     where
         T: Send + 'static,
@@ -68,6 +99,39 @@ impl Db {
         let result = tokio::task::spawn_blocking(move || {
             let mut guard = conn.lock().expect("db mutex poisoned");
             f(&mut guard)
+        })
+        .await?;
+        Ok(result?)
+    }
+
+    /// Run a read-only closure on the reader connection — the path for queries
+    /// the user is waiting on. `label` names the query in `skim-slow.log` if it
+    /// takes long enough to be felt; a windowed release build has no other way
+    /// to say so, and not being able to see this is what once made a slow start
+    /// indistinguishable from a broken app.
+    pub async fn read<T, F>(&self, label: &'static str, f: F) -> Result<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut Connection) -> rusqlite::Result<T> + Send + 'static,
+    {
+        let conn = self.reader.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let started = std::time::Instant::now();
+            let mut guard = conn.lock().expect("db mutex poisoned");
+            let waited = started.elapsed();
+            let out = f(&mut guard);
+            let total = started.elapsed();
+            if total >= SLOW_READ {
+                crate::append_log(
+                    "skim-slow.log",
+                    &format!(
+                        "slow db read: {label} took {}ms ({}ms waiting for the connection)",
+                        total.as_millis(),
+                        waited.as_millis()
+                    ),
+                );
+            }
+            out
         })
         .await?;
         Ok(result?)
@@ -130,6 +194,51 @@ mod tests {
             Ok(())
         })
         .unwrap();
+    }
+
+    #[test]
+    fn reader_is_the_same_database_and_cannot_write() {
+        // Only the on-disk handle has a real second connection — the in-memory
+        // one reads through the writer, since a second `:memory:` connection
+        // would be a second, empty database. So this needs a file.
+        let path = std::env::temp_dir().join(format!("skim-reader-{}.db", std::process::id()));
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+        let db = Db::open(&path).unwrap();
+        assert!(
+            !Arc::ptr_eq(&db.conn, &db.reader),
+            "expected two connections"
+        );
+
+        db.with(|conn| queries::set_setting(conn, "locale", "sr"))
+            .unwrap();
+
+        let reader = db.reader.lock().unwrap();
+        let seen: String = reader
+            .query_row("SELECT value FROM settings WHERE key = 'locale'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(seen, "sr", "the reader must see the writer's commits");
+        assert!(
+            reader
+                .execute("UPDATE settings SET value = 'en' WHERE key = 'locale'", [])
+                .is_err(),
+            "query_only must keep writes off the reader"
+        );
+
+        drop(reader);
+        drop(db);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    }
+
+    #[test]
+    fn in_memory_reads_through_the_writer() {
+        let db = Db::open_in_memory().unwrap();
+        assert!(Arc::ptr_eq(&db.conn, &db.reader));
     }
 
     #[test]

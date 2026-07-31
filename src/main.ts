@@ -8,6 +8,14 @@ import { mount } from "svelte";
 import AiChatRoot from "./AiChatRoot.svelte";
 import App from "./App.svelte";
 import ComposeRoot from "./ComposeRoot.svelte";
+import { reportError } from "./lib/api";
+
+// A windowed release build has no stderr and no devtools, so a script error or
+// a rejected promise with no handler leaves nothing behind at all — the app
+// just stops working and there is nothing to look at afterwards. Send both to
+// the log file that sits next to the panic log.
+window.addEventListener("error", (e) => reportError("error", e.error ?? e.message));
+window.addEventListener("unhandledrejection", (e) => reportError("unhandledrejection", e.reason));
 
 // Suppress the WebView2 default context menu (Back / Reload / Save as / Print…):
 // it leaks the browser underneath and has no place in a native mail client.

@@ -351,11 +351,19 @@ export const mail = {
       opErrorTimer = null;
     }
   },
+  /** Surface a failure the user should know about, from outside this store. */
+  noteError(message: string) {
+    showOpError(message);
+  },
   get threadsLoading() {
     return state.threadsLoading;
   },
 
-  /** App start: find the accounts and begin listening. */
+  /** App start: find the accounts and begin listening. Returns as soon as the
+   *  shell knows which mailboxes exist — that is all it needs to draw itself.
+   *  Folders and the first page of mail are queries against a database the
+   *  startup sync is busy filling, so they can take a while; they land on their
+   *  own rather than holding the whole window back. */
   async boot() {
     await attachListeners();
     // Thread grouping preference (default on when the key is absent).
@@ -371,12 +379,25 @@ export const mail = {
       state.accounts.length > 1
         ? (savedAccount ?? UNIFIED)
         : (savedAccount ?? state.accounts[0]?.id ?? null);
-    if (state.activeAccountId) await refreshFolders();
     state.booted = true;
-    // A cold-start toast click may have queued a thread to open (the
-    // mail:open-thread event fired before listeners were attached).
-    const pending = await api.takePendingOpen();
-    if (pending) await openLocation(pending.folderId, pending.threadId, pending.messageId);
+    if (state.activeAccountId === null) return;
+    // The list holds its loading state from here until the folders land, so a
+    // mailbox that has plenty is never captioned "nothing here" on the way in.
+    state.threadsLoading = true;
+    void (async () => {
+      try {
+        await refreshFolders();
+        // A cold-start toast click may have queued a thread to open (the
+        // mail:open-thread event fired before listeners were attached). It
+        // reads the folders, so it waits for them — not for boot().
+        const pending = await api.takePendingOpen();
+        if (pending) await openLocation(pending.folderId, pending.threadId, pending.messageId);
+      } catch {
+        showOpError(t("ops.failed"));
+      } finally {
+        state.threadsLoading = false;
+      }
+    })();
   },
 
   /** Called right after onboarding or settings connects a mailbox. A second

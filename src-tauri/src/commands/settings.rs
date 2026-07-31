@@ -45,7 +45,7 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<HashMap<String, 
     let managed = updates_managed();
     state
         .db
-        .call(move |conn| {
+        .read("get_settings", move |conn| {
             let mut map = HashMap::new();
             for key in ALLOWED {
                 if let Some(v) = queries::get_setting(conn, key)? {
@@ -74,4 +74,25 @@ pub async fn set_setting(state: State<'_, AppState>, key: String, value: String)
         .db
         .call(move |conn| queries::set_setting(conn, &key, &value))
         .await
+}
+
+/// Longer than this and the line is a dump, not a diagnostic.
+const FRONTEND_LOG_MAX: usize = 2000;
+
+/// A crash in the webview has nowhere to print — a windowed release build has no
+/// stderr and the devtools are not there to open — so a boot that dies on an
+/// unhandled rejection looks exactly like an app that simply stopped working.
+/// Put the frontend's own failures next to the panic log, where they can be
+/// asked for. Called from the global `error` / `unhandledrejection` handlers.
+#[tauri::command]
+pub fn log_frontend_error(message: String) {
+    // By chars, not bytes: `String::truncate` panics mid-codepoint, and a
+    // stack trace from a localized build is not guaranteed to be ASCII.
+    let line: String = message
+        .replace('\n', " | ")
+        .chars()
+        .take(FRONTEND_LOG_MAX)
+        .collect();
+    tracing::error!(target: "skim_lib", "frontend: {line}");
+    crate::append_log("skim-frontend.log", &line);
 }

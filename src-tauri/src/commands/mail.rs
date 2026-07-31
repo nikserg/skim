@@ -79,7 +79,9 @@ pub async fn load_invite(state: &AppState, message_id: i64) -> Option<InviteView
 pub async fn list_folders(state: State<'_, AppState>, account_id: String) -> Result<Vec<Folder>> {
     state
         .db
-        .call(move |conn| queries::list_folders(conn, &account_id))
+        .read("list_folders", move |conn| {
+            queries::list_folders(conn, &account_id)
+        })
         .await
 }
 
@@ -90,7 +92,7 @@ pub async fn list_folders(state: State<'_, AppState>, account_id: String) -> Res
 pub async fn folder_account_id(state: State<'_, AppState>, folder_id: i64) -> Result<String> {
     state
         .db
-        .call(move |conn| {
+        .read("folder_account_id", move |conn| {
             use rusqlite::OptionalExtension;
             conn.query_row(
                 "SELECT account_id FROM folders WHERE id = ?1",
@@ -112,7 +114,9 @@ pub async fn list_threads(
 ) -> Result<Vec<ThreadRow>> {
     state
         .db
-        .call(move |conn| queries::list_threads(conn, folder_id, offset, limit.clamp(1, 200)))
+        .read("list_threads", move |conn| {
+            queries::list_threads(conn, folder_id, offset, limit.clamp(1, 200))
+        })
         .await
 }
 
@@ -126,7 +130,9 @@ pub async fn list_messages(
 ) -> Result<Vec<ThreadRow>> {
     state
         .db
-        .call(move |conn| queries::list_messages(conn, folder_id, offset, limit.clamp(1, 200)))
+        .read("list_messages", move |conn| {
+            queries::list_messages(conn, folder_id, offset, limit.clamp(1, 200))
+        })
         .await
 }
 
@@ -135,7 +141,9 @@ pub async fn list_messages(
 pub async fn list_unified_folders(state: State<'_, AppState>) -> Result<Vec<Folder>> {
     state
         .db
-        .call(|conn| queries::list_unified_folders(conn))
+        .read("list_unified_folders", |conn| {
+            queries::list_unified_folders(conn)
+        })
         .await
 }
 
@@ -151,7 +159,7 @@ pub async fn list_unified_threads(
 ) -> Result<Vec<ThreadRow>> {
     state
         .db
-        .call(move |conn| {
+        .read("list_unified_threads", move |conn| {
             queries::list_unified_threads(
                 conn,
                 role.as_deref(),
@@ -174,7 +182,7 @@ pub async fn list_unified_messages(
 ) -> Result<Vec<ThreadRow>> {
     state
         .db
-        .call(move |conn| {
+        .read("list_unified_messages", move |conn| {
             queries::list_unified_messages(
                 conn,
                 role.as_deref(),
@@ -199,7 +207,7 @@ pub struct FolderRef {
 pub async fn folder_ref(state: State<'_, AppState>, folder_id: i64) -> Result<FolderRef> {
     state
         .db
-        .call(move |conn| {
+        .read("folder_ref", move |conn| {
             use rusqlite::OptionalExtension;
             conn.query_row(
                 "SELECT role, display_name FROM folders WHERE id = ?1",
@@ -221,7 +229,9 @@ pub async fn folder_ref(state: State<'_, AppState>, folder_id: i64) -> Result<Fo
 pub async fn get_thread(state: State<'_, AppState>, thread_id: i64) -> Result<ThreadDetail> {
     state
         .db
-        .call(move |conn| bodies::get_thread(conn, thread_id))
+        .read("get_thread", move |conn| {
+            bodies::get_thread(conn, thread_id)
+        })
         .await?
         .ok_or_else(|| SkimError::other("mail", "thread not found"))
 }
@@ -637,7 +647,7 @@ async fn queue_folder_op(
 pub async fn folder_message_count(state: State<'_, AppState>, folder_id: i64) -> Result<i64> {
     state
         .db
-        .call(move |conn| {
+        .read("folder_message_count", move |conn| {
             conn.query_row(
                 "SELECT count(*) FROM messages WHERE folder_id = ?1",
                 rusqlite::params![folder_id],
