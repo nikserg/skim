@@ -504,10 +504,22 @@ impl Builder {
     fn close_inline(&mut self) {
         // A stray close (markup that was never opened in this segment) is
         // nothing to represent.
-        if let Some(k) = self.open.pop() {
-            self.tokens.push(Token::Close(k));
-            self.text.push_str(&format!("</{k}>"));
+        let Some(k) = self.open.pop() else { return };
+        // Nothing came in since the matching open, so the pair wraps nothing.
+        // That is what an inline element holding only padding leaves behind now
+        // that the padding is stripped: the run collapses away and never becomes
+        // a token. A model handed `<2></2>` routinely drops it, `distribute`
+        // then falls back to flattening the whole segment into its first run,
+        // and every other run is spliced back empty. `k` was the last number
+        // minted, so taking it back keeps the numbering dense.
+        if self.tokens.last() == Some(&Token::Open(k)) {
+            self.tokens.pop();
+            self.text.truncate(self.text.len() - format!("<{k}>").len());
+            self.next_marker -= 1;
+            return;
         }
+        self.tokens.push(Token::Close(k));
+        self.text.push_str(&format!("</{k}>"));
     }
 
     fn flush(&mut self, out: &mut Extracted, ids: &mut HashMap<String, u32>) {
@@ -664,9 +676,30 @@ fn parse_markers(text: &str) -> Vec<Piece> {
     out
 }
 
+/// Zero-width characters used as *padding*. `split_whitespace` doesn't see them,
+/// so each one survives collapsing as its own "word", and a newsletter preheader
+/// carries hundreds of them to push the client's preview line past the teaser.
+/// They hold nothing to translate, and a model told to answer faithfully copies
+/// them back until it runs out of output budget, leaving every segment after the
+/// first untranslated.
+///
+/// Deliberately narrow. The neighbouring code points are *not* padding and must
+/// survive: U+200C and U+200D join emoji sequences and shape Persian and
+/// Devanagari words, U+200E and U+200F carry bidirectional direction. Dropping
+/// those would corrupt the text on the way to the model, and `apply` writes the
+/// answer back over the original.
+fn invisible(c: char) -> bool {
+    matches!(
+        c,
+        '\u{00ad}' | '\u{034f}' | '\u{200b}' | '\u{2060}' | '\u{feff}'
+    )
+}
+
 /// Collapse runs of whitespace to single spaces, keeping the edges: whether a
 /// run started or ended with space is what separates it from the markup around.
 fn collapse_ws(text: &str) -> String {
+    let stripped: String = text.chars().filter(|c| !invisible(*c)).collect();
+    let text = stripped.as_str();
     let mut out = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if out.is_empty() {
         // A whitespace-only run still separates the markup around it.
@@ -1036,6 +1069,60 @@ mod tests {
             parsed.get(&1).unwrap(),
             "Erste Zeile\nzweite Zeile derselben Antwort"
         );
+    }
+
+    #[test]
+    fn invisible_preheader_padding_never_reaches_the_prompt() {
+        // Newsletters pad the preheader with hundreds of invisible characters so
+        // the client's preview line stops at the teaser. They carry nothing to
+        // translate, and a model told to answer faithfully copies them back
+        // until it hits the output ceiling, truncating every segment after the
+        // first, which then keeps its original language.
+        let padding = "\u{034f} ".repeat(200) + &"\u{00ad}".repeat(50);
+        let html = format!("<div>Run it anywhere.{padding}</div><p>Hey there,</p>");
+        let ex = extract(&html);
+        let list = ex.prompt_list();
+        assert!(
+            !list.contains(['\u{034f}', '\u{00ad}']),
+            "invisible padding reached the prompt"
+        );
+        assert_eq!(ex.texts.len(), 2);
+        assert_eq!(ex.texts[0], "Run it anywhere.");
+        assert_eq!(ex.texts[1], "Hey there,");
+    }
+
+    #[test]
+    fn an_inline_wrapping_only_padding_leaves_no_empty_marker() {
+        // The preheader trick is often a span holding nothing but padding. With
+        // the padding stripped the run is empty, but the marker pair around it
+        // would survive: handed `<2></2>`, a model drops it, `distribute` falls
+        // back to flattening the segment, and every run but the first comes back
+        // empty, which `splice` then writes over the original text.
+        let html = "<p>Read our <a href=\"https://x.test\">latest post</a> today\
+                    <span>\u{200b}\u{200b}\u{200b}</span></p>";
+        let ex = extract(html);
+        let list = ex.prompt_list();
+        assert!(list.contains("<1>latest post</1>"), "{list}");
+        assert!(
+            !list.contains("<2>"),
+            "an empty marker pair reached the prompt: {list}"
+        );
+    }
+
+    #[test]
+    fn joiners_and_direction_marks_are_not_padding() {
+        // The characters next to the padding in the code chart carry meaning:
+        // ZWJ composes an emoji, ZWNJ shapes Persian, and the bidi marks set
+        // direction. `apply` writes the model's answer back over the original,
+        // so dropping them on the way out would corrupt the mail itself.
+        let html = "<p>Meet the team \u{1f469}\u{200d}\u{1f4bb}</p>\
+                    <p>\u{645}\u{6cc}\u{200c}\u{631}\u{648}\u{645}</p>\
+                    <p>\u{200e}left to right</p>";
+        let ex = extract(html);
+        let list = ex.prompt_list();
+        assert!(list.contains('\u{200d}'), "emoji joiner was dropped");
+        assert!(list.contains('\u{200c}'), "Persian joiner was dropped");
+        assert!(list.contains('\u{200e}'), "direction mark was dropped");
     }
 
     #[test]
