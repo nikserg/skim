@@ -1338,12 +1338,15 @@ impl Engine {
         let coords: Option<(String, u32, i64)> = self
             .db
             .call(move |conn| {
+                // `body_state` via the shared helper, so the guard below agrees
+                // with the one the command layer used to decide to call us.
+                let state = bodies::body_state(conn, message_pk)?;
                 conn.query_row(
-                    "SELECT f.imap_name, m.uid, m.body_state
+                    "SELECT f.imap_name, m.uid
                      FROM messages m JOIN folders f ON f.id = m.folder_id
                      WHERE m.id = ?1",
                     rusqlite::params![message_pk],
-                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                    |r| Ok((r.get(0)?, r.get(1)?, state.unwrap_or(0))),
                 )
                 .map(Some)
             })
@@ -1416,6 +1419,10 @@ impl Engine {
             .join("attachments")
             .join(message_pk.to_string());
         let mut stored = Vec::new();
+        // A refetch replaces the attachment rows wholesale, so whatever the last
+        // parse left on disk is unreachable from here on — drop it rather than
+        // keep paying for it.
+        let _ = std::fs::remove_dir_all(&dir);
         if !parsed.attachments.is_empty() {
             std::fs::create_dir_all(&dir)?;
         }

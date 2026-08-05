@@ -100,6 +100,7 @@
   "reading.loading": "불러오는 중…",
   "reading.fetching": "서버에서 가져오는 중…",
   "reading.load_failed": "메일을 불러오지 못했습니다",
+  "reading.empty": "이 메일에는 표시할 내용이 없습니다",
   "reading.retry": "다시 시도",
   "security.banner": "이 메시지에는 피싱 징후가 있습니다",
   "security.reason.auth_dmarc_fail": "보낸 사람의 도메인이 인증에 실패했습니다 (DMARC)",

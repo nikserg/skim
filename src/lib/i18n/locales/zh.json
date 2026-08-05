@@ -100,6 +100,7 @@
   "reading.loading": "加载中…",
   "reading.fetching": "正在从服务器获取…",
   "reading.load_failed": "无法加载此邮件",
+  "reading.empty": "此邮件没有可显示的内容",
   "reading.retry": "重试",
   "security.banner": "这封邮件有钓鱼迹象",
   "security.reason.auth_dmarc_fail": "发件人域名未通过身份验证（DMARC）",

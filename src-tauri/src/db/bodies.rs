@@ -16,6 +16,11 @@ pub struct StoredAttachment {
 }
 
 /// Persist a fetched body: html/text, snippet, attachment rows, FTS body.
+///
+/// `body_state` lands on 1 when there is something to read and 2 when the
+/// message parsed to nothing. The distinction is what keeps a bad parse from
+/// latching: [`body_state`] reports a legacy 1-with-no-body as "not fetched", so
+/// it is tried once more, while a 2 is a settled answer and never refetched.
 pub fn set_body(
     conn: &mut Connection,
     message_pk: i64,
@@ -32,14 +37,16 @@ pub fn set_body(
                                                body_text = excluded.body_text",
         params![message_pk, html, text],
     )?;
+    let has_body = html.is_some_and(|h| !h.is_empty()) || text.is_some_and(|t| !t.is_empty());
     tx.execute(
-        "UPDATE messages SET body_state = 1, has_attachments = ?2,
+        "UPDATE messages SET body_state = ?4, has_attachments = ?2,
                              snippet = CASE WHEN snippet IS NULL OR snippet = '' THEN ?3 ELSE snippet END
          WHERE id = ?1",
         params![
             message_pk,
             attachments.iter().any(|a| !a.is_inline),
-            snippet
+            snippet,
+            if has_body { 1 } else { 2 }
         ],
     )?;
     tx.execute(
@@ -190,9 +197,21 @@ pub fn set_translation(
     Ok(())
 }
 
+/// 0 = no body cached, 1 = cached, 2 = fetched and there was nothing to show.
+///
+/// Rows written before [`set_body`] learned to tell 1 from 2 can claim a body
+/// they do not have — a parse that came out empty used to be indistinguishable
+/// from a real one, and nothing ever fetched them again. Report those as 0 so
+/// they get one more chance; a genuine 2 stays put.
 pub fn body_state(conn: &Connection, message_pk: i64) -> rusqlite::Result<Option<i64>> {
     conn.query_row(
-        "SELECT body_state FROM messages WHERE id = ?1",
+        "SELECT CASE
+                  WHEN m.body_state = 1
+                   AND coalesce(length(b.body_html), 0) = 0
+                   AND coalesce(length(b.body_text), 0) = 0
+                  THEN 0 ELSE m.body_state END
+           FROM messages m LEFT JOIN message_bodies b ON b.message_id = m.id
+          WHERE m.id = ?1",
         params![message_pk],
         |r| r.get(0),
     )

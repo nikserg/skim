@@ -168,6 +168,45 @@ pub fn parse_body(raw: &[u8]) -> ParsedBody {
         };
     };
 
+    // A base64 part whose closing `--boundary` never arrives (some mailers omit
+    // it; a cut-short download looks the same) makes mail-parser give up on the
+    // transfer encoding, and a part it could not decode is dropped from the body
+    // lists and filed under attachments as raw base64 — headers with nothing
+    // under them. The payload itself is intact, so close the multiparts
+    // ourselves and let the parser have another go at it.
+    let body = extract_body(&parsed);
+    if body.html.is_some() || body.text.is_some() {
+        return body;
+    }
+    let boundaries: Vec<String> = parsed
+        .parts
+        .iter()
+        .filter_map(|p| p.content_type()?.attribute("boundary").map(str::to_string))
+        .collect();
+    if boundaries.is_empty() {
+        return body;
+    }
+    let mut patched = raw.to_vec();
+    // Innermost first: each `--b--` closes the deepest container still open.
+    for b in boundaries.iter().rev() {
+        patched.extend_from_slice(format!("\r\n--{b}--\r\n").as_bytes());
+    }
+    match MessageParser::default().parse(&patched) {
+        // Whole result, not just the body: the part that was mistaken for an
+        // attachment must stop being one, or its raw base64 lands on disk.
+        Some(reparsed) => {
+            let recovered = extract_body(&reparsed);
+            if recovered.html.is_some() || recovered.text.is_some() {
+                recovered
+            } else {
+                body
+            }
+        }
+        None => body,
+    }
+}
+
+fn extract_body(parsed: &mail_parser::Message<'_>) -> ParsedBody {
     let html = parsed.body_html(0).map(|s| s.to_string());
     let text = parsed
         .body_text(0)
@@ -394,6 +433,92 @@ mod tests {
                     > die eigentliche Frage\n\n\
                     Meine Antwort steht darunter.";
         assert!(strip_quoted(body).is_empty());
+    }
+
+    #[test]
+    fn recovers_a_base64_body_whose_closing_boundary_never_arrived() {
+        // What a real sender's mailer produced: the last part's base64 ends the
+        // message, with no `--b--` after it. mail-parser reads that as a broken
+        // transfer encoding and files the part under attachments, undecoded —
+        // headers and a blank pane. Nothing else in the payload is wrong.
+        let body = base64_lines("<html><body><p>Ваш заказ подтверждён</p></body></html>");
+        let raw = format!(
+            "From: Travel <noreply@example.com>\r\n\
+             Subject: Booking\r\n\
+             MIME-Version: 1.0\r\n\
+             Content-Type: multipart/alternative; boundary=\"b1\"\r\n\
+             \r\n\
+             --b1\r\n\
+             Content-Type: text/html; charset=utf-8\r\n\
+             Content-Transfer-Encoding: base64\r\n\
+             \r\n\
+             {body}"
+        );
+
+        let parsed = parse_body(raw.as_bytes());
+        assert!(
+            parsed.html.is_some_and(|h| h.contains("подтверждён")),
+            "the html part must come back decoded, as the body"
+        );
+        assert!(
+            parsed.attachments.is_empty(),
+            "and must not also be filed as an attachment"
+        );
+        assert!(parsed.snippet.contains("подтверждён"));
+    }
+
+    #[test]
+    fn recovery_closes_nested_multiparts_innermost_first() {
+        let body = base64_lines("<html><body><p>Deep inside</p></body></html>");
+        let raw = format!(
+            "From: Travel <noreply@example.com>\r\n\
+             MIME-Version: 1.0\r\n\
+             Content-Type: multipart/mixed; boundary=\"outer\"\r\n\
+             \r\n\
+             --outer\r\n\
+             Content-Type: multipart/alternative; boundary=\"inner\"\r\n\
+             \r\n\
+             --inner\r\n\
+             Content-Type: text/html; charset=utf-8\r\n\
+             Content-Transfer-Encoding: base64\r\n\
+             \r\n\
+             {body}"
+        );
+
+        let parsed = parse_body(raw.as_bytes());
+        assert!(parsed.html.is_some_and(|h| h.contains("Deep inside")));
+        assert!(parsed.attachments.is_empty());
+    }
+
+    #[test]
+    fn a_well_formed_message_is_parsed_without_the_recovery_pass() {
+        let body = base64_lines("<html><body><p>Nothing missing here</p></body></html>");
+        let raw = format!(
+            "From: Travel <noreply@example.com>\r\n\
+             MIME-Version: 1.0\r\n\
+             Content-Type: multipart/alternative; boundary=\"b1\"\r\n\
+             \r\n\
+             --b1\r\n\
+             Content-Type: text/html; charset=utf-8\r\n\
+             Content-Transfer-Encoding: base64\r\n\
+             \r\n\
+             {body}--b1--\r\n"
+        );
+
+        let parsed = parse_body(raw.as_bytes());
+        assert!(parsed.html.is_some_and(|h| h.contains("Nothing missing")));
+        assert!(parsed.attachments.is_empty());
+    }
+
+    /// Base64 the way mailers write it: 76-char lines, each CRLF-terminated.
+    fn base64_lines(content: &str) -> String {
+        use base64::Engine;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(content);
+        encoded
+            .as_bytes()
+            .chunks(76)
+            .map(|c| format!("{}\r\n", std::str::from_utf8(c).unwrap()))
+            .collect()
     }
 
     #[test]

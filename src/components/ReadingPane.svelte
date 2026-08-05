@@ -750,7 +750,7 @@
             </div>
           </details>
         {/if}
-      {:else}
+      {:else if body.html}
         <div class="body">
           <HtmlViewer
             html={body.html}
@@ -758,6 +758,10 @@
             onHoverUrl={(u) => (hoverUrl = u)}
           />
         </div>
+      {:else}
+        <!-- Headers over a blank rectangle read as a bug. Say it plainly:
+             the message came through, there was just nothing to render. -->
+        <div class="body-note">{t("reading.empty")}</div>
       {/if}
       {#if body.attachments.length > 0}
         <AttachmentChips attachments={body.attachments} />

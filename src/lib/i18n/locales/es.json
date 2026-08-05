@@ -103,6 +103,7 @@
   "reading.loading": "Cargando…",
   "reading.fetching": "Descargando del servidor…",
   "reading.load_failed": "No se pudo cargar este mensaje",
+  "reading.empty": "Este mensaje no tiene contenido que mostrar",
   "reading.retry": "Reintentar",
   "security.banner": "Este mensaje muestra señales de phishing",
   "security.reason.auth_dmarc_fail": "el dominio del remitente no superó la autenticación (DMARC)",

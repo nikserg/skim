@@ -109,6 +109,7 @@
   "reading.loading": "Wczytywanie…",
   "reading.fetching": "Pobieranie z serwera…",
   "reading.load_failed": "Nie udało się wczytać wiadomości",
+  "reading.empty": "Ta wiadomość nie ma nic do pokazania",
   "reading.retry": "Ponów",
   "security.banner": "Ta wiadomość ma oznaki phishingu",
   "security.reason.auth_dmarc_fail": "domena nadawcy nie przeszła uwierzytelnienia (DMARC)",

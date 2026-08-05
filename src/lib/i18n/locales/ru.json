@@ -109,6 +109,7 @@
   "reading.loading": "Загрузка…",
   "reading.fetching": "Загружаем с сервера…",
   "reading.load_failed": "Не удалось загрузить письмо",
+  "reading.empty": "В этом письме нечего показать",
   "reading.retry": "Повторить",
   "security.banner": "В этом письме есть признаки фишинга",
   "security.reason.auth_dmarc_fail": "домен отправителя не прошёл проверку подлинности (DMARC)",

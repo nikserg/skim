@@ -107,6 +107,7 @@
   "reading.loading": "Loading…",
   "reading.fetching": "Fetching from the server…",
   "reading.load_failed": "Couldn't load this message",
+  "reading.empty": "This message has nothing to show",
   "reading.retry": "Retry",
   "security.banner": "This message has signs of phishing",
   "security.reason.auth_dmarc_fail": "the sender's domain failed authentication (DMARC)",

@@ -106,6 +106,7 @@
   "reading.loading": "Učitavanje…",
   "reading.fetching": "Preuzimanje sa servera…",
   "reading.load_failed": "Poruka nije mogla da se učita",
+  "reading.empty": "Ova poruka nema šta da prikaže",
   "reading.retry": "Pokušaj ponovo",
   "security.banner": "Ova poruka ima znake fišinga",
   "security.reason.auth_dmarc_fail": "domen pošiljaoca nije prošao proveru autentičnosti (DMARC)",

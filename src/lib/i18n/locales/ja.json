@@ -100,6 +100,7 @@
   "reading.loading": "読み込み中…",
   "reading.fetching": "サーバーから取得中…",
   "reading.load_failed": "メールを読み込めませんでした",
+  "reading.empty": "このメールには表示できる内容がありません",
   "reading.retry": "再試行",
   "security.banner": "このメッセージにはフィッシングの兆候があります",
   "security.reason.auth_dmarc_fail": "送信者のドメインが認証に失敗しました（DMARC）",
