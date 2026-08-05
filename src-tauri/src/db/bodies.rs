@@ -129,6 +129,67 @@ pub fn get_body(
     .optional()
 }
 
+/// A cached AI translation of a body, in the same `(html, text)` shape the
+/// render path already understands — so it can stand in for the original and go
+/// through exactly the same sanitize and image-policy pipeline.
+pub struct Translation {
+    pub html: Option<String>,
+    pub text: Option<String>,
+    /// Translated subject line, shown as the pane's heading.
+    pub subject: Option<String>,
+    /// The message outran one request's budget: past a point it is still in the
+    /// original language.
+    pub truncated: bool,
+}
+
+pub fn get_translation(
+    conn: &Connection,
+    message_pk: i64,
+    lang: &str,
+) -> rusqlite::Result<Option<Translation>> {
+    conn.query_row(
+        "SELECT body_html, body_text, subject, truncated FROM message_translations
+         WHERE message_id = ?1 AND lang = ?2",
+        params![message_pk, lang],
+        |r| {
+            Ok(Translation {
+                html: r.get(0)?,
+                text: r.get(1)?,
+                subject: r.get(2)?,
+                truncated: r.get::<_, i64>(3)? != 0,
+            })
+        },
+    )
+    .optional()
+}
+
+pub fn set_translation(
+    conn: &Connection,
+    message_pk: i64,
+    lang: &str,
+    translation: &Translation,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO message_translations (message_id, lang, body_html, body_text, subject,
+                                           truncated, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, unixepoch())
+         ON CONFLICT(message_id, lang) DO UPDATE SET body_html = excluded.body_html,
+                                                     body_text = excluded.body_text,
+                                                     subject   = excluded.subject,
+                                                     truncated = excluded.truncated,
+                                                     created_at = excluded.created_at",
+        params![
+            message_pk,
+            lang,
+            translation.html,
+            translation.text,
+            translation.subject,
+            translation.truncated as i64
+        ],
+    )?;
+    Ok(())
+}
+
 pub fn body_state(conn: &Connection, message_pk: i64) -> rusqlite::Result<Option<i64>> {
     conn.query_row(
         "SELECT body_state FROM messages WHERE id = ?1",
@@ -478,4 +539,102 @@ pub fn enqueue_op(
         params![account_id, kind, payload.to_string()],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod translation_tests {
+    use super::*;
+    use crate::db::Db;
+
+    fn seed_message(conn: &Connection) -> i64 {
+        conn.execute(
+            "INSERT INTO accounts (id, email, provider, imap_host, smtp_host, created_at)
+             VALUES ('a1', 'me@example.com', 'custom', 'imap.example.com', 'smtp.example.com', 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO folders (account_id, imap_name, role, display_name, unread_count,
+                                  sort_order)
+             VALUES ('a1', 'INBOX', 'inbox', 'Inbox', 0, 0)",
+            [],
+        )
+        .unwrap();
+        let folder: i64 = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO messages (account_id, folder_id, uid, date, is_read, is_starred,
+                                   has_attachments, body_state)
+             VALUES ('a1', ?1, 1, 0, 0, 0, 0, 1)",
+            params![folder],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    #[test]
+    fn round_trips_and_overwrites() {
+        let db = Db::open_in_memory().unwrap();
+        db.with(|conn| {
+            let id = seed_message(conn);
+            set_translation(
+                conn,
+                id,
+                "ru",
+                &Translation {
+                    html: Some("<p>Привет</p>".into()),
+                    text: None,
+                    subject: Some("Тема".into()),
+                    truncated: true,
+                },
+            )?;
+
+            let got = get_translation(conn, id, "ru")?.expect("cached");
+            assert_eq!(got.html.as_deref(), Some("<p>Привет</p>"));
+            assert_eq!(got.subject.as_deref(), Some("Тема"));
+            assert!(got.truncated);
+            assert!(get_translation(conn, id, "de")?.is_none());
+
+            // Re-translating replaces rather than failing on the primary key.
+            set_translation(
+                conn,
+                id,
+                "ru",
+                &Translation {
+                    html: Some("<p>Здравствуйте</p>".into()),
+                    text: None,
+                    subject: None,
+                    truncated: false,
+                },
+            )?;
+            let got = get_translation(conn, id, "ru")?.expect("cached");
+            assert_eq!(got.html.as_deref(), Some("<p>Здравствуйте</p>"));
+            assert_eq!(got.subject, None);
+            assert!(!got.truncated);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn goes_away_with_the_message() {
+        let db = Db::open_in_memory().unwrap();
+        db.with(|conn| {
+            let id = seed_message(conn);
+            set_translation(
+                conn,
+                id,
+                "ru",
+                &Translation {
+                    html: None,
+                    text: Some("Привет".into()),
+                    subject: None,
+                    truncated: false,
+                },
+            )?;
+            conn.execute("DELETE FROM messages WHERE id = ?1", params![id])?;
+            assert!(get_translation(conn, id, "ru")?.is_none());
+            Ok(())
+        })
+        .unwrap();
+    }
 }

@@ -548,9 +548,10 @@ export const AI_ASK = `The launch is **Thursday**. Three items still need an own
 // continuable session rather than a series of one-shot answers.
 export const AI_ASK_FOLLOWUP = `Only the **landing page copy** is yours — Anna asked your team for the final pass by **Wednesday EOD**. The pricing page change sits with the web team, and the launch email just needs your voice on Anna's draft before it goes to the list.`;
 
-// The Translate quick-prompt. The fixture mailbox is written in English, so this
-// is a faithful pass-through; it exists so the button does something believable
-// when a human pokes at `npm run demo:dev`. The scripted tour doesn't click it.
+// Answer for a typed "translate this…" in the email chat. Inline translation has
+// its own bar in the reading pane now, so no button sends this — but the chat
+// still takes the question, and the fixture mailbox being English makes the
+// answer a faithful pass-through. The scripted tour doesn't ask it.
 export const AI_TRANSLATE = `Hi Alex,
 
 Pulling the last threads together before **Thursday's launch**. Three things still need a clear owner: the **landing page copy** (final pass by Wednesday EOD), the **pricing page** (annual toggle above the fold, not yet in staging), and the **launch email** (drafted, but it needs your voice before the 12k send).

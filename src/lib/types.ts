@@ -128,6 +128,18 @@ export interface SecuritySignals {
   links: LinkFlag[];
 }
 
+/** State of the translate bar; absent/null when there is nothing to offer. */
+export interface TranslateState {
+  /** `html` is the translation, not the original. */
+  showing: boolean;
+  /** Translated subject for the pane heading; only set while `showing`. */
+  subject?: string | null;
+  /** A translation is stored, so showing it costs nothing. */
+  cached: boolean;
+  /** Only the beginning was translated. */
+  truncated: boolean;
+}
+
 export interface RenderedBody {
   messageId: number;
   html: string;
@@ -137,6 +149,7 @@ export interface RenderedBody {
   invite: InviteView | null;
   /** Phishing heuristics; absent/null when nothing fired. */
   security?: SecuritySignals | null;
+  translate?: TranslateState | null;
 }
 
 export interface SearchHit {

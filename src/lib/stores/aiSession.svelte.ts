@@ -306,6 +306,12 @@ export const aiSessions = {
     return session;
   },
 
+  /** Swap the inline chat between the dock and the whole window. Same session
+   *  either way — only where it is drawn changes. */
+  toggleExpand(session: ChatSession) {
+    session.expanded = !session.expanded;
+  },
+
   /** The mailbox-wide chat the palette is showing, if any. */
   get paletteChat(): ChatSession | undefined {
     return state.list.find((s) => s.kind === "chat" && !s.detached);
@@ -341,16 +347,20 @@ export const aiSessions = {
    *  is a request to go look at it. */
   async detach(session: ChatSession) {
     const wasDetached = session.detached;
+    const wasExpanded = session.expanded;
     // Marked before the first await: the surface handing the chat over stands
     // down in the same tick, so nothing tears the session down behind us.
     session.detached = true;
     session.open = false;
+    // The window is the roomier view; coming back should land in the dock.
+    session.expanded = false;
     await ensureBridge();
     try {
       await aiApi.openWindow(session.id, session.title);
     } catch {
       session.detached = wasDetached;
       session.open = !wasDetached;
+      session.expanded = wasExpanded;
     }
   },
 
@@ -359,6 +369,7 @@ export const aiSessions = {
   close(session: ChatSession) {
     cancel(session);
     session.open = false;
+    session.expanded = false;
   },
 };
 

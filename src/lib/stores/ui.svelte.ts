@@ -4,12 +4,13 @@ import type { Lightness, Temperature, Theme } from "../types";
 const media = window.matchMedia("(prefers-color-scheme: dark)");
 
 /** AI actions the reading pane exposes to the global keyboard handler. */
-type ReadingAiActions = { ask: () => void };
+type ReadingAiActions = { ask: () => void; translate: () => void };
 let readingAi: ReadingAiActions | null = null;
 
-/** Message currently open in the reading pane, for AI context. Non-reactive —
- * the palette chat reads it once when a session starts. */
-let openMessageId: number | null = null;
+/** Message currently open in the reading pane. The palette chat reads it once
+ * when a session starts; App tracks it to know whether the chat about that
+ * email is on screen, so it has to be reactive. */
+let openMessageId = $state<number | null>(null);
 
 /** What the folder picker is about to move. Carried in the store rather than as
  *  props, so the toolbar button, the V shortcut and the palette all open the

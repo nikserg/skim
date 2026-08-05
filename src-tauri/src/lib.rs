@@ -332,6 +332,7 @@ pub fn run() {
             commands::mail::folder_ref,
             commands::mail::get_thread,
             commands::mail::get_message_body,
+            commands::ai::ai_translate,
             commands::mail::allow_remote_images,
             commands::mail::mark_read,
             commands::mail::set_starred,

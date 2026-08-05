@@ -61,6 +61,10 @@ export interface ChatSession {
   detached: boolean;
   /** The inline surface shows it (dock open / palette in chat mode). */
   open: boolean;
+  /** ask only: the inline chat fills the app window instead of docking under
+   *  the message. A view state, so it never outlives the surface — closing or
+   *  popping the chat out puts it back. */
+  expanded: boolean;
 }
 
 export type ChatEvent =
@@ -106,6 +110,7 @@ export function newSession(
     pending: "",
     detached: false,
     open: true,
+    expanded: false,
     ...fields,
   };
 }

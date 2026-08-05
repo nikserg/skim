@@ -156,6 +156,23 @@ pub struct SecuritySignals {
     pub links: Vec<LinkFlag>,
 }
 
+/// Everything the reading pane needs to draw the translate bar. `None` means
+/// there is nothing to offer, so ordinary mail in the user's own language costs
+/// the wire nothing and the UI shows nothing.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslateState {
+    /// `html` above is the translation, not the original.
+    pub showing: bool,
+    /// Translated subject, for the pane's heading. Only carried while `showing`.
+    pub subject: Option<String>,
+    /// A translation is already stored, so showing it costs nothing.
+    pub cached: bool,
+    /// Only the beginning was translated — the tail is still in the original
+    /// language.
+    pub truncated: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderedBody {
@@ -169,6 +186,7 @@ pub struct RenderedBody {
     /// Phishing heuristics; `None` when nothing fired, so honest mail costs
     /// the wire nothing and the UI shows nothing.
     pub security: Option<SecuritySignals>,
+    pub translate: Option<TranslateState>,
 }
 
 /// Headers of a message as parsed from the wire, ready for insertion.

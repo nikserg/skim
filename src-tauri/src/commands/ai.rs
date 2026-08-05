@@ -3,8 +3,9 @@ use crate::ai::{
     agent, anthropic, attachments, ollama, openai_compat, openrouter, prompts, ChatMessage,
     MediaBlock,
 };
-use crate::db::{queries, Db};
+use crate::db::{bodies, queries, Db};
 use crate::error::{Result, SkimError};
+use crate::mail::translate;
 use crate::secrets;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
@@ -325,6 +326,28 @@ async fn sync_horizon(db: &Db) -> Option<String> {
     Some(crate::ai::retrieval::format_date(oldest))
 }
 
+/// What becomes of a one-shot stream's text once it finishes.
+enum Persist {
+    /// Nothing: the UI already received it delta by delta.
+    Nothing,
+    /// Splice the numbered segment translations back into the message body and
+    /// cache the result. Boxed because it carries the whole source body.
+    Translation(Box<TranslationJob>),
+}
+
+/// Everything needed to turn a numbered reply back into a translated body.
+struct TranslationJob {
+    db: Db,
+    message_id: i64,
+    /// Target language: the key the cached row is stored under.
+    lang: String,
+    /// The original body — whichever of the two forms the message had.
+    html: Option<String>,
+    text: Option<String>,
+    extracted: translate::Extracted,
+    truncated: bool,
+}
+
 /// Spawn the streaming task and register it for cancellation.
 #[allow(clippy::too_many_arguments)] // flat request parameters, one call path
 fn spawn_stream(
@@ -336,13 +359,35 @@ fn spawn_stream(
     media: Vec<MediaBlock>,
     max_tokens: u32,
     citations: Vec<Citation>,
+    persist: Persist,
     channel: Channel<AiEvent>,
 ) {
     let task = tokio::spawn(async move {
+        // A translation's raw text is not for reading — the pane redraws from the
+        // cached body once it lands — so it accumulates here and the segments
+        // that have come back are reported as progress instead.
+        let total = match &persist {
+            Persist::Translation(job) => job.extracted.len(),
+            Persist::Nothing => 0,
+        };
+        let mut answer = String::new();
+        let mut reported = 0;
         let mut on_delta = |delta: &str| {
-            let _ = channel.send(AiEvent::Delta {
-                text: delta.to_string(),
-            });
+            if total == 0 {
+                let _ = channel.send(AiEvent::Delta {
+                    text: delta.to_string(),
+                });
+                return;
+            }
+            answer.push_str(delta);
+            let done = answer.matches("[[").count().min(total);
+            if done != reported {
+                reported = done;
+                let _ = channel.send(AiEvent::Progress {
+                    current: done,
+                    total,
+                });
+            }
         };
         let mut on_reasoning = reasoning_once(&channel);
         let result = match &ctx.endpoint {
@@ -372,6 +417,15 @@ fn spawn_stream(
         };
         match result {
             Ok(_) => {
+                if let Persist::Translation(job) = persist {
+                    if let Err(e) = store_translation(*job, &answer).await {
+                        let _ = channel.send(AiEvent::Error {
+                            code: e.code().to_string(),
+                            message: e.to_string(),
+                        });
+                        return;
+                    }
+                }
                 let _ = channel.send(AiEvent::Done { citations });
             }
             Err(e) => {
@@ -386,6 +440,51 @@ fn spawn_stream(
         tasks.retain(|_, h| !h.is_finished());
         tasks.insert(request_id, task.abort_handle());
     }
+}
+
+/// Rebuild the body with the translated segments in place and cache it.
+async fn store_translation(job: TranslationJob, answer: &str) -> Result<()> {
+    let segments = translate::parse_reply(answer);
+    if segments.is_empty() {
+        // Nothing usable came back. Caching the original as its own translation
+        // would leave the pane claiming a translated message it never got.
+        return Err(SkimError::other(
+            "ai",
+            "no translated segments in the reply",
+        ));
+    }
+    let TranslationJob {
+        db,
+        message_id,
+        lang,
+        html,
+        text,
+        extracted,
+        truncated,
+    } = job;
+    let (html, text) = match (&html, &text) {
+        (Some(html), _) => (Some(translate::apply(html, &extracted, &segments)), None),
+        (None, Some(text)) => (
+            None,
+            Some(translate::apply_text(text, &extracted, &segments)),
+        ),
+        (None, None) => (None, None),
+    };
+    // The subject's segment is never spliced into the body — it is stored on its
+    // own, for the pane's heading.
+    let subject = extracted
+        .subject_id()
+        .and_then(|id| segments.get(&id))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let translation = bodies::Translation {
+        html,
+        text,
+        subject,
+        truncated,
+    };
+    db.call(move |conn| bodies::set_translation(conn, message_id, &lang, &translation))
+        .await
 }
 
 /// One `Reasoning` event per request: the latch is built once per command, so
@@ -672,6 +771,7 @@ pub async fn ai_compose(
         media,
         ONE_SHOT_MAX_TOKENS,
         Vec::new(),
+        Persist::Nothing,
         channel,
     );
     Ok(())
@@ -965,34 +1065,89 @@ pub async fn ai_recap(
         Vec::new(),
         ONE_SHOT_MAX_TOKENS,
         citations,
+        Persist::Nothing,
+        channel,
+    );
+    Ok(())
+}
+
+// ---- inline translation ----------------------------------------------------
+
+/// Source characters one translation request may carry, counted over the
+/// deduplicated segment texts.
+///
+/// Derived from what the answer actually costs rather than guessed: a Cyrillic
+/// target runs ~2.2 characters per token, the `[[n]]` markers add ~7 characters
+/// per segment, and [`ONE_SHOT_MAX_TOKENS`] is shared with whatever reasoning
+/// the model does first. 10k source characters come back as roughly 5–6k tokens,
+/// which fits with margin — and covers all but the longest few percent of real
+/// mail. Anything past this keeps its original language rather than being
+/// chunked into a second request, which would double the latency and the price.
+const TRANSLATE_MAX_CHARS: usize = 10_000;
+/// And a cap on the count, so a pathological newsletter can't become a thousand
+/// numbered lines.
+const TRANSLATE_MAX_SEGMENTS: usize = 250;
+
+/// Translate one message's body into the user's language, in place.
+///
+/// The reply is not streamed to the UI: it is a numbered segment list, useful
+/// only once spliced back into the body. What the pane gets is progress, and
+/// then a cached translation to re-render from.
+#[tauri::command]
+pub async fn ai_translate(
+    state: State<'_, AppState>,
+    request_id: String,
+    message_id: i64,
+    channel: Channel<AiEvent>,
+) -> Result<()> {
+    let ctx = ai_context(&state.db).await?;
+    // Also caches the body over IMAP if this message has never been opened.
+    let block = email_block(&state, message_id).await?;
+    let (html, text) = state
+        .db
+        .call(move |conn| bodies::get_body(conn, message_id))
+        .await?
+        .unwrap_or((None, None));
+
+    let mut extracted = match (&html, &text) {
+        (Some(html), _) => translate::extract(html),
+        (None, Some(text)) => translate::extract_text(text),
+        (None, None) => translate::Extracted::default(),
+    };
+    if extracted.is_empty() {
+        return Err(SkimError::other("ai", "nothing to translate"));
+    }
+    let truncated = extracted.truncate_to(TRANSLATE_MAX_CHARS, TRANSLATE_MAX_SEGMENTS);
+    // After the budget: the subject is one short line the pane shows above the
+    // body, and it must never be what gets dropped.
+    extracted.add_subject(&block.subject);
+
+    let (system, user) = prompts::translate(&block, &extracted.prompt_list(), &ctx.locale);
+    let job = TranslationJob {
+        db: state.db.clone(),
+        message_id,
+        lang: ctx.locale.clone(),
+        html,
+        text,
+        extracted,
+        truncated,
+    };
+    spawn_stream(
+        &state,
+        request_id,
+        ctx,
+        system,
+        user_turn(user),
+        Vec::new(),
+        ONE_SHOT_MAX_TOKENS,
+        Vec::new(),
+        Persist::Translation(Box::new(job)),
         channel,
     );
     Ok(())
 }
 
 // ---- personal style analysis ----------------------------------------------
-
-/// The user's own words: quoted tails, quote lines, and the signature
-/// delimiter are stripped.
-fn strip_quoted(body: &str) -> String {
-    let mut out = Vec::new();
-    for line in body.lines() {
-        let trimmed = line.trim_start();
-        // Attribution line that introduces a quoted reply.
-        let attribution = (trimmed.starts_with("On ") && trimmed.ends_with("wrote:"))
-            || trimmed.ends_with("пишет:")
-            || trimmed.ends_with("schrieb:")
-            || trimmed.ends_with("a écrit :");
-        if attribution || trimmed.starts_with("-----Original Message-----") || trimmed == "-- " {
-            break;
-        }
-        if trimmed.starts_with('>') {
-            continue;
-        }
-        out.push(line);
-    }
-    out.join("\n").trim().to_string()
-}
 
 /// Scan the user's sent mail and distill a personal writing-style profile.
 /// Progress events cover the scan; the profile itself streams as deltas and
@@ -1042,7 +1197,7 @@ pub async fn ai_analyze_style(
         let Ok(block) = email_block(&state, id).await else {
             continue;
         };
-        let own_words = strip_quoted(&block.body);
+        let own_words = crate::mail::parse::strip_quoted(&block.body);
         // Too short to carry style signal (acks, "thanks!", …) still counts
         // a little — keep a lower bar but skip empties.
         if own_words.chars().count() >= 25 {
@@ -1120,7 +1275,95 @@ pub async fn ai_analyze_style(
 
 #[cfg(test)]
 mod tests {
-    use super::{window_title, Provider};
+    use super::{bodies, store_translation, translate, window_title, Provider, TranslationJob};
+    use crate::db::Db;
+
+    /// A mailbox with one message whose body is already cached.
+    async fn seed(db: &Db) -> i64 {
+        db.call(|conn| {
+            conn.execute(
+                "INSERT INTO accounts (id, email, provider, imap_host, smtp_host, created_at)
+                 VALUES ('a1', 'me@example.com', 'custom', 'imap.example.com',
+                         'smtp.example.com', 0)",
+                [],
+            )?;
+            conn.execute(
+                "INSERT INTO folders (account_id, imap_name, role, display_name, unread_count,
+                                      sort_order)
+                 VALUES ('a1', 'INBOX', 'inbox', 'Inbox', 0, 0)",
+                [],
+            )?;
+            let folder = conn.last_insert_rowid();
+            conn.execute(
+                "INSERT INTO messages (account_id, folder_id, uid, date, is_read, is_starred,
+                                       has_attachments, body_state)
+                 VALUES ('a1', ?1, 1, 0, 0, 0, 0, 1)",
+                rusqlite::params![folder],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .unwrap()
+    }
+
+    /// The whole backend half of a translation, minus the network: a numbered
+    /// reply goes in, a translated body comes out of the cache with its markup
+    /// untouched.
+    #[tokio::test]
+    async fn a_numbered_reply_becomes_a_cached_translated_body() {
+        let db = Db::open_in_memory().unwrap();
+        let id = seed(&db).await;
+        let html = "<p>Hello <a href=\"https://x.test\">friend</a></p><p>Bye for now</p>";
+        let job = TranslationJob {
+            db: db.clone(),
+            message_id: id,
+            lang: "ru".into(),
+            html: Some(html.to_string()),
+            text: None,
+            extracted: translate::extract(html),
+            truncated: false,
+        };
+        store_translation(job, "[[1]] Привет, <1>друг</1>\n[[2]] Пока\n")
+            .await
+            .unwrap();
+
+        let got = db
+            .call(move |conn| bodies::get_translation(conn, id, "ru"))
+            .await
+            .unwrap()
+            .expect("cached");
+        assert_eq!(
+            got.html.unwrap(),
+            "<p>Привет, <a href=\"https://x.test\">друг</a></p><p>Пока</p>"
+        );
+        assert!(!got.truncated);
+    }
+
+    /// A reply with nothing usable in it must not be cached: the pane would then
+    /// show the original while claiming it was translated.
+    #[tokio::test]
+    async fn an_unusable_reply_is_not_cached() {
+        let db = Db::open_in_memory().unwrap();
+        let id = seed(&db).await;
+        let html = "<p>Hello there</p>";
+        let job = TranslationJob {
+            db: db.clone(),
+            message_id: id,
+            lang: "ru".into(),
+            html: Some(html.to_string()),
+            text: None,
+            extracted: translate::extract(html),
+            truncated: false,
+        };
+        assert!(store_translation(job, "I'm sorry, I can't help with that.")
+            .await
+            .is_err());
+        assert!(db
+            .call(move |conn| bodies::get_translation(conn, id, "ru"))
+            .await
+            .unwrap()
+            .is_none());
+    }
 
     #[test]
     fn window_title_collapses_whitespace_and_truncates() {

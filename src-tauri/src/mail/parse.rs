@@ -244,15 +244,45 @@ pub fn html_to_text(html: &str) -> String {
         }
         i += 1;
     }
-    // Decode the handful of entities that matter for readability.
-    let out = out
-        .replace("&nbsp;", " ")
+    let out = decode_entities(&out);
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The handful of entities that matter for readability. Deliberately not a full
+/// entity table: this feeds text extraction, not rendering.
+pub fn decode_entities(text: &str) -> String {
+    text.replace("&nbsp;", " ")
         .replace("&amp;", "&")
         .replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
-        .replace("&#39;", "'");
-    out.split_whitespace().collect::<Vec<_>>().join(" ")
+        .replace("&#39;", "'")
+}
+
+/// The sender's own words: quoted tails, quote lines, and the signature
+/// delimiter are stripped.
+///
+/// Only what comes *before* the attribution line survives, so a forwarded or
+/// bottom-posted message reduces to nothing — callers that need text at any
+/// cost (language detection) must fall back to the unstripped body.
+pub fn strip_quoted(body: &str) -> String {
+    let mut out = Vec::new();
+    for line in body.lines() {
+        let trimmed = line.trim_start();
+        // Attribution line that introduces a quoted reply.
+        let attribution = (trimmed.starts_with("On ") && trimmed.ends_with("wrote:"))
+            || trimmed.ends_with("пишет:")
+            || trimmed.ends_with("schrieb:")
+            || trimmed.ends_with("a écrit :");
+        if attribution || trimmed.starts_with("-----Original Message-----") || trimmed == "-- " {
+            break;
+        }
+        if trimmed.starts_with('>') {
+            continue;
+        }
+        out.push(line);
+    }
+    out.join("\n").trim().to_string()
 }
 
 /// A `<uri>`-bracketed target extracted from a `List-Unsubscribe` header.
@@ -340,6 +370,38 @@ mod tests {
             false,
             false,
         )
+    }
+
+    #[test]
+    fn strip_quoted_keeps_only_the_words_above_the_attribution() {
+        let body = "Sounds good, thanks!\n\n\
+                    On Tue, Aug 4, 2026 at 10:00, Ann <ann@example.com> wrote:\n\
+                    > the original question\n";
+        assert_eq!(strip_quoted(body), "Sounds good, thanks!");
+    }
+
+    #[test]
+    fn strip_quoted_drops_quote_lines_and_the_signature() {
+        let body = "My answer\n> quoted bit\nStill mine\n-- \nSignature line";
+        assert_eq!(strip_quoted(body), "My answer\nStill mine");
+    }
+
+    #[test]
+    fn strip_quoted_returns_nothing_for_a_bottom_posted_reply() {
+        // The whole point of the fallback in `mail::lang`: there are no own
+        // words above the attribution, so detection must not rely on this.
+        let body = "On Tue, Aug 4, 2026 at 10:00, Ann <ann@example.com> wrote:\n\
+                    > die eigentliche Frage\n\n\
+                    Meine Antwort steht darunter.";
+        assert!(strip_quoted(body).is_empty());
+    }
+
+    #[test]
+    fn decode_entities_covers_the_readability_set() {
+        assert_eq!(
+            decode_entities("a&nbsp;b &amp; &lt;c&gt; &quot;d&quot; &#39;e&#39;"),
+            "a b & <c> \"d\" 'e'"
+        );
     }
 
     #[test]

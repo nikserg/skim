@@ -4,6 +4,7 @@
   import MessageList from "./components/MessageList.svelte";
   import ReadingPane from "./components/ReadingPane.svelte";
   import ComposeForm from "./components/ComposeForm.svelte";
+  import AiAsk from "./components/AiAsk.svelte";
   import AiRecap from "./components/AiRecap.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import FolderEditor from "./components/FolderEditor.svelte";
@@ -46,6 +47,17 @@
   // closing and can be popped into a window of its own. The panel only decides
   // which folder is being digested.
   const recap = $derived(aiSessions.recap);
+
+  // The chat about the open email, while an inline surface is showing it — the
+  // same session the reading pane docks. Scoped to that email on purpose: a
+  // chat left open on a message the user has since navigated away from is not
+  // on screen, and must not go on claiming Escape.
+  const inlineAsk = $derived.by(() => {
+    const session = aiSessions.askFor(ui.openMessageId);
+    return session?.open ? session : undefined;
+  });
+  // Expanded, it is drawn here — over the panes it covers.
+  const expandedAsk = $derived(inlineAsk?.expanded ? inlineAsk : undefined);
   $effect(() => {
     // The panel closing ends the digest — whichever way it was closed (✕, Esc,
     // opening a message). A digest that moved into a window is not this panel's
@@ -273,9 +285,8 @@
     // Letter shortcuts match the physical key (e.code), not the produced
     // character (e.key): in a Cyrillic (or any non-Latin) layout the K key
     // emits "л", not "k", so an e.key check would only work in a US layout.
-    // Ctrl/Cmd+K opens the palette (idempotent — no-op when already open). When
-    // it's open and a chat is active, the palette's own window handler repurposes
-    // this chord to toggle the expanded view instead of closing.
+    // Ctrl/Cmd+K opens the palette (idempotent — no-op when already open); the
+    // chat views have their own chords (Ctrl+E, Ctrl+Shift+E).
     if ((e.ctrlKey || e.metaKey) && e.code === "KeyK") {
       e.preventDefault();
       palette.show();
@@ -304,11 +315,19 @@
       mail.selectedThreadId = null;
       return;
     }
+    // While the chat about an email is up, Escape is its own — it collapses the
+    // chat, then closes it. Left to run, this would clear the thread selection
+    // out from under it instead, which is the opposite of what Escape looks
+    // like it should do there.
+    if (e.key === "Escape" && inlineAsk) return;
     if (
       palette.open ||
       ui.shortcutsOpen ||
       ui.movePicker !== null ||
       ui.folderEditor !== null ||
+      // The expanded chat covers the list: don't archive or move what is behind
+      // it just because the focus has left its input.
+      expandedAsk !== undefined ||
       isTyping() ||
       e.ctrlKey ||
       e.metaKey ||
@@ -353,6 +372,14 @@
         if (ai.keyPresent) {
           e.preventDefault();
           ui.readingAi?.ask();
+        }
+        return;
+      case "KeyT":
+        // Toggles the translation, whether or not the bar offered one — the
+        // language guess decides what to suggest, never what is possible.
+        if (ai.keyPresent) {
+          e.preventDefault();
+          ui.readingAi?.translate();
         }
         return;
     }
@@ -420,6 +447,22 @@
           <ReadingPane />
         {/if}
       </main>
+      {#if expandedAsk}
+        <!-- The chat about an email, given the whole window. Drawn here and not
+             in the reading pane because that pane is one of the things it
+             covers; the dock and this are the same session, so switching
+             between them costs nothing. -->
+        <div class="ask-full">
+          <AiAsk
+            view="full"
+            session={expandedAsk}
+            onsend={(q) => aiSessions.send(expandedAsk, q)}
+            onclose={() => aiSessions.close(expandedAsk)}
+            onpopout={() => void aiSessions.detach(expandedAsk)}
+            ontoggleexpand={() => aiSessions.toggleExpand(expandedAsk)}
+          />
+        </div>
+      {/if}
       <CommandPalette />
       <FolderPicker />
       <FolderEditor />
@@ -442,5 +485,15 @@
     flex: 1;
     display: flex;
     min-height: 0;
+  }
+  /* Everything below the titlebar — which stays reachable, so the window can
+     still be moved, minimised and closed while the chat is up. No scrim: the
+     panel is opaque, and there is nothing left showing to dim. */
+  .ask-full {
+    position: fixed;
+    inset: var(--titlebar-h) 0 0 0;
+    z-index: 100;
+    display: flex;
+    background: var(--bg);
   }
 </style>

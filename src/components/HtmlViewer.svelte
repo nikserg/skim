@@ -265,6 +265,30 @@
         y: Math.max(8, Math.min(y + 8, window.innerHeight - 180)),
       };
     });
+    // A click anywhere in the message moves focus into the iframe, and key
+    // events in a nested browsing context never reach the app's window — so
+    // every shortcut (E/S/U/V/J/K/R/F/Q/T, Del, !) silently stopped working
+    // until the user clicked back into the chrome. Replay the event on the
+    // parent window, where App.svelte's single handler owns the rules (its
+    // own guards still decide what to do with it). Carrying defaultPrevented
+    // back is what keeps preventDefault working: Q focuses the Ask input
+    // during keydown, and the original "q" would otherwise be typed into it.
+    doc.addEventListener("keydown", (e) => {
+      if (e.isComposing) return;
+      const replay = new KeyboardEvent("keydown", {
+        key: e.key,
+        code: e.code,
+        shiftKey: e.shiftKey,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        altKey: e.altKey,
+        repeat: e.repeat,
+        bubbles: true,
+        cancelable: true,
+      });
+      window.dispatchEvent(replay);
+      if (replay.defaultPrevented) e.preventDefault();
+    });
     // Hover preview: report the real destination to the status bar. Entering
     // anything that isn't a link (or leaving the document) clears it.
     doc.addEventListener("mouseover", (e) => {

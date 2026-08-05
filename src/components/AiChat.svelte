@@ -76,9 +76,9 @@
 <div class="ai-chat" class:standalone>
   <div class="chat-tools">
     {#if standalone}
-      <ChatViewToggle mode="in" onclick={() => onreturn?.()} />
+      <ChatViewToggle mode="in" keys="Esc" onclick={() => onreturn?.()} />
     {:else}
-      <ChatViewToggle mode="out" onclick={() => onpopout?.()} />
+      <ChatViewToggle mode="out" keys="Ctrl Shift E" onclick={() => onpopout?.()} />
     {/if}
   </div>
   <div class="chat" bind:this={threadEl}>

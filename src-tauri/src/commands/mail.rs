@@ -1,7 +1,9 @@
-use crate::db::models::{Folder, InviteView, RenderedBody, ThreadDetail, ThreadRow};
+use crate::db::models::{
+    Folder, InviteView, RenderedBody, ThreadDetail, ThreadRow, TranslateState,
+};
 use crate::db::{bodies, queries};
 use crate::error::{Result, SkimError};
-use crate::mail::{ics, sanitize, suspicion};
+use crate::mail::{ics, lang, sanitize, suspicion};
 use crate::state::AppState;
 use serde_json::json;
 use tauri::{AppHandle, Emitter, State};
@@ -237,11 +239,15 @@ pub async fn get_thread(state: State<'_, AppState>, thread_id: i64) -> Result<Th
 }
 
 /// Fetch (if needed), sanitize, and return a message body for display.
+///
+/// `translated`: `Some(false)` asks for the original even when a translation is
+/// cached; otherwise a cached translation is what comes back.
 #[tauri::command]
 pub async fn get_message_body(
     state: State<'_, AppState>,
     message_id: i64,
     show_images: Option<bool>,
+    translated: Option<bool>,
 ) -> Result<RenderedBody> {
     // Ensure the body is cached locally.
     let cached = state
@@ -273,7 +279,7 @@ pub async fn get_message_body(
     }
 
     // Image policy: global setting, per-sender allowlist, or one-off flag.
-    let (body, from_addr, policy_always, sender_allowed) = state
+    let (body, from_addr, policy_always, sender_allowed, locale, cached) = state
         .db
         .call(move |conn| {
             let body = bodies::get_body(conn, message_id)?;
@@ -293,11 +299,15 @@ pub async fn get_message_body(
                 }
                 None => false,
             };
+            let locale = queries::get_setting(conn, "locale")?.unwrap_or_else(|| "en".into());
+            let cached = bodies::get_translation(conn, message_id, &locale)?;
             Ok((
                 body,
                 from_addr,
                 policy.as_deref() == Some("always"),
                 allowed,
+                locale,
+                cached,
             ))
         })
         .await?;
@@ -305,10 +315,20 @@ pub async fn get_message_body(
     let (html, text) = body.unwrap_or((None, None));
     let allow_images = show_images.unwrap_or(false) || policy_always || sender_allowed;
 
-    let rendered = match (html, text) {
-        (Some(html), _) => sanitize::sanitize_email_html(&html, message_id, allow_images),
+    // A stored translation stands in for the original and goes through the very
+    // same pipeline below, so images, `cid:` parts and link checks keep working.
+    // It is also what the pane comes up showing: having translated a message
+    // once, seeing it translated again is the expected thing.
+    let showing = cached.is_some() && translated != Some(false);
+    let (html, text) = match (&cached, showing) {
+        (Some(t), true) => (t.html.clone(), t.text.clone()),
+        _ => (html, text),
+    };
+
+    let rendered = match (&html, &text) {
+        (Some(html), _) => sanitize::sanitize_email_html(html, message_id, allow_images),
         (None, Some(text)) => sanitize::SanitizedHtml {
-            html: sanitize::text_to_html(&text),
+            html: sanitize::text_to_html(text),
             blocked_images: 0,
         },
         (None, None) => sanitize::SanitizedHtml {
@@ -342,6 +362,35 @@ pub async fn get_message_body(
             .await?
     };
 
+    // An invite's body is replaced by the card, so there is nothing to offer.
+    let is_invite_card = invite.as_ref().is_some_and(|i| i.method != "reply");
+    let translate = match &cached {
+        Some(t) if !is_invite_card => Some(TranslateState {
+            showing,
+            // Only while the translation is on screen: the heading must match the
+            // body it sits above.
+            subject: showing.then(|| t.subject.clone()).flatten(),
+            cached: true,
+            truncated: t.truncated,
+        }),
+        // Nothing stored yet: offer only for mail the user's own language can't
+        // read. Detection is local and costs microseconds, so it runs per render
+        // rather than being cached and invalidated.
+        None if !is_invite_card => text
+            .as_deref()
+            .and_then(lang::detect)
+            // Detection speaks bare ISO 639-1; the setting normally does too, but
+            // compare primary subtags so an "en-US" would still match English.
+            .filter(|detected| detected != locale.split(['-', '_']).next().unwrap_or(&locale))
+            .map(|_| TranslateState {
+                showing: false,
+                subject: None,
+                cached: false,
+                truncated: false,
+            }),
+        _ => None,
+    };
+
     Ok(RenderedBody {
         message_id,
         html: rendered.html,
@@ -350,6 +399,7 @@ pub async fn get_message_body(
         attachments,
         invite,
         security,
+        translate,
     })
 }
 

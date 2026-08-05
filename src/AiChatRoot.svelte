@@ -78,7 +78,7 @@
   <WindowControls title={session?.title || t("ai.answer")} onclose={returnInline} />
   {#if session?.kind === "ask"}
     <AiAsk
-      standalone
+      view="window"
       {session}
       onsend={(q) => void toMain("ask", q)}
       onreturn={returnInline}

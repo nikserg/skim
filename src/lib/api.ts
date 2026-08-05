@@ -60,8 +60,13 @@ export const api = {
   folderRef: (folderId: number) =>
     invoke<{ role: string | null; displayName: string }>("folder_ref", { folderId }),
   getThread: (threadId: number) => invoke<ThreadDetail>("get_thread", { threadId }),
-  getMessageBody: (messageId: number, showImages?: boolean) =>
-    invoke<RenderedBody>("get_message_body", { messageId, showImages: showImages ?? null }),
+  /** `translated: false` asks for the original even when a translation is cached. */
+  getMessageBody: (messageId: number, showImages?: boolean, translated?: boolean) =>
+    invoke<RenderedBody>("get_message_body", {
+      messageId,
+      showImages: showImages ?? null,
+      translated: translated ?? null,
+    }),
   allowRemoteImages: (senderAddr: string) =>
     invoke<void>("allow_remote_images", { senderAddr }),
   markRead: (messageIds: number[], read: boolean) =>
@@ -262,7 +267,8 @@ export function aiStream(
     | "ai_ask"
     | "ai_chat"
     | "ai_analyze_style"
-    | "ai_recap",
+    | "ai_recap"
+    | "ai_translate",
   args: Record<string, unknown>,
   on: AiHandlers,
 ): () => void {

@@ -21,6 +21,8 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0008_security.sql"),
     include_str!("migrations/0009_backfill.sql"),
     include_str!("migrations/0010_folder_delimiter.sql"),
+    include_str!("migrations/0011_translations.sql"),
+    include_str!("migrations/0012_translated_subject.sql"),
 ];
 
 /// A read the user is waiting on has this long to answer before it is worth
@@ -186,11 +188,12 @@ mod tests {
             let count: i64 = conn.query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN \
                  ('accounts','folders','threads','messages','message_bodies','attachments',\
-                  'drafts','pending_ops','remote_image_senders','settings','invite_rsvps')",
+                  'drafts','pending_ops','remote_image_senders','settings','invite_rsvps',\
+                  'message_translations')",
                 [],
                 |r| r.get(0),
             )?;
-            assert_eq!(count, 11);
+            assert_eq!(count, 12);
             Ok(())
         })
         .unwrap();

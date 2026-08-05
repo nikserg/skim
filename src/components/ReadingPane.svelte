@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, errorMessage } from "../lib/api";
+  import { aiErrorText, aiStream, api, errorMessage } from "../lib/api";
   import { getLocale, t } from "../lib/i18n/index.svelte";
   import { ai } from "../lib/stores/ai.svelte";
   import { aiSessions } from "../lib/stores/aiSession.svelte";
@@ -39,6 +39,12 @@
   );
   // Per-message unsubscribe state: true once the user clicks the chip.
   let unsubscribed = $state<Record<number, boolean>>({});
+  // Which view each message is being shown in. Kept so one toggle can't undo the
+  // other: "show images" must not drop a translation, nor the reverse.
+  let viewOpts = $state<Record<number, { images: boolean; translated: boolean }>>({});
+  // A translation being generated: how many segments are back, or what failed.
+  type Translating = { current: number; total: number } | { error: string };
+  let translating = $state<Record<number, Translating>>({});
   let loadedFor = $state<string | null>(null);
   // The focused (fully open) message in the conversation. Reply/AI actions
   // target it; newer messages collapse above it, older ones below. Defaults to
@@ -94,6 +100,18 @@
 
   // The message reply/AI actions target: focused in conversation, else shown.
   const replyTarget = $derived(conversation ? focused : shown);
+
+  // The heading follows the open message: an untranslated subject sitting above
+  // translated text is exactly the half-done look the feature exists to avoid.
+  // The message list keeps the original — it is an index, and recognizing a
+  // message there beats reading it.
+  const shownSubject = $derived.by(() => {
+    const id = replyTarget?.id;
+    const body = id != null ? bodies[id] : undefined;
+    const translate = typeof body === "object" ? body.translate : null;
+    if (translate?.showing && translate.subject) return translate.subject;
+    return detail?.subject || "—";
+  });
 
   // ---- AI chat over this email ----
   // The chat belongs to the message, not to this pane: the session store keeps
@@ -171,11 +189,17 @@
     if (conversation) focusedEl?.scrollIntoView({ block: "nearest" });
   });
 
-  // Expose the AI chat to the global keyboard handler (Q) in App.svelte. The
-  // closure reads the current reactive state, so a single registration stays
+  // Expose the AI actions to the global keyboard handler (Q, T) in App.svelte.
+  // The closures read the current reactive state, so a single registration stays
   // correct across thread changes.
   $effect(() => {
-    ui.setReadingAi({ ask: openAsk });
+    ui.setReadingAi({
+      ask: openAsk,
+      translate: () => {
+        const id = replyTarget?.id;
+        if (id != null) toggleTranslation(id);
+      },
+    });
     return () => ui.setReadingAi(null);
   });
 
@@ -214,6 +238,10 @@
     bodies = {};
     bodyErrors = {};
     bodyReq.clear();
+    viewOpts = {};
+    // `translating` is NOT reset: a translation still being generated belongs to
+    // its message, not to this pane, and clearing it here would offer to start a
+    // second one for the same message on the way back.
     // The chat is not reset here: it belongs to the message, and the dock
     // follows whichever message the pane settles on.
     try {
@@ -242,7 +270,57 @@
     }
   }
 
-  async function loadBody(messageId: number, showImages?: boolean) {
+  // ---- translation ----
+  // The bar above the body offers this for mail in a language the backend
+  // decided the user doesn't read; T reaches it either way.
+
+  function translateMessage(messageId: number) {
+    const running = translating[messageId];
+    if (running && !("error" in running)) return;
+    translating = { ...translating, [messageId]: { current: 0, total: 0 } };
+    // Deliberately not cancelled when the thread changes: the backend caches the
+    // result, so letting it finish makes the next open free instead of throwing
+    // away tokens already spent.
+    aiStream(
+      "ai_translate",
+      { messageId },
+      {
+        // The reply is a numbered segment list, useless to render — the pane
+        // redraws from the cached body once it lands.
+        delta: () => {},
+        reasoning: () => {},
+        progress: (current, total) => {
+          translating = { ...translating, [messageId]: { current, total } };
+        },
+        done: () => {
+          // Clear the progress only once the translated body is in place, so the
+          // bar never blinks through a state where it says nothing.
+          void loadBody(messageId, undefined, true).finally(() => {
+            const { [messageId]: _done, ...rest } = translating;
+            translating = rest;
+          });
+        },
+        error: (code, message) => {
+          translating = { ...translating, [messageId]: { error: aiErrorText(code, message) } };
+        },
+      },
+    );
+  }
+
+  /** Translation ⇄ original. Generates one the first time there is nothing to show. */
+  function toggleTranslation(messageId: number) {
+    const body = bodies[messageId];
+    if (typeof body !== "object") return;
+    if (body.translate?.showing) {
+      void loadBody(messageId, undefined, false);
+    } else if (body.translate?.cached) {
+      void loadBody(messageId, undefined, true);
+    } else {
+      translateMessage(messageId);
+    }
+  }
+
+  async function loadBody(messageId: number, showImages?: boolean, translated?: boolean) {
     // A body fetch can take seconds (the server may have to be asked), so guard
     // against both ways a late answer can land in the wrong place: the thread
     // changed under us (loadThread clears `bodies`), or this same message was
@@ -262,8 +340,15 @@
       typeof bodies[messageId] === "object" ||
       detail?.messages.find((m) => m.id === messageId)?.bodyState === 1;
     bodies = { ...bodies, [messageId]: local ? "loading" : "fetching" };
+    // Each flag keeps its last value, so passing one doesn't reset the other.
+    const prev = viewOpts[messageId];
+    const opts = {
+      images: showImages ?? prev?.images ?? false,
+      translated: translated ?? prev?.translated ?? true,
+    };
+    viewOpts = { ...viewOpts, [messageId]: opts };
     try {
-      const body = await api.getMessageBody(messageId, showImages);
+      const body = await api.getMessageBody(messageId, opts.images, opts.translated);
       if (stale()) return;
       bodies = { ...bodies, [messageId]: body };
     } catch (e) {
@@ -285,10 +370,13 @@
   }
 
   const allIds = $derived(detail?.messages.map((m) => m.id) ?? []);
-  const anyStarred = $derived(detail?.messages.some((m) => m.isStarred) ?? false);
-  // Read state tracks the visible thread row so the button and the global U
-  // shortcut (App.svelte) always agree. Opening a thread auto-marks it read,
-  // so this is normally true while the pane is shown.
+  // Both toggles track the visible thread row, so the buttons and the global S/U
+  // shortcuts (App.svelte) always agree — those patch the row, and `detail` is a
+  // snapshot taken when the thread opened that nothing refreshes on a flag flip.
+  // The row's isStarred is max(is_starred) over the thread, i.e. the same "any
+  // message starred". Opening a thread auto-marks it read, so isRead is normally
+  // true while the pane is shown.
+  const anyStarred = $derived(mail.selectedThread?.isStarred ?? false);
   const isRead = $derived(mail.selectedThread?.isRead ?? true);
 
   function archive() {
@@ -333,10 +421,6 @@
   function toggleStar() {
     if (!detail) return;
     const on = !anyStarred;
-    detail = {
-      ...detail,
-      messages: detail.messages.map((m) => ({ ...m, isStarred: on })),
-    };
     mail.patchThreadRow(detail.id, { isStarred: on });
     void api.setStarred(allIds, on);
   }
@@ -449,7 +533,7 @@
     </header>
 
     <div class="scroll">
-      <h1 class="subject">{detail.subject || "—"}</h1>
+      <h1 class="subject">{shownSubject}</h1>
 
       {#if conversation}
         {#if newer.length > 0}
@@ -502,13 +586,15 @@
       {/if}
     </div>
 
-    {#if askSession?.open}
-      <!-- AI dock sits above the actions so it's visible at any scroll position. -->
+    {#if askSession?.open && !askSession.expanded}
+      <!-- AI dock sits above the actions so it's visible at any scroll position.
+           Expanded, the same chat is drawn over the whole window by App. -->
       <AiAsk
         session={askSession}
         onsend={(q) => aiSessions.send(askSession, q)}
         onclose={() => aiSessions.close(askSession)}
         onpopout={() => void aiSessions.detach(askSession)}
+        ontoggleexpand={() => aiSessions.toggleExpand(askSession)}
       />
     {/if}
 
@@ -534,6 +620,9 @@
   message: MessageMeta,
   body: RenderedBody | "loading" | "fetching" | "error" | undefined,
 )}
+  {@const loaded = typeof body === "object" ? body : null}
+  {@const job = translating[message.id]}
+  {@const offerTranslate = ai.keyPresent && (loaded?.translate != null || job != null)}
   <article class="message">
     <div class="meta">
       <span class="avatar">{initial(message.from.name ?? message.from.addr)}</span>
@@ -544,17 +633,56 @@
         </div>
         <div class="microlabel">{recipients(message)}</div>
       </div>
-      {#if message.canUnsubscribe}
-        {#if unsubscribed[message.id]}
-          <span class="unsub done">{t("reading.unsubscribed")} ✓</span>
-        {:else}
-          <button class="unsub" onclick={() => unsubscribe(message.id)}>
-            {t("reading.unsubscribe")}
-          </button>
-        {/if}
-      {/if}
       <span class="date microlabel">{formatFull(message.date)}</span>
     </div>
+
+    {#if offerTranslate || message.canUnsubscribe}
+      <!-- One row for the chips that act on this message. The meta line above is
+           identity — sender, recipients, date — so a button in it was a squatter;
+           the framed bars below are the app telling the user something. -->
+      <div class="chips">
+        {#if job && "error" in job}
+          <span class="translate-failed">{job.error}</span>
+          <button class="chip ai" onclick={() => translateMessage(message.id)}>
+            ✦ {t("reading.retry")}
+          </button>
+        {:else if job}
+          <span class="translate-note">
+            <span class="spark">✦</span>
+            {job.total > 0
+              ? t("translate.progress", { percent: Math.round((job.current / job.total) * 100) })
+              : t("translate.working")}
+          </span>
+        {:else if loaded?.translate?.showing}
+          <span class="translate-note">
+            <span class="spark">✦</span>
+            {t("translate.done")}
+          </span>
+          {#if loaded.translate.truncated}
+            <span class="sep">·</span>
+            <span class="translate-note">{t("translate.truncated")}</span>
+          {/if}
+          <button class="chip ai" onclick={() => toggleTranslation(message.id)}>
+            {t("translate.show_original")}<kbd>T</kbd>
+          </button>
+        {:else if offerTranslate}
+          <button class="chip ai" onclick={() => toggleTranslation(message.id)}>
+            ✦ {loaded?.translate?.cached
+              ? t("translate.show_translation")
+              : t("ai.translate")}<kbd>T</kbd>
+          </button>
+        {/if}
+        {#if message.canUnsubscribe}
+          {#if unsubscribed[message.id]}
+            <span class="chip done">{t("reading.unsubscribed")} ✓</span>
+          {:else}
+            <button class="chip" onclick={() => unsubscribe(message.id)}>
+              {t("reading.unsubscribe")}
+            </button>
+          {/if}
+        {/if}
+      </div>
+    {/if}
 
     {#if body === "loading" || body === "fetching" || body === undefined}
       <div class="body-note">{t(body === "fetching" ? "reading.fetching" : "reading.loading")}</div>
@@ -981,28 +1109,11 @@
     flex-shrink: 0;
   }
 
-  /* Quiet, neutral chip — not the AI accent, not danger red. Shows only on
-     mailing-list mail, tied to the sender it unsubscribes from. */
-  .unsub {
-    flex-shrink: 0;
-    font-size: 12px;
-    line-height: 1.4;
-    padding: 1px 8px;
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-s);
-    color: var(--text-dim);
-    white-space: nowrap;
-  }
-  button.unsub:hover {
-    background: var(--hover);
-    color: var(--text);
-  }
-  .unsub.done {
-    color: var(--success);
-    border-color: transparent;
-  }
-
-  .images-bar {
+  /* The two framed bars between the header and the body — blocked images and
+     phishing signals. One shape, so they stack without looking like two
+     different ideas; only the tone differs. */
+  .images-bar,
+  .security-bar {
     margin-top: 12px;
     padding: 8px 12px;
     border: 1px solid var(--hairline-strong);
@@ -1014,19 +1125,10 @@
     flex-wrap: wrap;
     align-items: center;
   }
-  /* Structurally the images bar, but danger-toned: message-level phishing
-     signals. Danger only on the border and title — not the AI accent. */
+  /* Danger-toned: message-level phishing signals. Danger only on the border and
+     title — not the AI accent. */
   .security-bar {
-    margin-top: 12px;
-    padding: 8px 12px;
-    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
-    border-radius: var(--radius-s);
-    font-size: 12.5px;
-    color: var(--text-dim);
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    align-items: center;
+    border-color: color-mix(in srgb, var(--danger) 35%, transparent);
   }
   .security-title {
     color: var(--danger);
@@ -1035,6 +1137,56 @@
   /* The one AI entry point in the banner — accent is correct here. */
   .ai-check {
     color: var(--accent);
+  }
+  /* The chips row: one shape for every action that belongs to this message, so
+     translate and unsubscribe read as siblings instead of competing. */
+  .chips {
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .chip {
+    flex-shrink: 0;
+    font-size: 12px;
+    line-height: 1.4;
+    padding: 2px 9px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-s);
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  button.chip:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  /* AI actions carry the accent, the same one the Ask button uses. */
+  .chip.ai {
+    border-color: var(--accent-dim);
+    color: var(--accent);
+  }
+  button.chip.ai:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .chip.done {
+    color: var(--success);
+    border-color: transparent;
+  }
+  .chip kbd {
+    margin-left: 6px;
+  }
+  .translate-note {
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .translate-note .spark {
+    color: var(--accent);
+  }
+  .translate-failed {
+    font-size: 12px;
+    color: var(--danger);
   }
   /* Browser-style status bar for the hovered link's real destination. */
   .statusbar {

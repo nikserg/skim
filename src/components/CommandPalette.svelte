@@ -199,9 +199,9 @@
       }
       return;
     }
-    // While a chat is open, repurpose Ctrl/Cmd+K to move it into its own window
-    // instead of closing the palette (App keeps it open via palette.show()).
-    if (chat && (e.ctrlKey || e.metaKey) && e.code === "KeyK") {
+    // The same chord that pops the chat about an email out — one key for
+    // "give this chat a window of its own", wherever the chat started.
+    if (chat && (e.ctrlKey || e.metaKey) && e.shiftKey && e.code === "KeyE") {
       e.preventDefault();
       void popOut();
     }

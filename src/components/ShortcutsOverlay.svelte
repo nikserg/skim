@@ -42,8 +42,11 @@
       title: "Skim AI",
       rows: [
         { label: t("ai.ask"), keys: ["Q"] },
-        // Only does anything while the palette's AI chat is open.
-        { label: t("ai.open_window"), keys: ["Ctrl K"] },
+        { label: t("ai.translate"), keys: ["T"] },
+        // The three below only do anything while a chat is open.
+        { label: t("ai.expand"), keys: ["Ctrl E"] },
+        { label: t("ai.open_window"), keys: ["Ctrl Shift E"] },
+        { label: t("ai.close_chat"), keys: ["Esc"] },
       ],
     },
     {
