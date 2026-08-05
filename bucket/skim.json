@@ -1,5 +1,5 @@
 {
-  "version": "1.0.16",
+  "version": "1.0.17",
   "description": "A fast, minimalist, AI-native email client for Windows",
   "homepage": "https://skim-tech.com",
   "license": "MIT",
@@ -9,8 +9,8 @@
   ],
   "architecture": {
     "64bit": {
-      "url": "https://github.com/nikserg/skim/releases/download/v1.0.16/Skim_1.0.16_x64-setup.exe#/dl.7z",
-      "hash": "96a0546307b193b30b58f4786d0081fb21b8f2df5d58d0bb04054212beb0a196"
+      "url": "https://github.com/nikserg/skim/releases/download/v1.0.17/Skim_1.0.17_x64-setup.exe#/dl.7z",
+      "hash": "357e946067a44af0d5f5f08bd03e87bd084dc217aab35610ea6bfefbb27a6f90"
     }
   },
   "post_install": [
