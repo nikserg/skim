@@ -136,7 +136,8 @@ export interface TranslateState {
   subject?: string | null;
   /** A translation is stored, so showing it costs nothing. */
   cached: boolean;
-  /** Only the beginning was translated. */
+  /** Part of the message is still in its original language: it outran the
+   *  request budget, or the reply skipped segments. */
   truncated: boolean;
 }
 

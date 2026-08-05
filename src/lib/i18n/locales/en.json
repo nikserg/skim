@@ -137,7 +137,7 @@
   "translate.done": "Translated by AI",
   "translate.show_original": "Show original",
   "translate.show_translation": "Show translation",
-  "translate.truncated": "the message is long — only the beginning was translated",
+  "translate.truncated": "part of the message is still in its original language",
   "ai.prompt_summarize": "Summarize this email.",
   "ai.check_phishing": "Check for phishing",
   "ai.prompt_phishing": "Is this email a phishing attempt? Check the sender, authentication results, and links, and explain in plain language.",

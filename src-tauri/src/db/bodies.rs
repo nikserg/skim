@@ -144,8 +144,9 @@ pub struct Translation {
     pub text: Option<String>,
     /// Translated subject line, shown as the pane's heading.
     pub subject: Option<String>,
-    /// The message outran one request's budget: past a point it is still in the
-    /// original language.
+    /// Part of the message is still in its original language: either it outran
+    /// one request's budget, or the reply came back short of the segments it was
+    /// asked for.
     pub truncated: bool,
 }
 
