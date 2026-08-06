@@ -444,7 +444,13 @@ fn spawn_stream(
 
 /// Rebuild the body with the translated segments in place and cache it.
 async fn store_translation(job: TranslationJob, answer: &str) -> Result<()> {
-    let segments = translate::parse_reply(answer);
+    // A marker with nothing after it is not an answer: it is what a stream cut
+    // right after `[[n]]` leaves behind. Dropped here rather than downstream,
+    // because kept it would count as a translated segment and `apply` would
+    // splice the empty string over the block, taking the paragraph out of the
+    // mail for good.
+    let mut segments = translate::parse_reply(answer);
+    segments.retain(|_, text| !text.trim().is_empty());
     if segments.is_empty() {
         // Nothing usable came back. Caching the original as its own translation
         // would leave the pane claiming a translated message it never got.
@@ -462,6 +468,18 @@ async fn store_translation(job: TranslationJob, answer: &str) -> Result<()> {
         extracted,
         truncated,
     } = job;
+    // A reply can also come back short of the list it was given: the output
+    // ceiling is shared with whatever reasoning came first, and a model can drop
+    // a segment on its own. Whatever it never answered keeps its original
+    // language, which is the very thing `truncated` reports, so an input that
+    // outran the budget and an answer that did land on the same note instead of
+    // the second passing for a whole translation.
+    //
+    // Segment numbers are the index plus one, with no gaps, so asking for each
+    // one by name is exact where comparing counts is not: a reply that skips a
+    // number while inventing one out of range keeps the total intact.
+    let answered_all = (1..=extracted.len() as u32).all(|id| segments.contains_key(&id));
+    let truncated = truncated || !answered_all;
     let (html, text) = match (&html, &text) {
         (Some(html), _) => (Some(translate::apply(html, &extracted, &segments)), None),
         (None, Some(text)) => (
@@ -1337,6 +1355,96 @@ mod tests {
             "<p>Привет, <a href=\"https://x.test\">друг</a></p><p>Пока</p>"
         );
         assert!(!got.truncated);
+    }
+
+    /// A model that stops mid-list leaves every segment after it in the source
+    /// language, the same half-translated message a too-long mail produces, so
+    /// it carries the same note. Caching it as complete would be the worst of
+    /// both: a body still in its original language, and a cache row that stops
+    /// a second press from ever trying again.
+    #[tokio::test]
+    async fn a_reply_that_stops_mid_list_is_cached_as_truncated() {
+        let db = Db::open_in_memory().unwrap();
+        let id = seed(&db).await;
+        let html = "<p>Hello there</p><p>Bye for now</p>";
+        let job = TranslationJob {
+            db: db.clone(),
+            message_id: id,
+            lang: "ru".into(),
+            html: Some(html.to_string()),
+            text: None,
+            extracted: translate::extract(html),
+            truncated: false,
+        };
+        store_translation(job, "[[1]] Привет\n").await.unwrap();
+
+        let got = db
+            .call(move |conn| bodies::get_translation(conn, id, "ru"))
+            .await
+            .unwrap()
+            .expect("cached");
+        assert_eq!(got.html.unwrap(), "<p>Привет</p><p>Bye for now</p>");
+        assert!(got.truncated, "a partial reply must be flagged");
+    }
+
+    /// The same, for a reply that keeps the total intact by inventing a number:
+    /// two segments asked for, two answered, but one of them is an id nobody
+    /// requested. Counting would call that whole; asking for each number by name
+    /// catches the one that never came back.
+    #[tokio::test]
+    async fn a_reply_that_answers_an_unasked_number_is_cached_as_truncated() {
+        let db = Db::open_in_memory().unwrap();
+        let id = seed(&db).await;
+        let html = "<p>Hello there</p><p>Bye for now</p>";
+        let job = TranslationJob {
+            db: db.clone(),
+            message_id: id,
+            lang: "ru".into(),
+            html: Some(html.to_string()),
+            text: None,
+            extracted: translate::extract(html),
+            truncated: false,
+        };
+        store_translation(job, "[[1]] Привет\n[[3]] Лишнее\n")
+            .await
+            .unwrap();
+
+        let got = db
+            .call(move |conn| bodies::get_translation(conn, id, "ru"))
+            .await
+            .unwrap()
+            .expect("cached");
+        assert_eq!(got.html.unwrap(), "<p>Привет</p><p>Bye for now</p>");
+        assert!(got.truncated, "a missing requested id must be flagged");
+    }
+
+    /// A marker with nothing after it is what a stream cut mid-list leaves
+    /// behind. Counted as an answer, it would splice an empty string over the
+    /// block and take the paragraph out of the mail: worse than not translating
+    /// it, and permanent once cached.
+    #[tokio::test]
+    async fn a_marker_with_no_text_after_it_never_erases_its_block() {
+        let db = Db::open_in_memory().unwrap();
+        let id = seed(&db).await;
+        let html = "<p>Hello there</p><p>Bye for now</p>";
+        let job = TranslationJob {
+            db: db.clone(),
+            message_id: id,
+            lang: "ru".into(),
+            html: Some(html.to_string()),
+            text: None,
+            extracted: translate::extract(html),
+            truncated: false,
+        };
+        store_translation(job, "[[1]] Привет\n[[2]]").await.unwrap();
+
+        let got = db
+            .call(move |conn| bodies::get_translation(conn, id, "ru"))
+            .await
+            .unwrap()
+            .expect("cached");
+        assert_eq!(got.html.unwrap(), "<p>Привет</p><p>Bye for now</p>");
+        assert!(got.truncated, "an empty answer is not an answer");
     }
 
     /// A reply with nothing usable in it must not be cached: the pane would then

@@ -139,7 +139,7 @@
   "translate.done": "Переведено ИИ",
   "translate.show_original": "Показать оригинал",
   "translate.show_translation": "Показать перевод",
-  "translate.truncated": "письмо длинное — переведено только начало",
+  "translate.truncated": "часть письма осталась на языке оригинала",
   "ai.prompt_summarize": "Суммаризируй это письмо.",
   "ai.check_phishing": "Проверить на фишинг",
   "ai.prompt_phishing": "Это письмо похоже на фишинг? Проверь отправителя, результаты аутентификации и ссылки и объясни простым языком.",

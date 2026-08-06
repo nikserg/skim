@@ -168,8 +168,8 @@ pub struct TranslateState {
     pub subject: Option<String>,
     /// A translation is already stored, so showing it costs nothing.
     pub cached: bool,
-    /// Only the beginning was translated — the tail is still in the original
-    /// language.
+    /// Part of the message is still in its original language, because it outran
+    /// the request budget or the reply skipped segments.
     pub truncated: bool,
 }
 
