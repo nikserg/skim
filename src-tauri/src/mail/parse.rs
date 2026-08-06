@@ -1,7 +1,7 @@
 //! Conversion of fetched IMAP data into database rows via `mail-parser`.
 
 use crate::db::models::{Address, NewMessage};
-use mail_parser::{Addr, HeaderName, HeaderValue, MessageParser, MimeHeaders};
+use mail_parser::{Addr, HeaderName, HeaderValue, MessageParser, MimeHeaders, PartType};
 
 fn convert_addr(a: &Addr) -> Option<Address> {
     a.address.as_ref().map(|addr| Address {
@@ -208,9 +208,22 @@ pub fn parse_body(raw: &[u8]) -> ParsedBody {
 
 fn extract_body(parsed: &mail_parser::Message<'_>) -> ParsedBody {
     let html = parsed.body_html(0).map(|s| s.to_string());
+    // `body_text` falls back to converting the HTML part, and that conversion
+    // already skips `<style>` — CSS arriving through it is CSS the message
+    // deliberately shows, so only the sender's own text part is cleaned.
+    let own_text_part = matches!(
+        parsed.text_part(0).map(|p| &p.body),
+        Some(PartType::Text(_))
+    );
     let text = parsed
         .body_text(0)
-        .map(|s| s.to_string())
+        .map(|s| {
+            if own_text_part {
+                strip_css(&s)
+            } else {
+                s.into_owned()
+            }
+        })
         .or_else(|| html.as_deref().map(html_to_text));
 
     let snippet = text.as_deref().map(make_snippet).unwrap_or_default();
@@ -296,6 +309,200 @@ pub fn decode_entities(text: &str) -> String {
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
+}
+
+/// How deep an at-rule may nest before we stop looking. Mail is untrusted, and
+/// a body of nothing but `{` must not cost more than one pass.
+const MAX_CSS_NEST: usize = 4;
+
+/// Element names worth recognising as selectors: mail templates open with
+/// `body{margin:0}` or `td{font-size:14px}` far more often than with a class.
+const HTML_TAGS: &[&str] = &[
+    "a",
+    "body",
+    "blockquote",
+    "br",
+    "button",
+    "center",
+    "div",
+    "em",
+    "font",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "hr",
+    "html",
+    "img",
+    "input",
+    "li",
+    "ol",
+    "p",
+    "span",
+    "strong",
+    "table",
+    "td",
+    "th",
+    "tr",
+    "ul",
+];
+
+/// Drop CSS rule blocks from a plain-text body.
+///
+/// Some senders build their `text/plain` alternative by stripping tags from
+/// their own HTML — `<style>` included — so the body opens with a stylesheet.
+/// The list preview then shows braces instead of words, search indexes property
+/// names, and language detection sees mostly CSS. A block is removed only when
+/// *both* halves look like a rule: a selector in front of the brace and a
+/// `prop: value` list inside it. A message that merely talks about code, or
+/// pastes JSON, keeps every character.
+pub fn strip_css(text: &str) -> String {
+    strip_css_at(text, 0)
+}
+
+fn strip_css_at(text: &str, depth: usize) -> String {
+    if !text.contains('{') {
+        return text.to_string();
+    }
+    let mut out = String::new();
+    // Everything before `kept` is already decided; `search` never re-enters a
+    // block we have looked at, so one rule is examined once.
+    let mut kept = 0;
+    let mut search = 0;
+    let mut changed = false;
+    while let Some(rel) = text[search..].find('{') {
+        let open = search + rel;
+        let Some(close) = matching_brace(text, open) else {
+            // Unbalanced: the rest of the body stays verbatim.
+            break;
+        };
+        // The selector is what stands between the previous line — or the
+        // previous rule — and the brace. Stopping at the newline is what keeps
+        // a sentence that happens to precede a rule.
+        let sel_start = text[kept..open]
+            .rfind(['\n', '}'])
+            .map_or(kept, |i| kept + i + 1);
+        if is_selector(text[sel_start..open].trim())
+            && is_declarations(&text[open + 1..close], depth)
+        {
+            out.push_str(&text[kept..sel_start]);
+            kept = close + 1;
+            changed = true;
+        }
+        search = close + 1;
+    }
+    if !changed {
+        return text.to_string();
+    }
+    out.push_str(&text[kept..]);
+    out.trim().to_string()
+}
+
+/// The `}` that closes the `{` at `open`, or `None` if the braces don't balance.
+fn matching_brace(text: &str, open: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    for (i, ch) in text[open..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(open + i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn is_selector(sel: &str) -> bool {
+    if sel.is_empty() || sel.len() > 200 {
+        return false;
+    }
+    // `@media`, `@supports`, `@font-face` — the at-rule keyword is enough,
+    // because its body has to pass as rules of its own.
+    if sel.starts_with('@') {
+        return true;
+    }
+    sel.split(',').all(|part| {
+        let part = part.trim();
+        !part.is_empty() && part.split_whitespace().all(is_simple_selector)
+    })
+}
+
+fn is_simple_selector(token: &str) -> bool {
+    if !token.chars().all(|c| {
+        c.is_ascii_alphanumeric()
+            || matches!(
+                c,
+                '.' | '_'
+                    | '-'
+                    | '#'
+                    | '*'
+                    | ':'
+                    | '>'
+                    | '+'
+                    | '~'
+                    | '['
+                    | ']'
+                    | '('
+                    | ')'
+                    | '='
+                    | '"'
+                    | '\''
+                    | '^'
+                    | '$'
+                    | '|'
+                    | '/'
+            )
+    }) {
+        return false;
+    }
+    if token.starts_with(['.', '#', '*', ':', '[', '>', '+', '~']) {
+        return true;
+    }
+    // A bare word only counts as a selector if it names an element: this is
+    // what tells `body {…}` from `struct Order {…}`.
+    let name: String = token
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .collect();
+    HTML_TAGS.iter().any(|tag| tag.eq_ignore_ascii_case(&name))
+}
+
+fn is_declarations(inner: &str, depth: usize) -> bool {
+    let inner = inner.trim();
+    if inner.is_empty() {
+        return false;
+    }
+    // An at-rule body holds rules of its own: it qualifies when stripping
+    // those leaves nothing behind.
+    if inner.contains('{') {
+        return depth < MAX_CSS_NEST && strip_css_at(inner, depth + 1).is_empty();
+    }
+    let mut seen = 0;
+    for decl in inner.split(';') {
+        let decl = decl.trim();
+        if decl.is_empty() {
+            continue; // Trailing `;`.
+        }
+        let Some((prop, value)) = decl.split_once(':') else {
+            return false;
+        };
+        let prop = prop.trim();
+        if prop.is_empty()
+            || prop.len() > 40
+            || !prop.chars().all(|c| c.is_ascii_alphabetic() || c == '-')
+            || value.trim().is_empty()
+        {
+            return false;
+        }
+        seen += 1;
+    }
+    seen > 0
 }
 
 /// The sender's own words: quoted tails, quote lines, and the signature
@@ -409,6 +616,104 @@ mod tests {
             false,
             false,
         )
+    }
+
+    #[test]
+    fn strip_css_drops_a_stylesheet_flattened_into_the_text_part() {
+        // The shape a real newsletter arrived in: its `text/plain` is the HTML
+        // with the tags removed, so the `<style>` element came along with it.
+        let body = ".bio{margin:auto}.bio .avatar{margin:auto 30px;width:fit-content}\
+                    @media (max-width: 991px){.bio .avatar{margin:0 auto !important}}\
+                    Hi there, here are this week's picks for you.";
+        assert_eq!(
+            strip_css(body),
+            "Hi there, here are this week's picks for you."
+        );
+    }
+
+    #[test]
+    fn strip_css_removes_bare_element_rules() {
+        let body = "body{margin:0;padding:0}td{font-size:14px}Welcome back.";
+        assert_eq!(strip_css(body), "Welcome back.");
+    }
+
+    #[test]
+    fn strip_css_keeps_a_message_that_talks_about_css() {
+        // No braces at all: the fast path must hand the body back untouched.
+        let body = "The margin on the banner is wrong in Outlook, and the @media \
+                    query never fires. Could you check the .banner rule?";
+        assert_eq!(strip_css(body), body);
+    }
+
+    #[test]
+    fn strip_css_keeps_the_prose_around_an_inline_rule() {
+        let body = "Please apply this:\n  .banner { margin: 0 auto; padding: 12px }\n\
+                    and tell me if Outlook still breaks.";
+        let out = strip_css(body);
+        assert!(out.starts_with("Please apply this:"));
+        assert!(out.ends_with("and tell me if Outlook still breaks."));
+    }
+
+    #[test]
+    fn strip_css_leaves_code_that_is_not_css() {
+        // Neither half looks like a rule: no selector, or no `prop: value`.
+        for body in [
+            "Payload: {\"total\": 42, \"currency\": \"EUR\"}",
+            "fn main() { let x = 1; }",
+            "struct Order { id: u64, total: u32 }",
+        ] {
+            assert_eq!(strip_css(body), body, "must not touch {body}");
+        }
+    }
+
+    #[test]
+    fn strip_css_survives_unbalanced_braces() {
+        assert_eq!(
+            strip_css("Totals {a: 1 and more text"),
+            "Totals {a: 1 and more text"
+        );
+        let noise = "{".repeat(200);
+        assert_eq!(strip_css(&noise), noise);
+    }
+
+    #[test]
+    fn parse_body_cleans_a_senders_flattened_stylesheet() {
+        let raw = "From: News <noreply@example.com>\r\n\
+                   MIME-Version: 1.0\r\n\
+                   Content-Type: multipart/alternative; boundary=\"b1\"\r\n\
+                   \r\n\
+                   --b1\r\n\
+                   Content-Type: text/plain; charset=utf-8\r\n\
+                   \r\n\
+                   .bio{margin:auto}td{font-size:14px}Hi there, here are this week's picks.\r\n\
+                   --b1\r\n\
+                   Content-Type: text/html; charset=utf-8\r\n\
+                   \r\n\
+                   <html><head><style>.bio{margin:auto}</style></head>\
+                   <body><p>Hi there, here are this week's picks.</p></body></html>\r\n\
+                   --b1--\r\n";
+
+        let parsed = parse_body(raw.as_bytes());
+        let text = parsed.text.expect("the text part is kept");
+        assert!(!text.contains('{'), "the stylesheet must be gone: {text}");
+        assert!(text.starts_with("Hi there"));
+        assert!(parsed.snippet.starts_with("Hi there"));
+        // The HTML is what gets rendered — it must come through untouched.
+        assert!(parsed.html.is_some_and(|h| h.contains("<style>")));
+    }
+
+    #[test]
+    fn parse_body_keeps_css_shown_inside_html() {
+        let raw = "From: Dev <dev@example.com>\r\n\
+                   MIME-Version: 1.0\r\n\
+                   Content-Type: text/html; charset=utf-8\r\n\
+                   \r\n\
+                   <html><body><p>Use this rule:</p>\
+                   <pre>.banner { margin: 0 auto }</pre></body></html>\r\n";
+
+        let parsed = parse_body(raw.as_bytes());
+        let text = parsed.text.expect("text is derived from the html");
+        assert!(text.contains("margin"), "quoted css must survive: {text}");
     }
 
     #[test]

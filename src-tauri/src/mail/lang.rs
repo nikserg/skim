@@ -7,7 +7,7 @@
 //! Silence is the safe answer: a body that is too short, too noisy, or simply
 //! ambiguous returns `None` and the pane offers nothing.
 
-use crate::mail::parse::strip_quoted;
+use crate::mail::parse::{strip_css, strip_quoted};
 use std::sync::OnceLock;
 use whatlang::{Detector, Lang};
 
@@ -59,6 +59,10 @@ fn detector() -> &'static Detector {
 /// The body's language as an ISO 639-1 code, or `None` when unsure.
 pub fn detect(body_text: &str) -> Option<String> {
     let head: String = body_text.chars().take(HEAD_CHARS).collect();
+    // Some senders' text part is their HTML with the tags taken out, `<style>`
+    // included, so the body opens with a stylesheet. Braces and property names
+    // are not a language, and there are enough of them to outvote the prose.
+    let head = strip_css(&head);
     // Quoted tails are usually the *other* party's language, so prefer the
     // sender's own words — but a forward or a bottom-posted reply has none, and
     // that's exactly the mail most worth translating. Fall back to the raw head.
@@ -147,6 +151,37 @@ mod tests {
         "お問い合わせいただきありがとうございます。ご注文の商品は本日発送いたしました。\
         配送状況は追跡番号からご確認いただけます。到着までしばらくお待ちください。\
         今後ともよろしくお願いいたします。";
+
+    const EN: &str = "Hi there, check out this week's top candidate picks, chosen from the \
+        preferences you saved earlier. Each profile below has a short introduction written by \
+        the candidate, and you can reply directly if one of them looks like a good match.";
+    /// A stylesheet the way it arrives when a sender flattens their own HTML
+    /// into the text part: no line breaks, `<style>` contents and all.
+    const CSS: &str = ".bio{margin:auto}.bio .avatar{margin:auto 30px;width:fit-content}\
+        @media (max-width: 991px){.bio .avatar{margin:0 auto !important}}\
+        .bio .avatar img{border-radius:50%;width:100px}.bio .name{font-size:20px;\
+        font-weight:600;text-align:center}.bio .location{color:#666;font-size:14px}\
+        .mail-container{margin:0 auto;max-width:600px;padding:24px}\
+        .request{display:block;margin-top:16px}.request .btn{background:#f26625;\
+        border-radius:4px;color:#fff;display:inline-block;padding:12px 24px;\
+        text-decoration:none}td{font-size:14px;line-height:20px}body{margin:0;padding:0}";
+
+    #[test]
+    fn detects_the_language_under_a_flattened_stylesheet() {
+        // The regression: 72% of the sample was CSS, whatlang called the guess
+        // unreliable, and the pane offered no translation for plain English.
+        assert_eq!(detect(&format!("{CSS}{EN}")).as_deref(), Some("en"));
+    }
+
+    #[test]
+    fn a_stylesheet_is_not_a_language() {
+        assert_eq!(detect(CSS), None);
+    }
+
+    #[test]
+    fn css_does_not_outvote_the_prose() {
+        assert_eq!(detect(&format!("{CSS}{RU}")).as_deref(), Some("ru"));
+    }
 
     #[test]
     fn maps_detections_to_iso_639_1() {
