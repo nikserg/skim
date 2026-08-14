@@ -96,7 +96,8 @@
         hint: "V",
         run: async () => {
           const ids = await api.threadMessageIds(thread.id);
-          if (ids.length > 0) ui.openMove({ threadId: thread.id, messageIds: ids });
+          if (ids.length > 0)
+            ui.openMove({ rowKeys: mail.rowKeysForThread(thread.id), messageIds: ids });
         },
       });
     }

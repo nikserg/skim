@@ -1712,12 +1712,6 @@ impl Engine {
         if imap_name.is_empty() || uids.is_empty() {
             return Ok(Vec::new());
         }
-        let uid_set = uids
-            .iter()
-            .map(|u| u.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-
         self.ensure_selected(&imap_name).await?;
 
         let mut affected: Vec<i64> = folder_id.into_iter().collect();
@@ -1733,13 +1727,15 @@ impl Engine {
                 } else {
                     "-"
                 };
-                let session = self.session().await?;
-                let mut stream = session
-                    .uid_store(&uid_set, format!("{sign}FLAGS ({flag})"))
-                    .await
-                    .map_err(imap_err)?;
-                while let Some(item) = stream.next().await {
-                    item.map_err(imap_err)?;
+                for set in uid_sets(&uids) {
+                    let session = self.session().await?;
+                    let mut stream = session
+                        .uid_store(&set, format!("{sign}FLAGS ({flag})"))
+                        .await
+                        .map_err(imap_err)?;
+                    while let Some(item) = stream.next().await {
+                        item.map_err(imap_err)?;
+                    }
                 }
             }
             "archive" => {
@@ -1748,27 +1744,27 @@ impl Engine {
                 if is_gmail_inbox {
                     // Gmail archive = remove the INBOX label; the message
                     // stays in All Mail.
-                    self.delete_and_expunge(&uid_set).await?;
+                    self.delete_and_expunge(&uids).await?;
                 } else {
                     let dest = self.role_folder("archive", "Archive").await?;
-                    self.move_uids(&uid_set, &dest).await?;
+                    self.move_uids(&uids, &dest).await?;
                 }
             }
             "delete" => {
                 let dest = self.role_folder("trash", "Trash").await.ok();
                 match dest {
                     Some(dest) if !dest.eq_ignore_ascii_case(&imap_name) => {
-                        self.move_uids(&uid_set, &dest).await?;
+                        self.move_uids(&uids, &dest).await?;
                     }
                     // Already in trash (or no trash folder): permanent delete.
-                    _ => self.delete_and_expunge(&uid_set).await?,
+                    _ => self.delete_and_expunge(&uids).await?,
                 }
             }
             "junk" => {
                 let dest = self.role_folder("junk", "Junk").await?;
                 // Already in the junk folder: nothing to move.
                 if !dest.eq_ignore_ascii_case(&imap_name) {
-                    self.move_uids(&uid_set, &dest).await?;
+                    self.move_uids(&uids, &dest).await?;
                 }
             }
             // File into a folder the user picked. Unlike archive/delete/junk the
@@ -1789,7 +1785,7 @@ impl Engine {
                             tracing::debug!(error = %e, folder = %dest, "CREATE failed; moving anyway");
                         }
                     }
-                    self.move_uids(&uid_set, dest).await?;
+                    self.move_uids(&uids, dest).await?;
                     if let Some(dest_folder_id) = payload["destFolderId"].as_i64() {
                         affected.push(dest_folder_id);
                     }
@@ -2011,12 +2007,7 @@ impl Engine {
                 .map_err(imap_err)?;
         }
         if !old_uids.is_empty() {
-            let set = old_uids
-                .iter()
-                .map(|u| u.to_string())
-                .collect::<Vec<_>>()
-                .join(",");
-            self.delete_and_expunge(&set).await?;
+            self.delete_and_expunge(&old_uids).await?;
         }
         Ok(self.folder_id_by_name(&drafts_name).await)
     }
@@ -2028,12 +2019,7 @@ impl Engine {
         self.ensure_selected(&drafts_name).await?;
         let uids = self.uid_search_message_id(imap_message_id).await?;
         if !uids.is_empty() {
-            let set = uids
-                .iter()
-                .map(|u| u.to_string())
-                .collect::<Vec<_>>()
-                .join(",");
-            self.delete_and_expunge(&set).await?;
+            self.delete_and_expunge(&uids).await?;
         }
         Ok(())
     }
@@ -2213,7 +2199,14 @@ impl Engine {
         sent_folder_id
     }
 
-    async fn delete_and_expunge(&mut self, uid_set: &str) -> Result<()> {
+    async fn delete_and_expunge(&mut self, uids: &[u32]) -> Result<()> {
+        for set in uid_sets(uids) {
+            self.delete_and_expunge_set(&set).await?;
+        }
+        Ok(())
+    }
+
+    async fn delete_and_expunge_set(&mut self, uid_set: &str) -> Result<()> {
         let session = self.session().await?;
         {
             let mut stream = session
@@ -2251,7 +2244,14 @@ impl Engine {
         Ok(())
     }
 
-    async fn move_uids(&mut self, uid_set: &str, dest: &str) -> Result<()> {
+    async fn move_uids(&mut self, uids: &[u32], dest: &str) -> Result<()> {
+        for set in uid_sets(uids) {
+            self.move_uids_set(&set, dest).await?;
+        }
+        Ok(())
+    }
+
+    async fn move_uids_set(&mut self, uid_set: &str, dest: &str) -> Result<()> {
         let session = self.session().await?;
         match session.uid_mv(uid_set, dest).await {
             Ok(()) => Ok(()),
@@ -2265,7 +2265,7 @@ impl Engine {
                     .uid_copy(uid_set, quote_mailbox(dest))
                     .await
                     .map_err(imap_err)?;
-                self.delete_and_expunge(uid_set).await
+                self.delete_and_expunge_set(uid_set).await
             }
         }
     }
@@ -2551,6 +2551,53 @@ fn display_name(imap_name: &str, _provider: &str) -> String {
         .or_else(|| imap_name.strip_prefix("[Google Mail]/"))
         .unwrap_or(imap_name);
     decode_imap_utf7(stripped)
+}
+
+/// Longest sequence-set we will put on the wire. IMAP command lines are bounded
+/// — commonly around 8 KB — and a bulk selection can run to thousands of
+/// messages, so one op may have to issue several commands.
+const MAX_UID_SET_LEN: usize = 900;
+
+/// Turn UIDs into IMAP sequence-sets. Consecutive UIDs collapse into `a:b`
+/// ranges, which is the common case for a bulk selection, and the result is
+/// split so no single set can overflow the server's command-line limit.
+fn uid_sets(uids: &[u32]) -> Vec<String> {
+    let mut sorted = uids.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+
+    let mut parts: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < sorted.len() {
+        let start = sorted[i];
+        let mut end = start;
+        while i + 1 < sorted.len() && sorted[i + 1] == end + 1 {
+            i += 1;
+            end = sorted[i];
+        }
+        parts.push(if start == end {
+            start.to_string()
+        } else {
+            format!("{start}:{end}")
+        });
+        i += 1;
+    }
+
+    let mut sets: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    for part in parts {
+        if !cur.is_empty() && cur.len() + 1 + part.len() > MAX_UID_SET_LEN {
+            sets.push(std::mem::take(&mut cur));
+        }
+        if !cur.is_empty() {
+            cur.push(',');
+        }
+        cur.push_str(&part);
+    }
+    if !cur.is_empty() {
+        sets.push(cur);
+    }
+    sets
 }
 
 /// Quote a mailbox name as an IMAP quoted-string, mirroring what async-imap
@@ -2889,6 +2936,48 @@ mod fetch_tests {
     #[tokio::test]
     async fn a_dropped_connection_fails_the_probe_at_once() {
         assert!(!probe_against(AfterLogin::CloseSocket, PROBE_TIMEOUT).await);
+    }
+}
+
+#[cfg(test)]
+mod uid_set_tests {
+    use super::{uid_sets, MAX_UID_SET_LEN};
+
+    #[test]
+    fn collapses_runs_into_ranges() {
+        assert_eq!(uid_sets(&[1, 2, 3]), vec!["1:3"]);
+        assert_eq!(uid_sets(&[5]), vec!["5"]);
+        assert_eq!(uid_sets(&[1, 2, 3, 7, 8, 10]), vec!["1:3,7:8,10"]);
+    }
+
+    #[test]
+    fn sorts_and_dedupes_first() {
+        // The op payload carries UIDs in whatever order the rows were ticked.
+        assert_eq!(uid_sets(&[3, 1, 2, 2]), vec!["1:3"]);
+    }
+
+    #[test]
+    fn empty_input_issues_no_command() {
+        assert!(uid_sets(&[]).is_empty());
+    }
+
+    #[test]
+    fn splits_scattered_uids_into_safe_sets() {
+        // Every other UID, so nothing collapses — the worst case for line length.
+        let uids: Vec<u32> = (0..5000).map(|i| i * 2 + 1).collect();
+        let sets = uid_sets(&uids);
+        assert!(
+            sets.len() > 1,
+            "a 5000-UID selection must not be one command"
+        );
+        assert!(sets.iter().all(|s| s.len() <= MAX_UID_SET_LEN));
+        // Nothing may be dropped on the way: the sets still name every UID.
+        let seen: Vec<u32> = sets
+            .iter()
+            .flat_map(|s| s.split(','))
+            .map(|p| p.parse::<u32>().expect("no ranges in scattered input"))
+            .collect();
+        assert_eq!(seen, uids);
     }
 }
 

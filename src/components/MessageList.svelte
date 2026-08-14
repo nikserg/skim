@@ -3,9 +3,10 @@
   import { t } from "../lib/i18n/index.svelte";
   import { ai } from "../lib/stores/ai.svelte";
   import { aiSessions } from "../lib/stores/aiSession.svelte";
-  import { mail } from "../lib/stores/mail.svelte";
+  import { mail, rowKey } from "../lib/stores/mail.svelte";
   import { ui } from "../lib/stores/ui.svelte";
   import MessageRow from "./MessageRow.svelte";
+  import SelectionBar from "./SelectionBar.svelte";
 
   const title = $derived.by(() => {
     const f = mail.selectedFolder;
@@ -96,33 +97,45 @@
 
 <section class="list">
   <header class="head">
-    <h1>{title}</h1>
-    {#if editableFolder}
-      <button class="edit" onclick={openEditor} title={t("folder.edit")} aria-label={t("folder.edit")}>
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round">
-          <path d="M11.2 2.6l2.2 2.2M9.9 3.9l2.2 2.2-6.4 6.4-2.9.7.7-2.9 6.4-6.4z" />
-        </svg>
-      </button>
-    {/if}
-    <div class="head-right">
-      {#if recapAvailable}
-        <button class="recap-chip" onclick={openRecap}>✦ {t("ai.recap")}</button>
-      {/if}
-      {#if unread > 0}
-        <span class="microlabel">{t("list.unread", { n: unread })}</span>
-      {/if}
-      {#if mail.threads.length > 0}
-        <span class="nav-hint" title="{t('shortcuts.next')} · {t('shortcuts.prev')}">
-          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3">
-            <path d="M3.5 5L6 2.5 8.5 5" />
-            <path d="M3.5 7L6 9.5 8.5 7" />
+    {#if mail.selecting}
+      <!-- The header becomes the action bar rather than a second strip
+           appearing: same height, no rows covered, no chrome when idle. -->
+      <SelectionBar />
+    {:else}
+      <h1>{title}</h1>
+      {#if editableFolder}
+        <button class="edit" onclick={openEditor} title={t("folder.edit")} aria-label={t("folder.edit")}>
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round">
+            <path d="M11.2 2.6l2.2 2.2M9.9 3.9l2.2 2.2-6.4 6.4-2.9.7.7-2.9 6.4-6.4z" />
           </svg>
-          <kbd>J</kbd><kbd>K</kbd>
-        </span>
+        </button>
       {/if}
-    </div>
+      <div class="head-right">
+        {#if recapAvailable}
+          <button class="recap-chip" onclick={openRecap}>✦ {t("ai.recap")}</button>
+        {/if}
+        {#if unread > 0}
+          <span class="microlabel">{t("list.unread", { n: unread })}</span>
+        {/if}
+        {#if mail.threads.length > 0}
+          <span class="nav-hint" title="{t('shortcuts.next')} · {t('shortcuts.prev')}">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3">
+              <path d="M3.5 5L6 2.5 8.5 5" />
+              <path d="M3.5 7L6 9.5 8.5 7" />
+            </svg>
+            <kbd>J</kbd><kbd>K</kbd>
+          </span>
+        {/if}
+      </div>
+    {/if}
   </header>
-  <div class="rows" bind:this={rowsEl} bind:clientHeight={viewH} onscroll={onScroll}>
+  <div
+    class="rows"
+    class:selecting={mail.selecting}
+    bind:this={rowsEl}
+    bind:clientHeight={viewH}
+    onscroll={onScroll}
+  >
     {#if mail.threads.length === 0 && !mail.threadsLoading}
       <div class="empty">
         {mail.syncState === "syncing" ? t("sync.syncing") : t("list.empty")}
@@ -135,10 +148,12 @@
           selected={mail.groupThreads
             ? mail.selectedThreadId === thread.id
             : mail.selectedMessageId === thread.messageId}
+          checked={mail.isSelected(rowKey(thread))}
           onselect={() => {
             mail.selectedThreadId = thread.id;
             mail.selectedMessageId = thread.messageId ?? null;
           }}
+          ontoggle={(extend) => mail.toggleRow(rowKey(thread), extend)}
         />
       {/each}
       <div class="spacer" style="height: {(mail.threads.length - end) * rowH}px"></div>
@@ -162,6 +177,10 @@
     justify-content: space-between;
     gap: 8px;
     padding: 18px 16px 12px;
+    /* Pinned so the strip's contents can change without moving the list under
+       the pointer — the selection bar replaces the title, and the AI Recap chip
+       comes and goes with the unread count. */
+    min-height: 57px;
   }
   .head-right {
     display: flex;

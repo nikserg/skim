@@ -15,7 +15,10 @@ let openMessageId = $state<number | null>(null);
 /** What the folder picker is about to move. Carried in the store rather than as
  *  props, so the toolbar button, the V shortcut and the palette all open the
  *  same picker with the same context. */
-export type MoveRequest = { threadId: number; messageIds: number[] };
+/** `rowKeys` are the list rows to drop once the move is confirmed — a whole
+ *  thread's worth for the single-message callers, exactly the ticked rows for a
+ *  bulk move. Plural because the picker now files a selection too. */
+export type MoveRequest = { rowKeys: number[]; messageIds: number[] };
 
 /** Folder whose name is being edited (or which is being deleted). Always one of
  *  the user's own folders — provider folders have no editor. */

@@ -415,7 +415,7 @@
   // — until then nothing has happened yet.
   function openMove() {
     if (!detail) return;
-    ui.openMove({ threadId: detail.id, messageIds: allIds });
+    ui.openMove({ rowKeys: mail.rowKeysForThread(detail.id), messageIds: allIds });
   }
 
   function toggleStar() {

@@ -112,6 +112,109 @@ pub async fn thread_message_ids(state: State<'_, AppState>, thread_id: i64) -> R
         .await
 }
 
+/// Message ids of many threads at once — the bulk-selection path. Calling the
+/// per-thread command in a loop would cost one IPC round trip per ticked row,
+/// and a bulk selection is routinely dozens of them.
+#[tauri::command]
+pub async fn thread_message_ids_bulk(
+    state: State<'_, AppState>,
+    thread_ids: Vec<i64>,
+) -> Result<Vec<i64>> {
+    state
+        .db
+        .read("thread_message_ids_bulk", move |conn| {
+            message_ids_for_threads(conn, &thread_ids)
+        })
+        .await
+}
+
+/// Split out from the command so it can be tested against a seeded database.
+fn message_ids_for_threads(
+    conn: &rusqlite::Connection,
+    thread_ids: &[i64],
+) -> rusqlite::Result<Vec<i64>> {
+    if thread_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    // The ids ride in as a JSON array so the SQL text — and with it the prepared
+    // statement cache entry — stays the same whatever the count.
+    let ids = serde_json::json!(thread_ids).to_string();
+    let mut stmt = conn.prepare_cached(
+        "SELECT m.id FROM messages m JOIN json_each(?1) j ON j.value = m.thread_id",
+    )?;
+    let rows = stmt
+        .query_map(rusqlite::params![ids], |r| r.get(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+#[cfg(test)]
+mod thread_id_tests {
+    use super::message_ids_for_threads;
+    use crate::db::models::NewMessage;
+    use crate::db::queries::insert_message;
+    use crate::db::Db;
+
+    #[test]
+    fn collects_every_message_of_the_named_threads() {
+        let db = Db::open_in_memory().unwrap();
+        db.with(|conn| {
+            conn.execute(
+                "INSERT INTO accounts (id, email, provider, imap_host, smtp_host, created_at)
+                 VALUES ('a1', 'work@example.com', 'custom', 'i.example.com', 's.example.com', 0)",
+                [],
+            )?;
+            conn.execute(
+                "INSERT INTO folders (account_id, imap_name, role, display_name, unread_count, sort_order)
+                 VALUES ('a1', 'INBOX', 'inbox', 'Inbox', 0, 0)",
+                [],
+            )?;
+            let folder: i64 = conn.query_row("SELECT id FROM folders", [], |r| r.get(0))?;
+
+            let mut ids = Vec::new();
+            let mut threads = Vec::new();
+            for uid in 1..=4u32 {
+                let (id, thread) = insert_message(
+                    conn,
+                    &NewMessage {
+                        account_id: "a1".into(),
+                        folder_id: folder,
+                        uid,
+                        message_id: Some(format!("<{uid}@example.com>")),
+                        date: uid as i64,
+                        ..Default::default()
+                    },
+                )?
+                .expect("message inserted");
+                ids.push(id);
+                threads.push(thread);
+            }
+            // Fold the second message into the first one's conversation, so the
+            // set under test is: a two-message thread, a one-message thread, and
+            // a third thread we never ask for.
+            conn.execute(
+                "UPDATE messages SET thread_id = ?1 WHERE id = ?2",
+                rusqlite::params![threads[0], ids[1]],
+            )?;
+
+            let mut got = message_ids_for_threads(conn, &[threads[0], threads[2]])?;
+            got.sort_unstable();
+            // Both messages of the first thread, plus the single-message one —
+            // and nothing from the thread that was never named.
+            let mut want = vec![ids[0], ids[1], ids[2]];
+            want.sort_unstable();
+            assert_eq!(got, want);
+
+            // No threads means no query and no ids — not "everything".
+            assert!(message_ids_for_threads(conn, &[])?.is_empty());
+            // An id that matches no thread contributes nothing.
+            assert!(message_ids_for_threads(conn, &[999_999])?.is_empty());
+            Ok(())
+        })
+        .unwrap();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{build_fts_query, build_fts_query_any};

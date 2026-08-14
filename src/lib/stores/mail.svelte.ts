@@ -25,9 +25,32 @@ const state = $state({
   syncMessage: null as string | null,
   syncProgress: null as { done: number; total: number } | null,
   threadsLoading: false,
+  // How many rows have been FETCHED for the current folder — the paging offset.
+  // Deliberately not `threads.length`: an optimistic archive/delete shrinks the
+  // list, and paging from that shorter length skips exactly as many server rows
+  // as were removed. One row per action went unnoticed; bulk removes dozens.
+  fetched: 0,
+  // Rows ticked for a bulk action, by `rowKey`. Empty means "no selection" and
+  // the list shows no selection chrome at all.
+  selectedKeys: [] as number[],
+  // Where the last tick happened, so Shift+click can extend a range from it.
+  anchorKey: null as number | null,
   // Transient notice for a queued op that failed after all retries.
   opError: null as string | null,
 });
+
+/** Membership lookup for the selection. Rebuilt only when the selection
+ *  changes, so the per-row check while rendering stays O(1). */
+const selectedSet = $derived(new Set(state.selectedKeys));
+
+/** The canonical identity of a list row. Rows are threads when grouping is on
+ *  and messages when it is off, so this is the one expression that identifies a
+ *  row in either mode — used for `{#each}` keys, paging dedupe and selection.
+ *  The two id spaces can collide numerically, which is safe only because the
+ *  selection is cleared whenever the grouping mode changes. */
+export function rowKey(t: ThreadRow): number {
+  return t.messageId ?? t.id;
+}
 
 let listenersAttached = false;
 let opErrorTimer: ReturnType<typeof setTimeout> | null = null;
@@ -161,6 +184,8 @@ async function switchAccount(id: string) {
   state.selectedMessageId = null;
   state.folders = [];
   state.threads = [];
+  state.fetched = 0;
+  clearSelection();
   state.syncState = "idle";
   state.syncMessage = null;
   state.syncProgress = null;
@@ -211,32 +236,47 @@ async function openLocation(folderId: number, threadId: number | null, messageId
 
 /** One page of rows for a folder — threads when grouping is on, else messages.
  *  Negative ids are virtual (cross-account) folders, addressed by role/label. */
-function fetchPage(folderId: number, offset: number): Promise<ThreadRow[]> {
+function fetchPage(folderId: number, offset: number, limit = PAGE): Promise<ThreadRow[]> {
   if (folderId < 0) {
     const virtual = state.folders.find((f) => f.id === folderId);
     if (!virtual) return Promise.resolve([]);
     const label = virtual.role === null ? virtual.displayName : null;
     return state.groupThreads
-      ? api.listUnifiedThreads(virtual.role, label, offset, PAGE)
-      : api.listUnifiedMessages(virtual.role, label, offset, PAGE);
+      ? api.listUnifiedThreads(virtual.role, label, offset, limit)
+      : api.listUnifiedMessages(virtual.role, label, offset, limit);
   }
   return state.groupThreads
-    ? api.listThreads(folderId, offset, PAGE)
-    : api.listMessages(folderId, offset, PAGE);
+    ? api.listThreads(folderId, offset, limit)
+    : api.listMessages(folderId, offset, limit);
 }
+
+/** Deepest a refresh will re-read. A list scrolled thousands of rows down does
+ *  not need all of them re-fetched every time a message arrives. */
+const MAX_REFRESH = 500;
 
 async function refreshThreads() {
   if (state.selectedFolderId === null) return;
-  state.threads = await fetchPage(state.selectedFolderId, 0);
+  // Reload as deep as the list already is, not just the first page: otherwise
+  // every `mail:updated` — including the one each bulk action emits — snaps a
+  // scrolled list back to 100 rows under the user.
+  const depth = Math.min(
+    Math.max(PAGE, Math.ceil(state.threads.length / PAGE) * PAGE),
+    MAX_REFRESH,
+  );
+  state.threads = await fetchPage(state.selectedFolderId, 0, depth);
+  state.fetched = state.threads.length;
+  pruneSelection();
 }
 
 async function selectFolder(id: number) {
   state.selectedFolderId = id;
   state.selectedThreadId = null;
   state.selectedMessageId = null;
+  clearSelection();
   state.threadsLoading = true;
   try {
     state.threads = await fetchPage(id, 0);
+    state.fetched = state.threads.length;
   } finally {
     state.threadsLoading = false;
   }
@@ -252,16 +292,65 @@ async function loadMoreThreads() {
   const grouped = state.groupThreads;
   loadingMore = true;
   try {
-    const more = await fetchPage(folderId, state.threads.length);
+    const more = await fetchPage(folderId, state.fetched);
     // The user may have switched folders (or grouping) mid-fetch — these rows
     // belong to the previous view, don't append them to the new one.
     if (state.selectedFolderId !== folderId || state.groupThreads !== grouped) return;
+    state.fetched += more.length;
     // A concurrent refresh can shift the offset; drop rows we already show.
-    const seen = new Set(state.threads.map((t) => t.messageId ?? t.id));
-    state.threads = [...state.threads, ...more.filter((t) => !seen.has(t.messageId ?? t.id))];
+    const seen = new Set(state.threads.map(rowKey));
+    state.threads = [...state.threads, ...more.filter((t) => !seen.has(rowKey(t)))];
   } finally {
     loadingMore = false;
   }
+}
+
+function clearSelection() {
+  state.selectedKeys = [];
+  state.anchorKey = null;
+}
+
+/** Drop keys whose row is no longer on screen. `refreshThreads` truncates the
+ *  list back to one page, so without this a selection could outlive its rows
+ *  and act on mail the user can't see. */
+function pruneSelection() {
+  if (state.selectedKeys.length === 0) return;
+  const live = new Set(state.threads.map(rowKey));
+  state.selectedKeys = state.selectedKeys.filter((k) => live.has(k));
+  if (state.anchorKey !== null && !live.has(state.anchorKey)) state.anchorKey = null;
+}
+
+/** Tick or untick one row. With `extend`, cover everything between the last
+ *  ticked row and this one instead — a Shift+click range. */
+function toggleRow(key: number, extend = false) {
+  const anchor = state.anchorKey;
+  if (extend && anchor !== null && anchor !== key) {
+    const keys = state.threads.map(rowKey);
+    const from = keys.indexOf(anchor);
+    const to = keys.indexOf(key);
+    if (from !== -1 && to !== -1) {
+      const range = keys.slice(Math.min(from, to), Math.max(from, to) + 1);
+      // A range always adds; dragging back over it should not clear what the
+      // user just covered.
+      const merged = new Set(state.selectedKeys);
+      for (const k of range) merged.add(k);
+      state.selectedKeys = [...merged];
+      state.anchorKey = key;
+      return;
+    }
+  }
+  state.selectedKeys = selectedSet.has(key)
+    ? state.selectedKeys.filter((k) => k !== key)
+    : [...state.selectedKeys, key];
+  state.anchorKey = key;
+}
+
+/** Select every row currently loaded — deliberately not "every message in the
+ *  folder". Skim has no undo, so a bulk action must never reach mail that was
+ *  never on screen. */
+function selectAllLoaded() {
+  state.selectedKeys = state.threads.map(rowKey);
+  state.anchorKey = null;
 }
 
 /** Toggle thread grouping and reload the current folder in the new mode. */
@@ -270,10 +359,14 @@ async function setGroupThreads(on: boolean) {
   state.groupThreads = on;
   state.selectedThreadId = null;
   state.selectedMessageId = null;
+  // Row keys mean different things in the two modes, so a selection cannot
+  // survive the switch.
+  clearSelection();
   if (state.selectedFolderId !== null) {
     state.threadsLoading = true;
     try {
       state.threads = await fetchPage(state.selectedFolderId, 0);
+      state.fetched = state.threads.length;
     } finally {
       state.threadsLoading = false;
     }
@@ -329,6 +422,38 @@ export const mail = {
   get selectedFolder() {
     return state.folders.find((f) => f.id === state.selectedFolderId) ?? null;
   },
+
+  // ── Bulk selection ────────────────────────────────────────────────────────
+  /** The ticked rows themselves. Derived from the live list, so a row that has
+   *  gone (refresh, optimistic removal) can never be acted on. */
+  get selectedRows(): ThreadRow[] {
+    return state.selectedKeys.length === 0
+      ? []
+      : state.threads.filter((t) => selectedSet.has(rowKey(t)));
+  },
+  get selectionCount() {
+    return this.selectedRows.length;
+  },
+  /** True once anything is ticked — the list shows checkboxes on every row and
+   *  the header turns into the action bar. */
+  get selecting() {
+    return state.selectedKeys.length > 0;
+  },
+  /** Move is the one bulk action that cannot span mailboxes: IMAP has no
+   *  cross-account MOVE, so `move_targets` returns nothing for such a set. */
+  get selectionSpansAccounts() {
+    const rows = this.selectedRows;
+    return rows.length > 1 && rows.some((t) => t.accountId !== rows[0].accountId);
+  },
+  isSelected: (key: number) => selectedSet.has(key),
+  /** Every loaded row belonging to a thread, for the actions that still work
+   *  one conversation at a time. */
+  rowKeysForThread: (threadId: number) =>
+    state.threads.filter((t) => t.id === threadId).map(rowKey),
+  toggleRow,
+  selectAllLoaded,
+  clearSelection,
+
   get selectedThread() {
     return state.threads.find((t) => t.id === state.selectedThreadId) ?? null;
   },
@@ -461,14 +586,50 @@ export const mail = {
   // In the unified view the active account is null, so this syncs every engine.
   syncNow: () => api.syncNow(activeAccount()?.id),
 
-  /** Optimistically drop a thread from the visible list (archive/delete). */
+  /** Optimistically drop a thread from the visible list (archive/delete).
+   *  Every row of the thread goes: the callers all act on the whole thread. */
   removeThreadFromList(threadId: number) {
+    const gone = state.threads.filter((t) => t.id === threadId).map(rowKey);
     state.threads = state.threads.filter((t) => t.id !== threadId);
-    if (state.selectedThreadId === threadId) state.selectedThreadId = null;
+    if (state.selectedThreadId === threadId) {
+      state.selectedThreadId = null;
+      state.selectedMessageId = null;
+    }
+    if (gone.length > 0) {
+      const dropped = new Set(gone);
+      state.selectedKeys = state.selectedKeys.filter((k) => !dropped.has(k));
+    }
+  },
+
+  /** Optimistically drop specific rows — the bulk path, which acts on exactly
+   *  the rows that were ticked rather than on whole threads. */
+  removeRowsFromList(keys: number[]) {
+    const dropped = new Set(keys);
+    const wasHighlighted = state.threads.some(
+      (t) =>
+        dropped.has(rowKey(t)) &&
+        (state.groupThreads
+          ? t.id === state.selectedThreadId
+          : t.messageId === state.selectedMessageId),
+    );
+    state.threads = state.threads.filter((t) => !dropped.has(rowKey(t)));
+    if (wasHighlighted) {
+      state.selectedThreadId = null;
+      state.selectedMessageId = null;
+    }
+    state.selectedKeys = state.selectedKeys.filter((k) => !dropped.has(k));
+    if (state.anchorKey !== null && dropped.has(state.anchorKey)) state.anchorKey = null;
   },
 
   /** Optimistically patch a thread row in the visible list. */
   patchThreadRow(threadId: number, patch: Partial<ThreadRow>) {
     state.threads = state.threads.map((t) => (t.id === threadId ? { ...t, ...patch } : t));
+  },
+
+  /** Optimistically patch specific rows — the bulk counterpart, which touches
+   *  exactly the ticked rows rather than every row of their threads. */
+  patchRows(keys: number[], patch: Partial<ThreadRow>) {
+    const touched = new Set(keys);
+    state.threads = state.threads.map((t) => (touched.has(rowKey(t)) ? { ...t, ...patch } : t));
   },
 };

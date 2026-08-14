@@ -381,6 +381,7 @@ pub fn run() {
             commands::ai::open_ai_window,
             commands::search::search_messages,
             commands::search::thread_message_ids,
+            commands::search::thread_message_ids_bulk,
             commands::settings::get_settings,
             commands::settings::set_setting,
             commands::settings::log_frontend_error,

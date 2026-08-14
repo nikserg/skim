@@ -77,7 +77,7 @@
     // Optimistic, exactly like archive: the row leaves the list now and the
     // queued op catches the server up. A move that fails for good surfaces as
     // an ops:failed notice, which also refreshes the list back.
-    mail.removeThreadFromList(req.threadId);
+    mail.removeRowsFromList(req.rowKeys);
     void api.moveMessages(req.messageIds, folder?.id ?? null, create ? query : undefined);
   }
 

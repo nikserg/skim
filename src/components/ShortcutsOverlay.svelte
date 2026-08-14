@@ -20,6 +20,8 @@
       rows: [
         { label: t("shortcuts.next"), keys: ["J"] },
         { label: t("shortcuts.prev"), keys: ["K"] },
+        { label: t("shortcuts.select"), keys: ["X"] },
+        { label: t("shortcuts.select_all"), keys: ["Ctrl A"] },
         { label: t("shortcuts.clear"), keys: ["Esc"] },
       ],
     },
