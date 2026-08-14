@@ -109,6 +109,9 @@ export const api = {
     invoke<SearchHit[]>("search_messages", { query, limit, accountId: accountId ?? null }),
   threadMessageIds: (threadId: number) =>
     invoke<number[]>("thread_message_ids", { threadId }),
+  /** Same, for many threads at once — one round trip for a bulk selection. */
+  threadMessageIdsBulk: (threadIds: number[]) =>
+    invoke<number[]>("thread_message_ids_bulk", { threadIds }),
 
   // compose
   createDraft: (accountId?: string) =>

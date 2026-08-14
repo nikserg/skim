@@ -14,14 +14,15 @@
   import { untrack } from "svelte";
   import type { ChatSession } from "./lib/ai-chat";
   import { api, reportError, type Citation } from "./lib/api";
+  import { bulkAct, bulkMove } from "./lib/bulk";
   import { setLocale, t } from "./lib/i18n/index.svelte";
   import { ai } from "./lib/stores/ai.svelte";
   import { aiSessions } from "./lib/stores/aiSession.svelte";
-  import { mail, UNIFIED } from "./lib/stores/mail.svelte";
+  import { mail, rowKey, UNIFIED } from "./lib/stores/mail.svelte";
   import { palette } from "./lib/stores/palette.svelte";
   import { ui } from "./lib/stores/ui.svelte";
   import { updater } from "./lib/stores/update.svelte";
-  import type { Account, Draft } from "./lib/types";
+  import type { Account, Draft, ThreadRow } from "./lib/types";
 
   /** How long the boot is given to answer before the shell is drawn anyway.
    *  Long enough that a healthy start never flashes an empty frame, short
@@ -224,7 +225,25 @@
     mail.selectedMessageId = row.messageId ?? null;
   }
 
+  /** The row the list is highlighting, in either grouping mode. */
+  function highlightedRow(): ThreadRow | null {
+    return (
+      mail.threads.find((t) =>
+        mail.groupThreads
+          ? t.id === mail.selectedThreadId
+          : t.messageId === mail.selectedMessageId,
+      ) ?? null
+    );
+  }
+
   async function actOnSelected(action: "archive" | "delete" | "spam" | "star" | "unread") {
+    // Ticked rows are what the action keys act on; the highlighted row is the
+    // target only when nothing is ticked. Star has no bulk form — it is not a
+    // batch verb — so it stays on the highlighted row either way.
+    if (mail.selecting && action !== "star") {
+      void bulkAct(action === "unread" ? "read" : action);
+      return;
+    }
     const thread = mail.selectedThread;
     if (!thread) return;
     const ids = await api.threadMessageIds(thread.id);
@@ -258,11 +277,15 @@
   /** Open the folder picker for the highlighted thread — works with the reading
    *  pane closed, which is why the picker lives here and not in it. */
   async function openMoveForSelected() {
+    if (mail.selecting) {
+      void bulkMove();
+      return;
+    }
     const thread = mail.selectedThread;
     if (!thread) return;
     const ids = await api.threadMessageIds(thread.id);
     if (ids.length === 0) return;
-    ui.openMove({ threadId: thread.id, messageIds: ids });
+    ui.openMove({ rowKeys: mail.rowKeysForThread(thread.id), messageIds: ids });
   }
 
   async function replyToSelected(mode: "reply" | "reply_all" | "forward" = "reply") {
@@ -306,6 +329,25 @@
         e.preventDefault();
         void mail.switchAccount(target);
       }
+      return;
+    }
+    // Ctrl+A ticks every loaded row. It has to be handled before the guard
+    // below (which drops anything with Ctrl held), so it repeats the same
+    // conditions: inside the composer or any dialog this must stay the
+    // browser's own "select all text".
+    if (
+      (e.ctrlKey || e.metaKey) &&
+      e.code === "KeyA" &&
+      !isTyping() &&
+      !palette.open &&
+      !ui.shortcutsOpen &&
+      ui.movePicker === null &&
+      ui.folderEditor === null &&
+      expandedAsk === undefined &&
+      mail.threads.length > 0
+    ) {
+      e.preventDefault();
+      mail.selectAllLoaded();
       return;
     }
     // Escape leaves the in-pane draft editor (its teardown writes edits back),
@@ -357,6 +399,12 @@
       case "KeyV":
         void openMoveForSelected();
         return;
+      case "KeyX": {
+        // Tick the highlighted row — the keyboard's way into a selection.
+        const row = highlightedRow();
+        if (row) mail.toggleRow(rowKey(row));
+        return;
+      }
       case "KeyR":
         void replyToSelected("reply");
         return;
@@ -406,7 +454,10 @@
         void actOnSelected("spam");
         break;
       case "Escape":
-        if (ui.recapOpen) ui.closeRecap();
+        // A ticked selection is the most recent thing the user built, so it is
+        // the first thing Escape takes back.
+        if (mail.selecting) mail.clearSelection();
+        else if (ui.recapOpen) ui.closeRecap();
         else mail.selectedThreadId = null;
         break;
     }

@@ -192,6 +192,8 @@ export function invoke<T = any>(cmd: string, args: any = {}): Promise<T> {
       return ok(db.renderedBody(args.messageId));
     case "thread_message_ids":
       return ok([args.threadId * 10 + 1]);
+    case "thread_message_ids_bulk":
+      return ok((args.threadIds as number[]).map((id) => id * 10 + 1));
     // Move destinations: the account's folders minus the one the mail is in
     // (Inbox, in every demo scenario) and the roles that aren't destinations.
     case "folder_message_count":
