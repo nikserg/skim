@@ -1,4 +1,5 @@
 pub mod autoconfig;
+pub mod dns;
 pub mod ics;
 pub mod imap_client;
 pub mod lang;

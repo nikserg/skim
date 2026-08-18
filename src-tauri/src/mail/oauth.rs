@@ -430,6 +430,25 @@ fn page(heading: &str, body: &str) -> String {
     )
 }
 
+/// What an `error=` in the redirect actually means.
+///
+/// Microsoft answers `access_denied` both when the user clicks Cancel and when
+/// the tenant refuses to let its people consent to the app — AADSTS65004 is the
+/// genuine decline, the rest of that family is a policy block. Calling a policy
+/// block a "cancellation" just sends the user round to press the button again.
+fn redirect_error_code(error: &str, description: &str) -> &'static str {
+    if error != "access_denied" {
+        return "oauth";
+    }
+    let detail = description.trim();
+    // Google sends no description on a decline; we then echo the error itself.
+    if detail.is_empty() || detail == error || detail.contains("AADSTS65004") {
+        "oauth_cancelled"
+    } else {
+        "oauth_consent_blocked"
+    }
+}
+
 async fn wait_for_code(listener: TcpListener, expected_state: &str) -> Result<String> {
     loop {
         let (mut stream, _) = listener
@@ -467,9 +486,10 @@ async fn wait_for_code(listener: TcpListener, expected_state: &str) -> Result<St
         } else if let Some(err) = error.as_deref() {
             // Only a real user decline is a "cancellation"; everything else is a
             // failure worth showing the reason for.
-            if err == "access_denied" {
+            if redirect_error_code(err, &detail) == "oauth_cancelled" {
                 page("Authorization was cancelled", "You can close this tab.")
             } else {
+                tracing::warn!(error = err, detail = %detail, "oauth redirect returned an error");
                 page("Authorization failed", &detail)
             }
         } else {
@@ -488,14 +508,7 @@ async fn wait_for_code(listener: TcpListener, expected_state: &str) -> Result<St
 
         return match (get("code"), error) {
             (Some(code), _) if get("state").as_deref() == Some(expected_state) => Ok(code),
-            (_, Some(err)) => {
-                let code = if err == "access_denied" {
-                    "oauth_cancelled"
-                } else {
-                    "oauth"
-                };
-                Err(SkimError::other(code, detail))
-            }
+            (_, Some(err)) => Err(SkimError::other(redirect_error_code(&err, &detail), detail)),
             _ => Err(SkimError::other("oauth", "state mismatch in redirect")),
         };
     }
@@ -584,5 +597,41 @@ mod tests {
     #[test]
     fn id_token_email_rejects_garbage() {
         assert_eq!(email_from_id_token("not-a-jwt"), None);
+    }
+
+    #[test]
+    fn a_bare_access_denied_is_a_cancellation() {
+        assert_eq!(redirect_error_code("access_denied", ""), "oauth_cancelled");
+        assert_eq!(
+            redirect_error_code("access_denied", "access_denied"),
+            "oauth_cancelled"
+        );
+    }
+
+    #[test]
+    fn a_user_who_declined_consent_is_a_cancellation() {
+        assert_eq!(
+            redirect_error_code(
+                "access_denied",
+                "AADSTS65004: User declined to consent to access the app."
+            ),
+            "oauth_cancelled"
+        );
+    }
+
+    #[test]
+    fn a_tenant_consent_policy_is_not_a_cancellation() {
+        assert_eq!(
+            redirect_error_code(
+                "access_denied",
+                "AADSTS90094: The grant requires admin permission."
+            ),
+            "oauth_consent_blocked"
+        );
+    }
+
+    #[test]
+    fn other_redirect_errors_stay_generic() {
+        assert_eq!(redirect_error_code("invalid_request", "bad state"), "oauth");
     }
 }

@@ -21,6 +21,7 @@
   "onb.password": "Password",
   "onb.app_password_hint": "{provider} requires an app password: enable 2-step verification, then create one in your account settings.",
   "onb.email_prompt": "Enter your email — Skim works with Gmail, Outlook, iCloud, and any IMAP server.",
+  "onb.detecting": "Looking up your provider…",
   "onb.or": "or",
   "onb.gmail_pw_title": "Sign in to Gmail with an app password",
   "onb.gmail_pw_step_2fa": "Turn on 2-step verification on your Google account.",
@@ -30,6 +31,7 @@
   "onb.open_app_passwords": "Create an app password",
   "onb.prefer_one_click_google": "Prefer one-click? Use Google sign-in",
   "onb.use_password_instead": "Use a password instead",
+  "onb.work_account_microsoft": "Work or school account? Continue with Microsoft",
   "onb.google_unverified_note": "One-click sign-in is limited while Skim awaits Google's review — Google may sign you out every few days. An app password won't.",
   "onb.ms_unverified_note": "Microsoft may label Skim \"unverified\" — sign-in still works.",
   "onb.advanced": "Server settings",
@@ -47,6 +49,8 @@
   "onb.err_starttls_unsupported": "This server doesn't offer encryption on port 143, and Skim never signs in over an unencrypted connection. Try IMAP port 993.",
 
   "onb.err_plaintext_port": "The server answered without encryption — this doesn't look like a TLS port. Most providers use IMAP port 993; some use 143.",
+  "onb.err_oauth_cancelled": "Sign-in was cancelled.",
+  "onb.err_admin_consent": "Your organization doesn't allow apps to sign in without an administrator's approval. Ask an admin to approve Skim, then try again.",
 
   "onb.footer": "Open source · Windows",
   "nav.compose": "Compose",

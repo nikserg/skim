@@ -136,6 +136,8 @@ One-click **Continue with Google** is still offered as a secondary option (with 
 
 Press **Continue with Microsoft**. Skim opens your browser, you approve access, done — Skim never sees your password, and the OAuth tokens live in Credential Manager. This covers Outlook.com, Hotmail, and Office 365 / Exchange Online alike. Microsoft is retiring Basic Auth (app passwords) for Exchange Online in 2026, so OAuth is the way in.
 
+Work and school addresses on your own domain get the same button: Skim asks your machine's own DNS resolver who runs the domain's mail, and Microsoft-hosted mail is unmistakable in the MX records — nothing about your address leaves for anyone else. If your tenant sits behind a mail gateway (Proofpoint, Mimecast…) the MX records say the gateway instead, so use the **Work or school account? Continue with Microsoft** line under the password form.
+
 ### Yahoo / iCloud — app password
 
 Same three steps as Gmail, using each provider's app-password page ([Yahoo](https://login.yahoo.com/account/security) · [iCloud](https://account.apple.com/account/manage)).

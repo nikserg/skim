@@ -22,6 +22,12 @@
   let showGoogleOauth = $state(false);
   let showOutlookPassword = $state(false);
   let showAdvanced = $state(false);
+  // The provider probe can take a DNS round-trip for domains outside the
+  // well-known table; hold the method zone back rather than flash the manual
+  // form and replace it a moment later.
+  let detecting = $state(false);
+  // Blur and Enter can both fire a lookup — only the newest address may win.
+  let lookupSeq = 0;
   let imapHost = $state("");
   let imapPort = $state(993);
   let smtpHost = $state("");
@@ -51,6 +57,8 @@
   function showError(e: unknown) {
     const code = errorCode(e);
     if (code === "account_exists") error = t("accounts.exists");
+    else if (code === "oauth_cancelled") error = t("onb.err_oauth_cancelled");
+    else if (code === "oauth_consent_blocked") error = t("onb.err_admin_consent");
     else if (code === "starttls_unsupported") error = t("onb.err_starttls_unsupported");
     else if (code === "plaintext_port") error = t("onb.err_plaintext_port");
     else error = errorMessage(e);
@@ -58,14 +66,24 @@
 
   async function onEmailChange() {
     touched = email.includes("@");
-    preset = await api.autoconfigLookup(email).catch(() => null);
-    if (preset) {
-      imapHost = preset.imapHost;
-      imapPort = preset.imapPort;
-      smtpHost = preset.smtpHost;
-      smtpPort = preset.smtpPort;
-      smtpSecurity = preset.smtpSecurity;
-    } else if (email.includes("@")) {
+    if (!touched) {
+      preset = null;
+      detecting = false;
+      return;
+    }
+    const seq = ++lookupSeq;
+    detecting = true;
+    const found = await api.autoconfigLookup(email).catch(() => null);
+    if (seq !== lookupSeq) return; // a newer address is already being looked up
+    detecting = false;
+    preset = found;
+    if (found) {
+      imapHost = found.imapHost;
+      imapPort = found.imapPort;
+      smtpHost = found.smtpHost;
+      smtpPort = found.smtpPort;
+      smtpSecurity = found.smtpSecurity;
+    } else {
       const domain = email.split("@")[1] ?? "";
       if (!imapHost) imapHost = `imap.${domain}`;
       if (!smtpHost) smtpHost = `smtp.${domain}`;
@@ -109,9 +127,11 @@
       const account = await api.startMicrosoftOauth();
       onconnected(account);
     } catch (e) {
-      // Outlook mailbox with IMAP switched off: guide the user to the setting
-      // instead of showing a raw error, and let them retry in place.
-      if (errorCode(e) === "imap_disabled") {
+      // Outlook.com mailbox with IMAP switched off: guide the user to the setting
+      // instead of showing a raw error, and let them retry in place. The panel
+      // links to outlook.live.com, which only fits a personal mailbox — a tenant
+      // gets the server's own message instead.
+      if (errorCode(e) === "imap_disabled" && provider === "outlook") {
         imapSetupNeeded = true;
       } else {
         showError(e);
@@ -244,6 +264,8 @@
 
   {#if !touched}
     <p class="email-prompt">{t("onb.email_prompt")}</p>
+  {:else if detecting}
+    <p class="email-prompt">{t("onb.detecting")}</p>
   {:else if provider === "gmail"}
     <!-- Gmail: app password leads (reliable). One-click Google is offered
          only as a limited secondary — our restricted-scope app is
@@ -264,7 +286,7 @@
     {#if google.available}
       <div class="divider"><span class="microlabel">{t("onb.or")}</span></div>
       {#if showGoogleOauth}
-        <button class="primary google" onclick={connectGoogle} disabled={busy !== "none"}>
+        <button type="button" class="primary google" onclick={connectGoogle} disabled={busy !== "none"}>
           {#if busy === "google"}
             {t("onb.waiting_google")}
           {:else}
@@ -285,7 +307,7 @@
     <!-- Outlook/O365: OAuth is the only reliable path — Microsoft is
          retiring Basic Auth (app passwords) for Exchange Online. -->
     {#if microsoft.available}
-      <button class="primary microsoft" onclick={connectMicrosoft} disabled={busy !== "none"}>
+      <button type="button" class="primary microsoft" onclick={connectMicrosoft} disabled={busy !== "none"}>
         {#if busy === "microsoft"}
           {t("onb.waiting_microsoft")}
         {:else}
@@ -302,6 +324,12 @@
 
       {#if imapSetupNeeded}
         {@render imapSetupPanel()}
+      {/if}
+
+      <!-- The password form owns the error slot; without this, a failed
+           Microsoft sign-in would leave the screen silent. -->
+      {#if error && !showOutlookPassword}
+        <div class="error">{error}</div>
       {/if}
 
       {#if showOutlookPassword}
@@ -324,6 +352,19 @@
     {@render passwordFields(true)}
   {:else}
     {@render passwordFields(false)}
+    <!-- Tenants behind a mail gateway (Proofpoint, Mimecast…) don't advertise
+         Microsoft in their MX records, so the probe can't see them. One quiet
+         line is all they need. -->
+    {#if microsoft.available}
+      <button
+        type="button"
+        class="linkish center"
+        onclick={connectMicrosoft}
+        disabled={busy !== "none"}
+      >
+        {busy === "microsoft" ? t("onb.waiting_microsoft") : t("onb.work_account_microsoft")}
+      </button>
+    {/if}
   {/if}
 </form>
 
