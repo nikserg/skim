@@ -22,8 +22,8 @@ pub struct AddAccountInput {
 }
 
 #[tauri::command]
-pub fn autoconfig_lookup(email: String) -> Option<autoconfig::ServerPreset> {
-    autoconfig::lookup(&email)
+pub async fn autoconfig_lookup(email: String) -> Option<autoconfig::ServerPreset> {
+    autoconfig::lookup_async(&email).await
 }
 
 /// Whether a provider's one-click OAuth is offered, and whether its app has
