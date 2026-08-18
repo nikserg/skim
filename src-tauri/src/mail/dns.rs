@@ -5,6 +5,7 @@
 //! corporate VPN answers with the truth.
 
 use std::ffi::c_void;
+use std::ptr::NonNull;
 use windows::core::HSTRING;
 use windows::Win32::NetworkManagement::Dns::{
     DnsFree, DnsFreeRecordList, DnsQuery_W, DNS_QUERY_STANDARD, DNS_RECORDA, DNS_RECORDW,
@@ -19,44 +20,45 @@ use windows::Win32::NetworkManagement::Dns::{
 /// `tokio::time::timeout`.
 pub fn mx_hosts(domain: &str) -> Vec<String> {
     let name = HSTRING::from(domain);
-    let mut head: *mut DNS_RECORDA = std::ptr::null_mut();
+    let mut out: *mut DNS_RECORDA = std::ptr::null_mut();
     // SAFETY: `name` is a NUL-terminated wide string that outlives the call, and
-    // `head` is a valid out-pointer. On success the resolver hands back a list it
+    // `out` is a valid out-pointer. On success the resolver hands back a list it
     // owns, which goes back to `DnsFree` below.
-    let status = unsafe {
-        DnsQuery_W(
-            &name,
-            DNS_TYPE_MX,
-            DNS_QUERY_STANDARD,
-            None,
-            &mut head,
-            None,
-        )
-    };
-    if status.is_err() || head.is_null() {
+    let status =
+        unsafe { DnsQuery_W(&name, DNS_TYPE_MX, DNS_QUERY_STANDARD, None, &mut out, None) };
+    // Everything past here works on `NonNull`, so the "the resolver gave us a
+    // list" check is made once and carried by the type instead of by a comment.
+    let Some(head) = NonNull::new(out).filter(|_| status.is_ok()) else {
         return Vec::new();
-    }
+    };
 
     let mut hosts = Vec::new();
-    // SAFETY: `head` is the resolver's singly linked list, valid until `DnsFree`.
-    // The list can carry other record types (a CNAME at the head, say), so the
-    // `MX` arm of the union is only read after `wType` says it is an MX record.
-    // The `_W` query returns wide records; the out-parameter is typed `DNS_RECORDA`
-    // for both charsets and the layouts are identical apart from the string type.
-    unsafe {
-        let mut rec = head.cast::<DNS_RECORDW>();
-        while !rec.is_null() {
-            if (*rec).wType == DNS_TYPE_MX.0 {
-                let exchange = (*rec).Data.MX.pNameExchange;
-                if !exchange.is_null() {
-                    if let Ok(host) = exchange.to_string() {
-                        hosts.push(host);
-                    }
+    // The `_W` query returns wide records; the out-parameter is typed
+    // `DNS_RECORDA` for both charsets, and the layouts differ only in the string
+    // type.
+    let mut next = Some(head.cast::<DNS_RECORDW>());
+    while let Some(node) = next {
+        // SAFETY: the resolver owns this list and nothing frees it before the
+        // `DnsFree` below, so every node it links to is live for this walk.
+        let record = unsafe { node.as_ref() };
+        // The list can carry other record types — a CNAME at the head, say — so
+        // the `MX` arm of the union is only read once `wType` says it is an MX.
+        if record.wType == DNS_TYPE_MX.0 {
+            // SAFETY: `wType` above says this record's union holds MX data.
+            let exchange = unsafe { record.Data.MX.pNameExchange };
+            if !exchange.is_null() {
+                // SAFETY: a non-null exchange name is a NUL-terminated wide
+                // string owned by the same list.
+                if let Ok(host) = unsafe { exchange.to_string() } {
+                    hosts.push(host);
                 }
             }
-            rec = (*rec).pNext;
         }
-        DnsFree(Some(head as *const c_void), DnsFreeRecordList);
+        next = NonNull::new(record.pNext);
     }
+
+    // SAFETY: this is the list `DnsQuery_W` handed out, freed exactly once, and
+    // the strings above were copied into owned `String`s.
+    unsafe { DnsFree(Some(head.as_ptr() as *const c_void), DnsFreeRecordList) };
     hosts
 }
