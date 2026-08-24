@@ -138,7 +138,11 @@
   >
     {#if mail.threads.length === 0 && !mail.threadsLoading}
       <div class="empty">
-        {mail.syncState === "syncing" ? t("sync.syncing") : t("list.empty")}
+        {#if mail.loadFailed}
+          <button class="retry" onclick={() => void mail.retryLoad()}>{t("list.load_failed")}</button>
+        {:else}
+          {mail.syncState === "syncing" ? t("sync.syncing") : t("list.empty")}
+        {/if}
       </div>
     {:else}
       <div class="spacer" style="height: {start * rowH}px"></div>
@@ -267,5 +271,20 @@
     text-align: center;
     color: var(--text-faint);
     font-size: 13px;
+  }
+  /* Reads as the same line of text the empty state shows, only clickable —
+     the failure is the message, the retry is not a separate control. */
+  .retry {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .retry:hover {
+    color: var(--text-dim);
   }
 </style>

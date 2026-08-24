@@ -238,6 +238,48 @@ mod tests {
         }
     }
 
+    /// The exact statement `prepare_update` runs before the updater hands over
+    /// to the installer. It has one job — leave nothing in the journal for the
+    /// next process to recover — and no way to report failure at the time, so
+    /// pin it here instead.
+    #[test]
+    fn wal_checkpoint_truncate_empties_the_journal() {
+        let path = std::env::temp_dir().join(format!("skim-ckpt-{}.db", std::process::id()));
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+        let wal = std::path::PathBuf::from(format!("{}-wal", path.display()));
+        let db = Db::open(&path).unwrap();
+
+        db.with(|conn| {
+            for i in 0..500 {
+                queries::set_setting(conn, &format!("k{i}"), "some value worth a page or two")?;
+            }
+            Ok(())
+        })
+        .unwrap();
+        assert!(
+            std::fs::metadata(&wal).is_ok_and(|m| m.len() > 0),
+            "the writes should still be sitting in the WAL"
+        );
+
+        db.with(|conn| conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(())))
+            .unwrap();
+        assert_eq!(
+            std::fs::metadata(&wal).map(|m| m.len()).unwrap_or(0),
+            0,
+            "the WAL must be empty once it is folded back in"
+        );
+        // And the data survived the fold.
+        let seen: Option<String> = db.with(|conn| queries::get_setting(conn, "k499")).unwrap();
+        assert_eq!(seen.as_deref(), Some("some value worth a page or two"));
+
+        drop(db);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    }
+
     #[test]
     fn in_memory_reads_through_the_writer() {
         let db = Db::open_in_memory().unwrap();

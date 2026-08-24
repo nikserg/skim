@@ -157,6 +157,11 @@
         </svg>
         <span class="name">{t("update.restart")}</span>
       </button>
+    {:else if updater.status === "installing"}
+      <div class="sync microlabel">
+        <span class="spinner"></span>
+        <span class="name">{t("update.installing")}</span>
+      </div>
     {:else if updater.status === "error"}
       <button class="sync error microlabel update-go" onclick={() => updater.download()}>
         <span class="warn-icon">⚠</span>

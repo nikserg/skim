@@ -1,7 +1,7 @@
 // Mail data store: the frontend's mirror of the Rust cache. Refreshed on
 // backend events, mutated optimistically by UI actions later.
 import { listen } from "@tauri-apps/api/event";
-import { api } from "../api";
+import { api, reportError } from "../api";
 import { t } from "../i18n/index.svelte";
 import type { Account, Folder, SyncState, ThreadRow } from "../types";
 
@@ -37,6 +37,10 @@ const state = $state({
   anchorKey: null as number | null,
   // Transient notice for a queued op that failed after all retries.
   opError: null as string | null,
+  // The last attempt to read folders or mail out of the cache failed. Without
+  // this an empty list is ambiguous, and the app answers "nothing to skim" to
+  // a mailbox full of mail — the one thing it must never do.
+  loadFailed: false,
 });
 
 /** Membership lookup for the selection. Rebuilt only when the selection
@@ -53,6 +57,11 @@ export function rowKey(t: ThreadRow): number {
 }
 
 let listenersAttached = false;
+/** A refresh arrived before there was an account (or a folder) to refresh. The
+ *  engines start syncing in Rust's `setup`, so their first `folders:updated`
+ *  routinely beats the webview's own boot queries; dropping it used to cost the
+ *  user a full poll interval of staring at an empty list. */
+let missedRefresh = false;
 let opErrorTimer: ReturnType<typeof setTimeout> | null = null;
 // Last reported engine state per account — the unified view's indicator
 // aggregates these instead of following one mailbox.
@@ -97,6 +106,13 @@ async function attachListeners() {
       void refreshThreads();
     }
     void refreshFolders();
+  });
+  // Back from the tray. Hiding the window only hides the webview, so nothing
+  // here re-runs on its own — and a view left empty by a failed read would
+  // stay empty however many times the user reopened it. Cheap local queries,
+  // so they run only when there is something to put right.
+  await listen("window:shown", () => {
+    if (state.loadFailed || state.threads.length === 0) void retryLoad();
   });
   // Toast body click: jump to the message's thread.
   await listen<{ folderId: number; threadId: number; messageId: number }>(
@@ -152,11 +168,49 @@ function activeAccount(): Account | null {
   return state.accounts.find((a) => a.id === state.activeAccountId) ?? null;
 }
 
+/** Every read of the cache the list depends on goes through here. A rejected
+ *  query used to end as an unhandled rejection in `skim-frontend.log` while the
+ *  UI quietly claimed the folder was empty; now it says so, and can be retried.
+ *  Returns null when the read failed — the caller keeps what it had.
+ *
+ *  Only a page of rows arriving clears the flag again (`shown`), never a folder
+ *  read: refreshes run in pairs, and a folder query that outlives its sibling's
+ *  failure must not talk the list back into trusting itself. */
+async function guard<T>(read: () => Promise<T>): Promise<T | null> {
+  try {
+    return await read();
+  } catch (e) {
+    state.loadFailed = true;
+    reportError("mail.load", e);
+    return null;
+  }
+}
+
+/** The rows the list is about to render came out of the cache — whatever went
+ *  wrong before, the view is honest again. */
+function shown(rows: ThreadRow[]) {
+  state.threads = rows;
+  state.fetched = rows.length;
+  state.loadFailed = false;
+}
+
+/** Read the folders and the current page again after a failed load. Local
+ *  SQLite queries, so it costs nothing to offer and nothing to take. */
+async function retryLoad() {
+  await refreshFolders();
+  await refreshThreads();
+}
+
 async function refreshFolders() {
   const accountId = state.activeAccountId;
-  if (accountId === null) return;
-  const folders =
-    accountId === UNIFIED ? await api.listUnifiedFolders() : await api.listFolders(accountId);
+  if (accountId === null) {
+    missedRefresh = true;
+    return;
+  }
+  const folders = await guard(() =>
+    accountId === UNIFIED ? api.listUnifiedFolders() : api.listFolders(accountId),
+  );
+  if (folders === null) return;
   // The user may have switched accounts mid-fetch — these folders belong to
   // the previous mailbox.
   if (state.activeAccountId !== accountId) return;
@@ -255,7 +309,11 @@ function fetchPage(folderId: number, offset: number, limit = PAGE): Promise<Thre
 const MAX_REFRESH = 500;
 
 async function refreshThreads() {
-  if (state.selectedFolderId === null) return;
+  const folderId = state.selectedFolderId;
+  if (folderId === null) {
+    missedRefresh = true;
+    return;
+  }
   // Reload as deep as the list already is, not just the first page: otherwise
   // every `mail:updated` — including the one each bulk action emits — snaps a
   // scrolled list back to 100 rows under the user.
@@ -263,8 +321,9 @@ async function refreshThreads() {
     Math.max(PAGE, Math.ceil(state.threads.length / PAGE) * PAGE),
     MAX_REFRESH,
   );
-  state.threads = await fetchPage(state.selectedFolderId, 0, depth);
-  state.fetched = state.threads.length;
+  const rows = await guard(() => fetchPage(folderId, 0, depth));
+  if (rows === null) return;
+  shown(rows);
   pruneSelection();
 }
 
@@ -275,8 +334,15 @@ async function selectFolder(id: number) {
   clearSelection();
   state.threadsLoading = true;
   try {
-    state.threads = await fetchPage(id, 0);
-    state.fetched = state.threads.length;
+    const rows = await guard(() => fetchPage(id, 0));
+    // A failed read must not leave the previous folder's mail under the new
+    // folder's name — the list says "couldn't load" instead.
+    if (rows === null) {
+      state.threads = [];
+      state.fetched = 0;
+    } else {
+      shown(rows);
+    }
   } finally {
     state.threadsLoading = false;
   }
@@ -483,6 +549,10 @@ export const mail = {
   get threadsLoading() {
     return state.threadsLoading;
   },
+  get loadFailed() {
+    return state.loadFailed;
+  },
+  retryLoad,
 
   /** App start: find the accounts and begin listening. Returns as soon as the
    *  shell knows which mailboxes exist — that is all it needs to draw itself.
@@ -521,6 +591,14 @@ export const mail = {
         showOpError(t("ops.failed"));
       } finally {
         state.threadsLoading = false;
+      }
+      // Sync events that fired while there was still no mailbox (or no folder)
+      // to refresh. There is now — collect them into one pass, instead of
+      // leaving the list a poll interval behind the mail it already has.
+      if (missedRefresh) {
+        missedRefresh = false;
+        await refreshFolders();
+        await refreshThreads();
       }
     })();
   },

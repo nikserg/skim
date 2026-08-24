@@ -149,6 +149,9 @@ export const api = {
   getSettings: () => invoke<Record<string, string>>("get_settings"),
   setSetting: (key: string, value: string) => invoke<void>("set_setting", { key, value }),
   logFrontendError: (message: string) => invoke<void>("log_frontend_error", { message }),
+  /** Park the sync engines and checkpoint the database before the updater
+   *  hands over to the installer — which kills this process outright. */
+  prepareUpdate: () => invoke<void>("prepare_update"),
 };
 
 /** Record a frontend failure in `skim-frontend.log`, next to the panic log.

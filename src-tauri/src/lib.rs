@@ -240,8 +240,8 @@ pub fn run() {
             // `--minimized` (autostart) keeps the window hidden in the tray —
             // except right after a self-update: the installer relaunches Skim
             // with the old process args, but the user explicitly clicked
-            // "Restart" and expects the window back. The frontend sets this
-            // one-shot flag just before installing.
+            // "Restart" and expects the window back. `prepare_update` sets this
+            // one-shot flag just before handing over to the installer.
             let update_relaunch = db
                 .with(|conn| db::queries::get_setting(conn, "update_relaunch"))
                 .ok()
@@ -249,6 +249,12 @@ pub fn run() {
                 .is_some_and(|v| v == "1");
             if update_relaunch {
                 let _ = db.with(|conn| db::queries::set_setting(conn, "update_relaunch", "0"));
+                // Closes the pair `prepare_update` opened: one file says what
+                // the old build did on the way out and which build came back.
+                append_log(
+                    "skim-update.log",
+                    &format!("relaunched into v{}", env!("CARGO_PKG_VERSION")),
+                );
             }
             let minimized = std::env::args().any(|a| a == "--minimized");
             if !minimized || update_relaunch {
@@ -385,6 +391,7 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::set_setting,
             commands::settings::log_frontend_error,
+            commands::settings::prepare_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -395,6 +402,11 @@ pub(crate) fn show_main_window(app: &tauri::AppHandle) {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
+        // Hiding to the tray only hides the webview — no frontend code runs
+        // again on the way back. Say so, so a view left stale or empty by a
+        // failed load can put itself right instead of waiting for the next
+        // sync pass.
+        let _ = window.emit("window:shown", ());
     }
     // Hiding the window to the tray destroys its taskbar button, and Windows
     // does not restore the overlay icon when the button is recreated on show —

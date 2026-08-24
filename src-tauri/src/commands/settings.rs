@@ -26,7 +26,6 @@ const ALLOWED: &[&str] = &[
     "ai_instructions",
     "update_last_check",
     "update_dismissed",
-    "update_relaunch",
 ];
 
 /// A package manager (Scoop today) that owns the install drops this file next
@@ -95,4 +94,55 @@ pub fn log_frontend_error(message: String) {
         .collect();
     tracing::error!(target: "skim_lib", "frontend: {line}");
     crate::append_log("skim-frontend.log", &line);
+}
+
+/// Everything that must happen before the updater hands over to the NSIS
+/// installer. The install path ends in `std::process::exit(0)` inside the
+/// plugin — no unwinding, no destructors, no chance to finish a write — so the
+/// app has exactly this one window to leave the machine in a state the next
+/// process can boot from cleanly.
+///
+/// Best-effort throughout: a wedged database must never be the reason an update
+/// doesn't install. The caller bounds the wait.
+#[tauri::command]
+pub async fn prepare_update(state: State<'_, AppState>) -> Result<()> {
+    let started = std::time::Instant::now();
+
+    // Park every engine first: no new writes means the flag below can't queue
+    // behind a backfill, and no IMAP session is cut off mid-transaction.
+    for handle in state.engines.lock().await.values() {
+        handle.stop();
+    }
+    let parked_ms = started.elapsed().as_millis();
+
+    // One-shot flag `run()` consumes on the next boot: the installer relaunches
+    // Skim with the old process args (possibly autostart's `--minimized`), but
+    // the user clicked "Restart" and expects the window back.
+    let flagged = state
+        .db
+        .call(|conn| queries::set_setting(conn, "update_relaunch", "1"))
+        .await
+        .is_ok();
+    let flagged_ms = started.elapsed().as_millis();
+
+    // Fold the WAL back into the database. Without this the hard exit leaves
+    // megabytes of journal for the freshly installed build to recover on its
+    // very first query — which is the moment the user is staring at an empty
+    // message list.
+    let checkpointed = state
+        .db
+        .call(|conn| conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(())))
+        .await
+        .is_ok();
+
+    crate::append_log(
+        "skim-update.log",
+        &format!(
+            "preparing v{} for install: engines parked {parked_ms}ms, flag {flagged} {flagged_ms}ms, \
+             checkpoint {checkpointed} {}ms",
+            env!("CARGO_PKG_VERSION"),
+            started.elapsed().as_millis(),
+        ),
+    );
+    Ok(())
 }

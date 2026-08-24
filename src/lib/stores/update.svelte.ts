@@ -10,7 +10,12 @@ const FIRST_TICK_MS = 60_000;
 /** How often the gate is re-evaluated while the app keeps running. */
 const TICK_MS = 60 * 60 * 1000;
 
-type UpdateStatus = "idle" | "available" | "downloading" | "ready" | "error";
+type UpdateStatus = "idle" | "available" | "downloading" | "ready" | "installing" | "error";
+
+/** How long the pre-install cleanup may take before the update goes ahead
+ *  regardless. A database busy enough to miss this deadline is exactly the
+ *  database the user is trying to escape by updating. */
+const PREPARE_BUDGET_MS = 3000;
 
 const state = $state({
   status: "idle" as UpdateStatus,
@@ -97,15 +102,24 @@ export const updater = {
   },
 
   /** "Restart": passive NSIS install. The plugin exits this process and the
-   * installer relaunches Skim — code after install() never runs on Windows. */
+   * installer relaunches Skim — code after install() never runs on Windows,
+   * so reaching the end of this function at all means the install failed. */
   async restart() {
-    if (!update) return;
-    // One-shot flag for the Rust side: the installer relaunches with the old
-    // process args (possibly autostart's --minimized), but the user clicked
-    // "Restart" and expects the window back.
-    await api.setSetting("update_relaunch", "1").catch(() => {});
+    if (!update || state.status === "installing") return;
+    // Before anything that can wait: the click has to land visibly, and the
+    // banner has to stop being a button. Firing install() twice would extract
+    // and launch two installers that then race to overwrite each other.
+    state.status = "installing";
+    // Park the engines, persist the relaunch flag, fold the WAL back in — the
+    // installer kills this process, so it is now or never. On a budget: a
+    // stuck database must not be able to swallow the update.
+    await Promise.race([
+      api.prepareUpdate().catch(() => {}),
+      new Promise((done) => setTimeout(done, PREPARE_BUDGET_MS)),
+    ]);
     try {
       await update.install();
+      state.status = "error";
     } catch {
       state.status = "error";
     }
