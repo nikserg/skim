@@ -36,6 +36,17 @@ pub fn normalize_base_url(raw: &str) -> Option<String> {
     Some(url.to_string())
 }
 
+/// Which JSON key carries the output ceiling. OpenAI deprecated `max_tokens`
+/// when o1 shipped, and its reasoning models now refuse it outright — but every
+/// other OpenAI-compatible server still speaks it, and several (Ollama,
+/// llama-cpp-python) drop `max_completion_tokens` on the floor without
+/// complaining, which would leave the answer uncapped rather than merely
+/// wrong. So we open with the name everyone understands and switch only for an
+/// endpoint that asks us to, by name, in its own error. See
+/// [`rejects_max_tokens`].
+const MAX_TOKENS: &str = "max_tokens";
+const MAX_COMPLETION_TOKENS: &str = "max_completion_tokens";
+
 pub struct Request {
     pub model: String,
     pub system: String,
@@ -54,29 +65,30 @@ pub struct ToolRequest {
     pub max_tokens: u32,
 }
 
-fn chat_body(request: &Request) -> serde_json::Value {
+fn chat_body(request: &Request, tokens_key: &str) -> serde_json::Value {
     // System prompt first, then the (possibly multi-turn) conversation.
     let mut messages = vec![json!({ "role": "system", "content": request.system })];
     for m in &request.messages {
         messages.push(json!({ "role": m.role, "content": m.content }));
     }
-    json!({
+    let mut body = json!({
         "model": request.model,
-        "max_tokens": request.max_tokens,
         "messages": messages,
         "stream": true,
-    })
+    });
+    body[tokens_key] = json!(request.max_tokens);
+    body
 }
 
-fn tool_body(request: &ToolRequest) -> serde_json::Value {
+fn tool_body(request: &ToolRequest, tokens_key: &str) -> serde_json::Value {
     let mut messages = vec![json!({ "role": "system", "content": request.system })];
     messages.extend(request.messages.iter().cloned());
     let mut body = json!({
         "model": request.model,
-        "max_tokens": request.max_tokens,
         "messages": messages,
         "stream": true,
     });
+    body[tokens_key] = json!(request.max_tokens);
     // Omit `tools`/`tool_choice` when empty — strict endpoints reject an empty
     // tools array or a tool_choice with no tools (the force-final round).
     if !request.tools.is_empty() {
@@ -103,6 +115,29 @@ fn post_chat(ep: &Endpoint, key: &str, body: &serde_json::Value) -> reqwest::Req
     req.json(body)
 }
 
+/// Is this error body the endpoint telling us it wants the ceiling under
+/// `max_completion_tokens` instead? OpenAI answers 400 with
+/// `param: "max_tokens"` and `code: "unsupported_parameter"`, but neither field
+/// is required here: a gateway that flattens the envelope keeps only the
+/// message, and spells `code` as the HTTP number rather than a string.
+///
+/// The test is that the endpoint names *both* keys — that is what distinguishes
+/// "use the other name" from "that number is too large", which some endpoints
+/// also report against `param: "max_tokens"`. Retrying the latter under the new
+/// name would not fix it and, on a server that ignores the new name, would
+/// quietly remove the ceiling instead.
+///
+/// The `param` guard covers the mirror case: some Azure deployments reject
+/// `max_completion_tokens`, and reading that as this would send back the very
+/// key that was just refused.
+fn rejects_max_tokens(body: &Value) -> bool {
+    if body["error"]["param"] == json!(MAX_COMPLETION_TOKENS) {
+        return false;
+    }
+    let message = body["error"]["message"].as_str().unwrap_or_default();
+    message.contains(MAX_TOKENS) && message.contains(MAX_COMPLETION_TOKENS)
+}
+
 /// Map a non-200 response to the shared error codes; `Ok` for 200.
 async fn check_status(resp: reqwest::Response) -> Result<reqwest::Response> {
     let status = resp.status().as_u16();
@@ -114,10 +149,17 @@ async fn check_status(resp: reqwest::Response) -> Result<reqwest::Response> {
     }
     if status != 200 {
         let text = resp.text().await.unwrap_or_default();
-        let message = serde_json::from_str::<serde_json::Value>(&text)
-            .ok()
+        let parsed = serde_json::from_str::<serde_json::Value>(&text).ok();
+        let message = parsed
+            .as_ref()
             .and_then(|v| v["error"]["message"].as_str().map(String::from))
             .unwrap_or(text);
+        // Carry the provider's own message either way: [`stream`] consumes this
+        // code, so it only reaches the UI if the retry under the other key
+        // failed too — and then the endpoint's own words are what help.
+        if parsed.as_ref().is_some_and(rejects_max_tokens) {
+            return Err(SkimError::other("ai_token_param", message));
+        }
         return Err(SkimError::other("ai", message));
     }
     Ok(resp)
@@ -151,7 +193,12 @@ fn drain_data(buffer: &mut String, flush: bool) -> Vec<String> {
 
 /// Stream a completion, invoking `on_delta` for each text fragment and
 /// `on_reasoning` while the model thinks before it answers.
-/// Returns the finish reason. Honors one retry on rate-limit/upstream errors.
+/// Returns the finish reason. Honors one retry on rate-limit/upstream errors,
+/// and one on an endpoint that wants the output ceiling under
+/// `max_completion_tokens` (see [`MAX_TOKENS`]). Both happen before any bytes
+/// stream, so a retry can never replay text the caller has already seen.
+/// A gateway that reports the same refusal inside a 200 stream instead is not
+/// covered — by then `on_delta` may have fired.
 ///
 /// A thinking model sends its reasoning first, in frames whose `content` is
 /// empty, which from the outside looks exactly like a model still loading; a
@@ -167,12 +214,23 @@ pub async fn stream(
     mut on_delta: impl FnMut(&str),
     on_reasoning: &mut impl FnMut(),
 ) -> Result<Option<String>> {
-    let mut attempt = 0;
+    let mut overloaded = false;
+    let mut switched = false;
+    let mut tokens_key = MAX_TOKENS;
     loop {
-        match stream_once(ep, key, request, &mut on_delta, on_reasoning).await {
-            Err(e) if e.code() == "ai_overloaded" && attempt == 0 => {
-                attempt = 1;
+        match stream_once(ep, key, request, tokens_key, &mut on_delta, on_reasoning).await {
+            Err(e) if e.code() == "ai_overloaded" && !overloaded => {
+                overloaded = true;
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+            // No backoff: this is a decision the endpoint just handed us, not
+            // backpressure. The latch is separate from the overload one so that
+            // a rate limit early on cannot spend the switch, and `tokens_key`
+            // outlives the loop body so a later overload retry keeps the new
+            // name rather than reverting to the one already refused.
+            Err(e) if e.code() == "ai_token_param" && !switched => {
+                switched = true;
+                tokens_key = MAX_COMPLETION_TOKENS;
             }
             other => return other,
         }
@@ -183,10 +241,11 @@ async fn stream_once(
     ep: &Endpoint,
     key: &str,
     request: &Request,
+    tokens_key: &str,
     on_delta: &mut impl FnMut(&str),
     on_reasoning: &mut impl FnMut(),
 ) -> Result<Option<String>> {
-    let resp = post_chat(ep, key, &chat_body(request))
+    let resp = post_chat(ep, key, &chat_body(request, tokens_key))
         .send()
         .await
         .map_err(|e| SkimError::other("network", e.to_string()))?;
@@ -299,7 +358,8 @@ struct ApiError {
 /// Stream one assistant round that may include tool calls. Text streams to
 /// `on_delta` and reasoning is reported through `on_reasoning` (see [`stream`]);
 /// `tool_calls` are accumulated and returned. One retry on rate-limit/upstream
-/// errors (before any bytes stream).
+/// errors and one on the token-parameter refusal (before any bytes stream) —
+/// see [`stream`].
 pub async fn stream_tools(
     ep: &Endpoint,
     key: &str,
@@ -307,12 +367,19 @@ pub async fn stream_tools(
     on_delta: &mut impl FnMut(&str),
     on_reasoning: &mut impl FnMut(),
 ) -> Result<AssistantTurn> {
-    let mut attempt = 0;
+    let mut overloaded = false;
+    let mut switched = false;
+    let mut tokens_key = MAX_TOKENS;
     loop {
-        match stream_tools_once(ep, key, request, on_delta, on_reasoning).await {
-            Err(e) if e.code() == "ai_overloaded" && attempt == 0 => {
-                attempt = 1;
+        match stream_tools_once(ep, key, request, tokens_key, on_delta, on_reasoning).await {
+            Err(e) if e.code() == "ai_overloaded" && !overloaded => {
+                overloaded = true;
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+            // See [`stream`] for why the two latches are separate.
+            Err(e) if e.code() == "ai_token_param" && !switched => {
+                switched = true;
+                tokens_key = MAX_COMPLETION_TOKENS;
             }
             other => return other,
         }
@@ -364,10 +431,11 @@ async fn stream_tools_once(
     ep: &Endpoint,
     key: &str,
     request: &ToolRequest,
+    tokens_key: &str,
     on_delta: &mut impl FnMut(&str),
     on_reasoning: &mut impl FnMut(),
 ) -> Result<AssistantTurn> {
-    let resp = post_chat(ep, key, &tool_body(request))
+    let resp = post_chat(ep, key, &tool_body(request, tokens_key))
         .send()
         .await
         .map_err(|e| SkimError::other("network", e.to_string()))?;
@@ -517,9 +585,8 @@ mod tests {
         assert_eq!(normalize_base_url("not a url"), None);
     }
 
-    #[test]
-    fn chat_body_puts_system_first_and_streams() {
-        let body = chat_body(&Request {
+    fn a_request() -> Request {
+        Request {
             model: "m".into(),
             system: "sys".into(),
             messages: vec![ChatMessage {
@@ -527,12 +594,70 @@ mod tests {
                 content: "hi".into(),
             }],
             max_tokens: 42,
-        });
+        }
+    }
+
+    #[test]
+    fn chat_body_puts_system_first_and_streams() {
+        let body = chat_body(&a_request(), MAX_TOKENS);
         assert_eq!(body["messages"][0]["role"], "system");
         assert_eq!(body["messages"][0]["content"], "sys");
         assert_eq!(body["messages"][1]["role"], "user");
         assert_eq!(body["stream"], true);
         assert_eq!(body["max_tokens"], 42);
+    }
+
+    /// The ceiling must move to the requested key, not be duplicated under
+    /// both: OpenAI refuses a body still carrying `max_tokens`, and endpoints
+    /// with a strict schema refuse one carrying `max_completion_tokens`.
+    #[test]
+    fn the_ceiling_moves_to_the_requested_key_and_leaves_no_twin() {
+        let body = chat_body(&a_request(), MAX_COMPLETION_TOKENS);
+        assert_eq!(body["max_completion_tokens"], 42);
+        assert!(body.get("max_tokens").is_none());
+
+        let tool_request = ToolRequest {
+            model: "m".into(),
+            system: "sys".into(),
+            messages: vec![json!({ "role": "user", "content": "hi" })],
+            tools: Vec::new(),
+            max_tokens: 42,
+        };
+        let body = tool_body(&tool_request, MAX_COMPLETION_TOKENS);
+        assert_eq!(body["max_completion_tokens"], 42);
+        assert!(body.get("max_tokens").is_none());
+        let body = tool_body(&tool_request, MAX_TOKENS);
+        assert_eq!(body["max_tokens"], 42);
+        assert!(body.get("max_completion_tokens").is_none());
+    }
+
+    #[test]
+    fn only_an_endpoint_naming_both_keys_flips_the_parameter() {
+        let body = |json: &str| serde_json::from_str::<Value>(json).unwrap();
+        // OpenAI's rejection, verbatim — every reasoning model answers this.
+        assert!(rejects_max_tokens(&body(
+            r#"{"error":{"message":"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.","type":"invalid_request_error","param":"max_tokens","code":"unsupported_parameter"}}"#
+        )));
+        // A gateway that flattens the envelope keeps only the message, and
+        // spells `code` as the HTTP number; the message alone must carry it.
+        assert!(rejects_max_tokens(&body(
+            r#"{"error":{"message":"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.","code":400}}"#
+        )));
+        // The mirror refusal — some Azure deployments reject the new name.
+        // Flipping here would send back the key just refused.
+        assert!(!rejects_max_tokens(&body(
+            r#"{"error":{"message":"Unrecognized request argument supplied: max_completion_tokens","param":"max_completion_tokens"}}"#
+        )));
+        // A ceiling that is merely too large names one key, not two. Retrying
+        // it under the other name would not fix it, and on a server that
+        // ignores that name it would silently remove the ceiling.
+        assert!(!rejects_max_tokens(&body(
+            r#"{"error":{"message":"max_tokens must be less than or equal to 8192","param":"max_tokens"}}"#
+        )));
+        assert!(!rejects_max_tokens(&body(
+            r#"{"error":{"message":"model not found"}}"#
+        )));
+        assert!(!rejects_max_tokens(&body(r#"{}"#)));
     }
 
     #[test]
@@ -544,7 +669,7 @@ mod tests {
             tools: Vec::new(),
             max_tokens: 42,
         };
-        let body = tool_body(&base);
+        let body = tool_body(&base, MAX_TOKENS);
         assert!(body.get("tools").is_none());
         assert!(body.get("tool_choice").is_none());
 
@@ -552,7 +677,7 @@ mod tests {
             tools: vec![json!({ "type": "function" })],
             ..base
         };
-        let body = tool_body(&with_tools);
+        let body = tool_body(&with_tools, MAX_TOKENS);
         assert_eq!(body["tools"].as_array().unwrap().len(), 1);
         assert_eq!(body["tool_choice"], "auto");
     }
