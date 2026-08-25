@@ -210,8 +210,10 @@ pub fn inbox_unread_by_account(conn: &Connection) -> rusqlite::Result<Vec<(Strin
 
 pub fn list_folders(conn: &Connection, account_id: &str) -> rusqlite::Result<Vec<Folder>> {
     let mut stmt = conn.prepare_cached(
-        "SELECT id, account_id, imap_name, role, display_name, unread_count, sort_order
-         FROM folders WHERE account_id = ?1 ORDER BY sort_order, display_name",
+        "SELECT f.id, f.account_id, f.imap_name, f.role, f.display_name,
+                f.unread_count, f.sort_order, a.folder_delimiter
+         FROM folders f LEFT JOIN accounts a ON a.id = f.account_id
+         WHERE f.account_id = ?1 ORDER BY f.sort_order, f.display_name",
     )?;
     let rows = stmt
         .query_map(params![account_id], |r| {
@@ -223,6 +225,7 @@ pub fn list_folders(conn: &Connection, account_id: &str) -> rusqlite::Result<Vec
                 display_name: r.get(4)?,
                 unread_count: r.get(5)?,
                 sort_order: r.get(6)?,
+                delimiter: r.get(7)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -361,10 +364,11 @@ pub fn virtual_folder_id(role: Option<&str>, display_name: &str) -> i64 {
 /// `account_id = "*"`.
 pub fn list_unified_folders(conn: &Connection) -> rusqlite::Result<Vec<Folder>> {
     let mut stmt = conn.prepare_cached(
-        "SELECT role, MIN(display_name), COALESCE(SUM(unread_count), 0), MIN(sort_order)
-         FROM folders
-         GROUP BY COALESCE('r:' || role, 'l:' || lower(display_name))
-         ORDER BY MIN(sort_order), MIN(display_name)",
+        "SELECT f.role, MIN(f.display_name), COALESCE(SUM(f.unread_count), 0),
+                MIN(f.sort_order), MIN(a.folder_delimiter)
+         FROM folders f LEFT JOIN accounts a ON a.id = f.account_id
+         GROUP BY COALESCE('r:' || f.role, 'l:' || lower(f.display_name))
+         ORDER BY MIN(f.sort_order), MIN(f.display_name)",
     )?;
     let rows = stmt
         .query_map([], |r| {
@@ -378,6 +382,7 @@ pub fn list_unified_folders(conn: &Connection) -> rusqlite::Result<Vec<Folder>> 
                 display_name,
                 unread_count: r.get(2)?,
                 sort_order: r.get(3)?,
+                delimiter: r.get(4)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;

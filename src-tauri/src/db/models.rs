@@ -25,6 +25,9 @@ pub struct Folder {
     pub display_name: String,
     pub unread_count: i64,
     pub sort_order: i64,
+    /// The server's hierarchy separator, so the UI can read a nested folder's
+    /// path out of `display_name`. `None` until the first LIST has run.
+    pub delimiter: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

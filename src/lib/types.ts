@@ -32,6 +32,9 @@ export interface Folder {
   displayName: string;
   unreadCount: number;
   sortOrder: number;
+  /** The server's hierarchy separator — how `displayName` splits into a path.
+   *  Absent (mocks) or null (before the first sync) means "/". */
+  delimiter?: string | null;
 }
 
 export interface ThreadRow {
