@@ -2694,8 +2694,11 @@ fn decode_imap_utf7(s: &str) -> String {
         match engine.decode(&standard) {
             Ok(bytes) if bytes.len() % 2 == 0 => {
                 let units: Vec<u16> = bytes
-                    .chunks_exact(2)
-                    .map(|b| u16::from_be_bytes([b[0], b[1]]))
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .copied()
+                    .map(u16::from_be_bytes)
                     .collect();
                 match String::from_utf16(&units) {
                     Ok(decoded) => out.push_str(&decoded),
