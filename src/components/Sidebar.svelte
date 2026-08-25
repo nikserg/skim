@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api } from "../lib/api";
-  import { folderIcon, folderLabel, ownFoldersHeading } from "../lib/folders";
+  import { folderIcon, folderLabel, folderTree, ownFoldersHeading } from "../lib/folders";
   import { t } from "../lib/i18n/index.svelte";
   import { ai } from "../lib/stores/ai.svelte";
   import { mail } from "../lib/stores/mail.svelte";
@@ -22,7 +22,9 @@
   const mainFolders = $derived(
     mail.folders.filter((f) => f.role !== null && f.role !== "all" && f.role !== "starred"),
   );
-  const labels = $derived(mail.folders.filter((f) => f.role === null));
+  // The user's own folders, as a tree: a nested folder prints only what its
+  // parent row does not already say, and leans on an indent for the rest.
+  const labels = $derived(folderTree(mail.folders.filter((f) => f.role === null)));
   // In the unified view every connected mailbox is in scope.
   const ownHeading = $derived(
     ownFoldersHeading(
@@ -71,16 +73,18 @@
     {#if labels.length > 0}
       <div class="section">
         <div class="microlabel heading">{ownHeading}</div>
-        {#each labels as folder (folder.id)}
+        {#each labels as { folder, depth, label } (folder.id)}
+          {@const path = folderLabel(folder)}
           <button
             class="item"
             class:selected={mail.selectedFolderId === folder.id}
             onclick={() => mail.selectFolder(folder.id)}
-            title={collapsed ? folder.displayName : undefined}
+            style="--depth: {Math.min(depth, 3)}"
+            title={collapsed || path !== label ? path : undefined}
           >
             <span class="dot"></span>
-            <span class="initial" aria-hidden="true">{folder.displayName.charAt(0).toUpperCase()}</span>
-            <span class="name">{folder.displayName}</span>
+            <span class="initial" aria-hidden="true">{(Array.from(label)[0] ?? "").toUpperCase()}</span>
+            <span class="name">{label}</span>
             {#if folder.unreadCount > 0}
               <span class="count">{folder.unreadCount}</span>
             {/if}
@@ -282,6 +286,10 @@
     align-items: center;
     gap: 10px;
     padding: 7px 12px;
+    /* Nesting is drawn, not spelled out: a child folder is indented under its
+       parent instead of repeating the whole path. Capped in the markup — past
+       three levels the indent costs more room than the shorter name saves. */
+    padding-left: calc(12px + var(--depth, 0) * 12px);
     border-radius: var(--radius-s);
     color: var(--text-dim);
     font-size: 13.5px;
