@@ -45,7 +45,16 @@ pub fn normalize_base_url(raw: &str) -> Option<String> {
 /// endpoint that asks us to, by name, in its own error. See
 /// [`rejects_max_tokens`].
 const MAX_TOKENS: &str = "max_tokens";
+/// The name OpenAI's reasoning models want instead. See [`MAX_TOKENS`] for why
+/// it is never the one we open with.
 const MAX_COMPLETION_TOKENS: &str = "max_completion_tokens";
+
+/// Sent only under [`EFFORT_NONE`], and only to an endpoint that named that
+/// value in its own refusal. See [`refuses_tools_while_reasoning`].
+const REASONING_EFFORT: &str = "reasoning_effort";
+/// A downgrade, not a rename: under it the answer comes back from a model that
+/// no longer thinks first.
+const EFFORT_NONE: &str = "none";
 
 pub struct Request {
     pub model: String,
@@ -80,7 +89,7 @@ fn chat_body(request: &Request, tokens_key: &str) -> serde_json::Value {
     body
 }
 
-fn tool_body(request: &ToolRequest, tokens_key: &str) -> serde_json::Value {
+fn tool_body(request: &ToolRequest, tokens_key: &str, effort: Option<&str>) -> serde_json::Value {
     let mut messages = vec![json!({ "role": "system", "content": request.system })];
     messages.extend(request.messages.iter().cloned());
     let mut body = json!({
@@ -94,6 +103,11 @@ fn tool_body(request: &ToolRequest, tokens_key: &str) -> serde_json::Value {
     if !request.tools.is_empty() {
         body["tools"] = json!(request.tools);
         body["tool_choice"] = json!("auto");
+        // Inside this branch on purpose: the tools provoke the refusal, so the
+        // round carrying none keeps its reasoning, and it writes the answer.
+        if let Some(effort) = effort {
+            body[REASONING_EFFORT] = json!(effort);
+        }
     }
     body
 }
@@ -138,6 +152,23 @@ fn rejects_max_tokens(body: &Value) -> bool {
     message.contains(MAX_TOKENS) && message.contains(MAX_COMPLETION_TOKENS)
 }
 
+/// The one sentence every version of this refusal opens with. What follows
+/// diverges by model, so the opening is the only stable part to match on.
+const TOOLS_REFUSED: &str = "Function tools with reasoning_effort are not supported";
+
+/// Is the endpoint refusing our tools over reasoning it turned on itself? The
+/// request never mentioned reasoning: the model defaults to it, then rejects
+/// the combination.
+///
+/// Must open with [`TOOLS_REFUSED`] *and* name `'none'`. The same opening
+/// continues "Please use /v1/responses instead" on models offering no remedy we
+/// can apply, and `error.param` reads `reasoning_effort` on both, so only the
+/// named value separates the refusal we can fix from the one we cannot.
+fn refuses_tools_while_reasoning(body: &Value) -> bool {
+    let message = body["error"]["message"].as_str().unwrap_or_default();
+    message.contains(TOOLS_REFUSED) && message.contains("'none'")
+}
+
 /// Map a non-200 response to the shared error codes; `Ok` for 200.
 async fn check_status(resp: reqwest::Response) -> Result<reqwest::Response> {
     let status = resp.status().as_u16();
@@ -154,9 +185,12 @@ async fn check_status(resp: reqwest::Response) -> Result<reqwest::Response> {
             .as_ref()
             .and_then(|v| v["error"]["message"].as_str().map(String::from))
             .unwrap_or(text);
-        // Carry the provider's own message either way: [`stream`] consumes this
-        // code, so it only reaches the UI if the retry under the other key
-        // failed too — and then the endpoint's own words are what help.
+        // Carry the provider's own message either way: the retry loops consume
+        // these codes, so one only reaches the UI if the second attempt failed
+        // too.
+        if parsed.as_ref().is_some_and(refuses_tools_while_reasoning) {
+            return Err(SkimError::other("ai_reasoning_param", message));
+        }
         if parsed.as_ref().is_some_and(rejects_max_tokens) {
             return Err(SkimError::other("ai_token_param", message));
         }
@@ -358,8 +392,9 @@ struct ApiError {
 /// Stream one assistant round that may include tool calls. Text streams to
 /// `on_delta` and reasoning is reported through `on_reasoning` (see [`stream`]);
 /// `tool_calls` are accumulated and returned. One retry on rate-limit/upstream
-/// errors and one on the token-parameter refusal (before any bytes stream) —
-/// see [`stream`].
+/// errors, one on the token-parameter refusal, and one on an endpoint that
+/// refuses tools while the model reasons, all before any bytes stream. See
+/// [`stream`]. Only this path carries the last: [`stream`] sends no tools.
 pub async fn stream_tools(
     ep: &Endpoint,
     key: &str,
@@ -369,17 +404,26 @@ pub async fn stream_tools(
 ) -> Result<AssistantTurn> {
     let mut overloaded = false;
     let mut switched = false;
+    let mut downgraded = false;
     let mut tokens_key = MAX_TOKENS;
+    let mut effort = None;
     loop {
-        match stream_tools_once(ep, key, request, tokens_key, on_delta, on_reasoning).await {
+        match stream_tools_once(ep, key, request, tokens_key, effort, on_delta, on_reasoning).await
+        {
             Err(e) if e.code() == "ai_overloaded" && !overloaded => {
                 overloaded = true;
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
-            // See [`stream`] for why the two latches are separate.
+            // See [`stream`] for why the latches are separate.
             Err(e) if e.code() == "ai_token_param" && !switched => {
                 switched = true;
                 tokens_key = MAX_COMPLETION_TOKENS;
+            }
+            // Unlike the key switch above, this one costs the user an answer
+            // from a model that no longer reasons.
+            Err(e) if e.code() == "ai_reasoning_param" && !downgraded => {
+                downgraded = true;
+                effort = Some(EFFORT_NONE);
             }
             other => return other,
         }
@@ -427,15 +471,17 @@ fn assemble_turn(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn stream_tools_once(
     ep: &Endpoint,
     key: &str,
     request: &ToolRequest,
     tokens_key: &str,
+    effort: Option<&str>,
     on_delta: &mut impl FnMut(&str),
     on_reasoning: &mut impl FnMut(),
 ) -> Result<AssistantTurn> {
-    let resp = post_chat(ep, key, &tool_body(request, tokens_key))
+    let resp = post_chat(ep, key, &tool_body(request, tokens_key, effort))
         .send()
         .await
         .map_err(|e| SkimError::other("network", e.to_string()))?;
@@ -623,10 +669,10 @@ mod tests {
             tools: Vec::new(),
             max_tokens: 42,
         };
-        let body = tool_body(&tool_request, MAX_COMPLETION_TOKENS);
+        let body = tool_body(&tool_request, MAX_COMPLETION_TOKENS, None);
         assert_eq!(body["max_completion_tokens"], 42);
         assert!(body.get("max_tokens").is_none());
-        let body = tool_body(&tool_request, MAX_TOKENS);
+        let body = tool_body(&tool_request, MAX_TOKENS, None);
         assert_eq!(body["max_tokens"], 42);
         assert!(body.get("max_completion_tokens").is_none());
     }
@@ -661,6 +707,86 @@ mod tests {
     }
 
     #[test]
+    fn only_a_refusal_naming_its_own_remedy_turns_reasoning_off() {
+        let body = |json: &str| serde_json::from_str::<Value>(json).unwrap();
+        // Captured from api.openai.com, on a request that never mentioned
+        // reasoning at all.
+        assert!(refuses_tools_while_reasoning(&body(
+            r#"{"error":{"message":"Function tools with reasoning_effort are not supported for gpt-5.6-terra in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.","type":"invalid_request_error","param":"reasoning_effort","code":null}}"#
+        )));
+        // An SDK that prefixes the status onto the message must still match.
+        assert!(refuses_tools_while_reasoning(&body(
+            r#"{"error":{"message":"400 Function tools with reasoning_effort are not supported for gpt-5.6-luna in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'."}}"#
+        )));
+        // The same opening, from a model that offers no remedy but an API this
+        // client does not speak. Retrying under a value it never named would
+        // spend a round-trip to be told the same thing — and `param` reads
+        // `reasoning_effort` here too, so only the remedy separates them.
+        assert!(!refuses_tools_while_reasoning(&body(
+            r#"{"error":{"message":"Function tools with reasoning_effort are not supported for gpt-5.4 in /v1/chat/completions. Please use /v1/responses instead.","param":"reasoning_effort"}}"#
+        )));
+        // Prose that happens to contain the word is not the endpoint naming the
+        // value: the quotes are what make it a remedy rather than a mention.
+        assert!(!refuses_tools_while_reasoning(&body(
+            r#"{"error":{"message":"Function tools with reasoning_effort are not supported for gpt-5.4, and none of the chat/completions models support this. Please use /v1/responses instead.","param":"reasoning_effort"}}"#
+        )));
+    }
+
+    #[test]
+    fn a_server_that_never_knew_the_parameter_is_left_alone() {
+        let body = |json: &str| serde_json::from_str::<Value>(json).unwrap();
+        // Groq does not know the key at all and suggests another one. Sending
+        // it back is strictly worse than never having sent it.
+        assert!(!refuses_tools_while_reasoning(&body(
+            r#"{"error":{"message":"property 'reasoning_effort' is unsupported, did you mean 'reasoning_format'?","type":"invalid_request_error"}}"#
+        )));
+        // vLLM knows the key and constrains its values; `none` is not among
+        // them, so this endpoint would refuse the very retry we would send.
+        assert!(!refuses_tools_while_reasoning(&body(
+            r#"{"error":{"message":"1 validation error: {'type': 'literal_error', 'loc': ('body', 'reasoning_effort'), 'msg': \"Input should be 'low', 'medium' or 'high'\"}","type":"Bad Request","code":400}}"#
+        )));
+        // Ollama maps the key onto its own and rejects off-list values.
+        assert!(!refuses_tools_while_reasoning(&body(
+            r#"{"error":{"message":"invalid think value: \"minimal\" (must be \"high\", \"medium\", \"low\", true, or false)"}}"#
+        )));
+        // The Responses API moved the parameter rather than refusing tools.
+        assert!(!refuses_tools_while_reasoning(&body(
+            r#"{"error":{"message":"Unsupported parameter: 'reasoning_effort'. In the Responses API, this parameter has moved to 'reasoning.effort'.","code":"unsupported_parameter"}}"#
+        )));
+        assert!(!refuses_tools_while_reasoning(&body(
+            r#"{"error":{"message":"Unrecognized request argument supplied: reasoning_effort"}}"#
+        )));
+        // Mistral answers with an object where the message should be; reading
+        // it as a string must yield no match rather than panicking.
+        assert!(!refuses_tools_while_reasoning(&body(
+            r#"{"error":{"message":{"detail":[{"msg":"Input should be 'none' or 'high'","loc":["body","reasoning_effort"]}]}}}"#
+        )));
+        // The same refusal flattened to a string still names the key and the
+        // word we key the remedy on, but it is a rejected *value*, not a
+        // refusal to run tools. Only the opening sentence tells them apart.
+        assert!(!refuses_tools_while_reasoning(&body(
+            r#"{"error":{"message":"Input should be 'none' or 'high' [type=enum, loc=('body','reasoning_effort'), input='medium']","type":"invalid_request_error"}}"#
+        )));
+        assert!(!refuses_tools_while_reasoning(&body(r#"{}"#)));
+    }
+
+    /// The two parameter refusals travel the same `check_status` chain, so
+    /// neither may answer for the other: one moves a key, the other takes the
+    /// model's reasoning away.
+    #[test]
+    fn the_two_parameter_refusals_never_read_as_each_other() {
+        let body = |json: &str| serde_json::from_str::<Value>(json).unwrap();
+        let ceiling = body(
+            r#"{"error":{"message":"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.","param":"max_tokens"}}"#,
+        );
+        let reasoning = body(
+            r#"{"error":{"message":"Function tools with reasoning_effort are not supported for gpt-5.6-sol in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.","param":"reasoning_effort"}}"#,
+        );
+        assert!(rejects_max_tokens(&ceiling) && !refuses_tools_while_reasoning(&ceiling));
+        assert!(refuses_tools_while_reasoning(&reasoning) && !rejects_max_tokens(&reasoning));
+    }
+
+    #[test]
     fn tool_body_omits_tools_when_empty() {
         let base = ToolRequest {
             model: "m".into(),
@@ -669,7 +795,7 @@ mod tests {
             tools: Vec::new(),
             max_tokens: 42,
         };
-        let body = tool_body(&base, MAX_TOKENS);
+        let body = tool_body(&base, MAX_TOKENS, None);
         assert!(body.get("tools").is_none());
         assert!(body.get("tool_choice").is_none());
 
@@ -677,9 +803,39 @@ mod tests {
             tools: vec![json!({ "type": "function" })],
             ..base
         };
-        let body = tool_body(&with_tools, MAX_TOKENS);
+        let body = tool_body(&with_tools, MAX_TOKENS, None);
         assert_eq!(body["tools"].as_array().unwrap().len(), 1);
         assert_eq!(body["tool_choice"], "auto");
+    }
+
+    /// The agent drops the tools for its last round, and that round writes the
+    /// answer — so a downgrade negotiated earlier must not follow it there and
+    /// spend the budget the reasoning was meant to use.
+    #[test]
+    fn reasoning_only_goes_off_where_the_tools_are() {
+        let base = ToolRequest {
+            model: "m".into(),
+            system: "sys".into(),
+            messages: vec![json!({ "role": "user", "content": "hi" })],
+            tools: Vec::new(),
+            max_tokens: 42,
+        };
+        let body = tool_body(&base, MAX_TOKENS, Some(EFFORT_NONE));
+        assert!(body.get("reasoning_effort").is_none());
+
+        let with_tools = ToolRequest {
+            tools: vec![json!({ "type": "function" })],
+            ..base
+        };
+        let body = tool_body(&with_tools, MAX_TOKENS, Some(EFFORT_NONE));
+        assert_eq!(body["reasoning_effort"], "none");
+        // The tools are still there: the point is to keep them, not trade them.
+        assert_eq!(body["tools"].as_array().unwrap().len(), 1);
+        assert_eq!(body["tool_choice"], "auto");
+        // Never sent unasked: the default request carries no reasoning key at
+        // all, whatever the endpoint might have defaulted to on its own.
+        let body = tool_body(&with_tools, MAX_TOKENS, None);
+        assert!(body.get("reasoning_effort").is_none());
     }
 
     #[test]
@@ -752,6 +908,118 @@ mod tests {
         )
         .unwrap();
         assert_eq!(tools.choices[0].delta.tool_calls.as_ref().unwrap().len(), 1);
+    }
+
+    /// A server that answers `replies` in order, one per connection, and
+    /// records every request body it was sent. Enough of an endpoint to drive
+    /// the retry loop, which is otherwise reachable only over the wire.
+    async fn scripted(
+        replies: Vec<(u16, String)>,
+    ) -> (String, tokio::task::JoinHandle<Vec<serde_json::Value>>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let mut seen = Vec::new();
+            for (status, body) in replies {
+                let (mut sock, _) = listener.accept().await.unwrap();
+                let mut raw = Vec::new();
+                let mut buf = [0u8; 4096];
+                // Read until the headers end, then the declared body length.
+                loop {
+                    let n = sock.read(&mut buf).await.unwrap();
+                    if n == 0 {
+                        break;
+                    }
+                    raw.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&raw).to_string();
+                    if let Some(head_end) = text.find("\r\n\r\n") {
+                        let len: usize = text
+                            .to_ascii_lowercase()
+                            .split("content-length:")
+                            .nth(1)
+                            .and_then(|t| t.split("\r\n").next())
+                            .and_then(|t| t.trim().parse().ok())
+                            .unwrap_or(0);
+                        if raw.len() >= head_end + 4 + len {
+                            seen.push(
+                                serde_json::from_slice(&raw[head_end + 4..])
+                                    .unwrap_or(serde_json::Value::Null),
+                            );
+                            break;
+                        }
+                    }
+                }
+                let resp = format!(
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                sock.write_all(resp.as_bytes()).await.unwrap();
+                let _ = sock.shutdown().await;
+            }
+            seen
+        });
+        (format!("http://127.0.0.1:{port}"), server)
+    }
+
+    fn a_tool_request() -> ToolRequest {
+        ToolRequest {
+            model: "m".into(),
+            system: "sys".into(),
+            messages: vec![json!({ "role": "user", "content": "hi" })],
+            tools: vec![json!({ "type": "function" })],
+            max_tokens: 42,
+        }
+    }
+
+    const REFUSAL: &str = r#"{"error":{"message":"Function tools with reasoning_effort are not supported for gpt-5.6-terra in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.","param":"reasoning_effort"}}"#;
+
+    /// The refusal must actually produce a second request carrying the value
+    /// the endpoint named, with the tools it was refused over.
+    #[tokio::test]
+    async fn the_retry_goes_out_with_reasoning_off() {
+        let done = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+        let (base_url, server) =
+            scripted(vec![(400, REFUSAL.to_string()), (200, done.to_string())]).await;
+        let ep = Endpoint {
+            base_url,
+            attribution: false,
+        };
+        let turn = stream_tools(&ep, "", &a_tool_request(), &mut |_: &str| {}, &mut || {})
+            .await
+            .unwrap();
+
+        assert_eq!(turn.text, "hi");
+        let seen = server.await.unwrap();
+        assert_eq!(seen.len(), 2, "the refusal is retried exactly once");
+        assert!(seen[0].get("reasoning_effort").is_none());
+        assert_eq!(seen[1]["reasoning_effort"], "none");
+        // The retry keeps the tools it was refused over. Dropping them would
+        // answer the round without the search results it was asked for.
+        assert_eq!(seen[1]["tools"], seen[0]["tools"]);
+        assert_eq!(seen[1]["tool_choice"], "auto");
+    }
+
+    /// An endpoint that refuses even under `none` must give up, not spin: the
+    /// latch is the only thing bounding this loop against a metered API.
+    #[tokio::test]
+    async fn a_refusal_that_never_lifts_gives_up_after_one_retry() {
+        let (base_url, server) = scripted(vec![
+            (400, REFUSAL.to_string()),
+            (400, REFUSAL.to_string()),
+            (400, REFUSAL.to_string()),
+        ])
+        .await;
+        let ep = Endpoint {
+            base_url,
+            attribution: false,
+        };
+        let err = stream_tools(&ep, "", &a_tool_request(), &mut |_: &str| {}, &mut || {})
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.code(), "ai_reasoning_param");
+        server.abort();
     }
 
     #[test]
