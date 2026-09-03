@@ -578,16 +578,16 @@ impl Engine {
     async fn run_sync(&mut self) {
         self.emit_status("syncing", None);
         match self.sync_all_folders().await {
-            Ok(()) => {
-                self.emit_status("idle", None);
-                crate::badge::refresh(&self.app).await;
-            }
+            Ok(()) => self.emit_status("idle", None),
             Err(e) => {
                 tracing::warn!(error = %e, "sync failed");
                 self.reset_session();
                 self.emit_status("error", Some(e.to_string()));
             }
         }
+        // Repainted after the attempt either way: on success from fresh
+        // counts, on failure from the cache — nothing better is coming.
+        crate::badge::refresh(&self.app).await;
     }
 
     /// This account's inbox, as `(folder id, IMAP name)`.
@@ -612,6 +612,10 @@ impl Engine {
                 self.reset_session();
             }
         }
+        // This is the IDLE-driven path and the first sync after launch: the
+        // badge must follow it, not wait for the next full sweep. Painted on
+        // failure too — that is the offline fallback to the cached count.
+        crate::badge::refresh(&self.app).await;
     }
 
     async fn logout(&mut self) {
@@ -985,17 +989,27 @@ impl Engine {
                 .await?;
             changed |= !inserted.is_empty();
             if !inserted.is_empty() && is_inbox {
-                let _ = self
-                    .app
-                    .emit("mail:new", json!({ "count": inserted.len() }));
-                crate::notify::notify_new_mail(&self.app, &self.db, &inserted).await;
-                // Pull the bodies before they are clicked. Fire-and-forget onto
-                // the fetch connection: a just-arrived message is guaranteed to
-                // be uncached, and the notification the user is about to tap
-                // must not wait for this — nor must the rest of the pass.
+                // Only mail the server still holds unread is news. A message
+                // read on another device before this one ever saw it (a
+                // machine that was off all day, a laptop waking from sleep)
+                // must not toast — the user has already dealt with it.
+                let unread: Vec<i64> = inserted
+                    .iter()
+                    .filter(|(_, is_read)| !is_read)
+                    .map(|(pk, _)| *pk)
+                    .collect();
+                if !unread.is_empty() {
+                    let _ = self.app.emit("mail:new", json!({ "count": unread.len() }));
+                    crate::notify::notify_new_mail(&self.app, &self.db, &unread).await;
+                }
+                // Pull the bodies before they are clicked — read ones too, they
+                // are just as likely to be opened. Fire-and-forget onto the
+                // fetch connection: a just-arrived message is guaranteed to be
+                // uncached, and the notification the user is about to tap must
+                // not wait for this — nor must the rest of the pass.
                 if let Some(tx) = &self.prefetch_tx {
                     let _ = tx.send(SyncCommand::PrefetchBodies {
-                        message_pks: inserted.clone(),
+                        message_pks: inserted.iter().map(|(pk, _)| *pk).collect(),
                     });
                 }
             }
@@ -1146,13 +1160,16 @@ impl Engine {
             .await
     }
 
+    /// Fetch headers for `set` and insert the ones not yet cached. Returns
+    /// `(message pk, is_read)` for each newly inserted row — the server-side
+    /// `\Seen` at the moment we first saw it.
     async fn fetch_headers(
         &mut self,
         folder_id: i64,
         set: &str,
         by_uid: bool,
         above_uid: i64,
-    ) -> Result<Vec<i64>> {
+    ) -> Result<Vec<(i64, bool)>> {
         const QUERY: &str = "(UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER])";
         let session = self.session().await?;
         let mut fetched = Vec::new();
@@ -1205,7 +1222,7 @@ impl Engine {
                 let mut inserted = Vec::new();
                 for msg in &rows {
                     if let Some((pk, _thread)) = queries::insert_message(conn, msg)? {
-                        inserted.push(pk);
+                        inserted.push((pk, msg.is_read));
                     }
                 }
                 Ok(inserted)

@@ -294,12 +294,11 @@ pub fn run() {
                 }
             });
 
-            // Paint the unread badge from cached counts so the taskbar/tray
-            // icon is correct immediately, before the first sync lands.
-            let badge_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                badge::refresh(&badge_handle).await;
-            });
+            // The unread badge is deliberately *not* painted from cached
+            // counts here: after a day away they describe yesterday, and mail
+            // read elsewhere since would flash a stale count. Each engine
+            // paints it after its first inbox sync attempt (cached counts are
+            // the fallback when that attempt fails), see `Engine::sync_inbox`.
 
             // A successful self-update leaves the installer behind in
             // `%TEMP%\Skim-{version}-updater-{rand}\` — the updater plugin
