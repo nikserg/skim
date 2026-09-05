@@ -140,6 +140,7 @@ pub async fn add_account(
         smtp_port: input.smtp_port,
         smtp_security: input.smtp_security,
         auth_kind: "password".into(),
+        signature: None,
     };
     finish_add_account(&app, &state, account, &password).await
 }
@@ -172,7 +173,7 @@ pub async fn start_google_oauth(app: AppHandle, state: State<'_, AppState>) -> R
     let account = Account {
         id: uuid::Uuid::new_v4().to_string(),
         email: outcome.email.clone(),
-        display_name: None,
+        display_name: outcome.display_name.clone(),
         provider: "gmail".into(),
         imap_host: "imap.gmail.com".into(),
         imap_port: 993,
@@ -183,6 +184,7 @@ pub async fn start_google_oauth(app: AppHandle, state: State<'_, AppState>) -> R
         smtp_port: preset.as_ref().map(|p| p.smtp_port).unwrap_or(587),
         smtp_security: "starttls".into(),
         auth_kind: "oauth".into(),
+        signature: None,
     };
     finish_add_account(&app, &state, account, &outcome.refresh_token).await
 }
@@ -216,7 +218,7 @@ pub async fn start_microsoft_oauth(app: AppHandle, state: State<'_, AppState>) -
     let account = Account {
         id: uuid::Uuid::new_v4().to_string(),
         email: outcome.email.clone(),
-        display_name: None,
+        display_name: outcome.display_name.clone(),
         provider: "microsoft".into(),
         imap_host: "outlook.office365.com".into(),
         imap_port: 993,
@@ -224,8 +226,37 @@ pub async fn start_microsoft_oauth(app: AppHandle, state: State<'_, AppState>) -
         smtp_port: 587,
         smtp_security: "starttls".into(),
         auth_kind: "oauth".into(),
+        signature: None,
     };
     finish_add_account(&app, &state, account, &outcome.refresh_token).await
+}
+
+/// The two identity fields the user owns: the name recipients see on the From
+/// header, and the sign-off appended to mail written from this mailbox.
+///
+/// Blank clears the field (see `db_accounts::update_identity`), which is the
+/// honest way to opt back out of both. The running sync engine re-reads the row
+/// before every queued op, so the next message sent uses this without a restart.
+#[tauri::command]
+pub async fn update_account_identity(
+    state: State<'_, AppState>,
+    account_id: String,
+    display_name: Option<String>,
+    signature: Option<String>,
+) -> Result<Account> {
+    state
+        .db
+        .call(move |conn| {
+            db_accounts::update_identity(
+                conn,
+                &account_id,
+                display_name.as_deref(),
+                signature.as_deref(),
+            )?;
+            db_accounts::get(conn, &account_id)
+        })
+        .await?
+        .ok_or_else(|| SkimError::other("account", "account not found"))
 }
 
 #[tauri::command]

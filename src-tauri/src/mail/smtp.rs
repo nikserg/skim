@@ -19,6 +19,33 @@ pub fn parse_recipients(raw: &str) -> Vec<String> {
         .collect()
 }
 
+/// The `From:` mailbox for this account: `Jane Doe <jane@x.com>` once a display
+/// name is known, a bare address until then.
+fn from_mailbox(account: &Account) -> Result<Mailbox> {
+    match &account.display_name {
+        Some(name) if !name.is_empty() => format!("{} <{}>", name, account.email),
+        _ => account.email.clone(),
+    }
+    .parse()
+    .map_err(|e| SkimError::other("send", format!("invalid sender: {e}")))
+}
+
+/// What a signature contributes to a freshly created draft body.
+///
+/// The `-- ` line (dash, dash, space) is the RFC 3676 §4.3 delimiter every mail
+/// client uses to tell a sign-off from the message: we add it here rather than
+/// making the user type it, which also means [`crate::mail::parse::strip_quoted`]
+/// recognizes our own signatures for free.
+///
+/// An unset or blank signature yields an empty string, so a user who never sets
+/// one gets a composer byte-identical to the one before this existed.
+pub fn signature_block(signature: Option<&str>) -> String {
+    match signature.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(sig) => format!("\n\n-- \n{sig}"),
+        None => String::new(),
+    }
+}
+
 pub struct OutgoingRefs {
     pub in_reply_to: Option<String>,
     pub references: Vec<String>,
@@ -46,12 +73,7 @@ pub fn build_message(
     message_id: Option<&str>,
     allow_empty_recipients: bool,
 ) -> Result<Vec<u8>> {
-    let from: Mailbox = match &account.display_name {
-        Some(name) if !name.is_empty() => format!("{} <{}>", name, account.email),
-        _ => account.email.clone(),
-    }
-    .parse()
-    .map_err(|e| SkimError::other("send", format!("invalid sender: {e}")))?;
+    let from = from_mailbox(account)?;
 
     let mut builder = Message::builder().from(from);
 
@@ -132,12 +154,7 @@ pub fn build_calendar_reply(
     text_body: &str,
     ics: &str,
 ) -> Result<Vec<u8>> {
-    let from: Mailbox = match &account.display_name {
-        Some(name) if !name.is_empty() => format!("{} <{}>", name, account.email),
-        _ => account.email.clone(),
-    }
-    .parse()
-    .map_err(|e| SkimError::other("send", format!("invalid sender: {e}")))?;
+    let from = from_mailbox(account)?;
 
     let calendar_type = ContentType::parse("text/calendar; charset=utf-8; method=REPLY")
         .map_err(|e| SkimError::other("send", format!("cannot build message: {e}")))?;
@@ -164,12 +181,7 @@ pub fn build_calendar_reply(
 /// message to the list's unsubscribe address. Subject/recipient come from the
 /// `List-Unsubscribe` header, so they are protocol values, not UI copy.
 pub fn build_unsubscribe_mail(account: &Account, to: &str, subject: &str) -> Result<Vec<u8>> {
-    let from: Mailbox = match &account.display_name {
-        Some(name) if !name.is_empty() => format!("{} <{}>", name, account.email),
-        _ => account.email.clone(),
-    }
-    .parse()
-    .map_err(|e| SkimError::other("send", format!("invalid sender: {e}")))?;
+    let from = from_mailbox(account)?;
 
     let message = Message::builder()
         .from(from)
@@ -284,6 +296,7 @@ mod tests {
             smtp_port: 587,
             smtp_security: "tls".into(),
             auth_kind: "password".into(),
+            signature: None,
         }
     }
 
@@ -375,5 +388,41 @@ mod tests {
         assert!(text.contains("Body text"));
         // The throwaway envelope must not leak a To header into the draft.
         assert!(!text.contains("To:"));
+    }
+
+    #[test]
+    fn from_header_carries_the_display_name() {
+        let mailbox = from_mailbox(&account()).expect("valid sender");
+        assert_eq!(mailbox.to_string(), "Me <me@example.com>");
+    }
+
+    #[test]
+    fn from_header_is_a_bare_address_without_a_name() {
+        let mut a = account();
+        a.display_name = None;
+        assert_eq!(
+            from_mailbox(&a).expect("valid sender").to_string(),
+            "me@example.com"
+        );
+        // An empty string is the same "no name" as NULL, never `<> me@…`.
+        a.display_name = Some(String::new());
+        assert_eq!(
+            from_mailbox(&a).expect("valid sender").to_string(),
+            "me@example.com"
+        );
+    }
+
+    #[test]
+    fn signature_block_is_empty_when_there_is_no_signature() {
+        assert_eq!(signature_block(None), "");
+        assert_eq!(signature_block(Some("")), "");
+        assert_eq!(signature_block(Some("   \t ")), "");
+    }
+
+    #[test]
+    fn signature_block_leads_with_the_sigdash() {
+        assert_eq!(signature_block(Some("Jane")), "\n\n-- \nJane");
+        // Surrounding whitespace is the composer's business, not the wire's.
+        assert_eq!(signature_block(Some("  Jane  ")), "\n\n-- \nJane");
     }
 }

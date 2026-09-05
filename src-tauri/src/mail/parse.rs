@@ -730,6 +730,15 @@ mod tests {
         assert_eq!(strip_quoted(body), "My answer\nStill mine");
     }
 
+    /// The contract `smtp::signature_block` relies on: whatever Skim puts below
+    /// the sigdash is a sign-off, not the user's words, so style analysis and
+    /// language detection never learn from it.
+    #[test]
+    fn strip_quoted_drops_a_signature_skim_wrote_itself() {
+        let sig = crate::mail::smtp::signature_block(Some("Jane Doe\nAcme Inc"));
+        assert_eq!(strip_quoted(&format!("My answer{sig}")), "My answer");
+    }
+
     #[test]
     fn strip_quoted_returns_nothing_for_a_bottom_posted_reply() {
         // The whole point of the fallback in `mail::lang`: there are no own

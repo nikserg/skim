@@ -42,6 +42,13 @@ export const api = {
     invoke<Account>("add_account", { input, password }),
   startGoogleOauth: () => invoke<Account>("start_google_oauth"),
   startMicrosoftOauth: () => invoke<Account>("start_microsoft_oauth"),
+  /** The name on outgoing mail and the sign-off, per account. Blank clears. */
+  updateAccountIdentity: (
+    accountId: string,
+    displayName: string | null,
+    signature: string | null,
+  ) =>
+    invoke<Account>("update_account_identity", { accountId, displayName, signature }),
   removeAccount: (accountId: string) => invoke<void>("remove_account", { accountId }),
   inboxUnreadCounts: () => invoke<Record<string, number>>("inbox_unread_counts"),
 
@@ -118,8 +125,9 @@ export const api = {
     invoke<Draft>("create_draft", { accountId: accountId ?? null }),
   getDraft: (draftId: number) => invoke<Draft>("get_draft", { draftId }),
   updateDraft: (draft: Draft) => invoke<void>("update_draft", { draft }),
+  /** Returns the moved draft: the signature travels with the account. */
   setDraftAccount: (draftId: number, accountId: string) =>
-    invoke<void>("set_draft_account", { draftId, accountId }),
+    invoke<Draft>("set_draft_account", { draftId, accountId }),
   saveServerDraft: (draft: Draft) => invoke<void>("save_server_draft", { draft }),
   editDraft: (messageId: number) => invoke<Draft>("edit_draft", { messageId }),
   deleteDraft: (draftId: number) => invoke<void>("delete_draft", { draftId }),

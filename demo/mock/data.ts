@@ -19,6 +19,7 @@ export const ACCOUNT = {
   smtpPort: 465,
   smtpSecurity: "ssl",
   authKind: "password",
+  signature: "Alex Morgan\nBrightwave — Product",
 };
 
 export const FOLDERS = [
@@ -175,6 +176,7 @@ export const ACCOUNT2 = {
   smtpPort: 465,
   smtpSecurity: "ssl",
   authKind: "password",
+  signature: null,
 };
 
 export const FOLDERS2 = [
@@ -427,6 +429,14 @@ export function searchHits(query: string) {
 let draftSeq = 5000;
 const DRAFTS: Record<number, any> = {};
 
+// Mirrors `smtp::signature_block` in Rust: the sign-off a fresh draft starts
+// with, delimiter included. The two fixed recorder drafts below keep their
+// hand-written bodies so the scripted tour stays byte-stable.
+export function sigBlock(accountId = "acc-1") {
+  const sig = (accountId === "acc-1" ? ACCOUNT : ACCOUNT2).signature;
+  return sig ? `\n\n-- \n${sig}` : "";
+}
+
 export function createDraft() {
   const id = ++draftSeq;
   const d = {
@@ -438,7 +448,7 @@ export function createDraft() {
     cc: "",
     bcc: "",
     subject: "",
-    body: "",
+    body: sigBlock(),
     originMessageId: null,
   };
   DRAFTS[id] = d;
@@ -459,10 +469,34 @@ export function replyTemplate(messageId: number, mode: string) {
     cc: "",
     bcc: "",
     subject: (t?.subject ?? "").startsWith("Re:") ? t!.subject : `Re: ${t?.subject ?? "Q3 launch"}`,
-    body: quoted,
+    body: sigBlock() + quoted,
     originMessageId: null,
   };
   DRAFTS[id] = d;
+  return d;
+}
+
+export function updateAccountIdentity(
+  accountId: string,
+  displayName: string | null,
+  signature: string | null,
+) {
+  const a = accountId === "acc-1" ? ACCOUNT : ACCOUNT2;
+  a.displayName = displayName?.trim() || null;
+  a.signature = signature?.replace(/\s+$/, "") || null;
+  return a;
+}
+
+export function setDraftAccount(id: number, accountId: string) {
+  const d = getDraft(id);
+  const was = d.accountId;
+  d.accountId = accountId;
+  const old = sigBlock(was);
+  const next = sigBlock(accountId);
+  if (old !== next) {
+    const at = old ? d.body.lastIndexOf(old) : -1;
+    d.body = at >= 0 ? d.body.slice(0, at) + next + d.body.slice(at + old.length) : d.body + next;
+  }
   return d;
 }
 
@@ -470,7 +504,7 @@ export function getDraft(id: number) {
   return DRAFTS[id] ?? createDraftWithId(id);
 }
 function createDraftWithId(id: number) {
-  const d = { id, accountId: "acc-1", replyToMessageId: null, mode: "new", to: "", cc: "", bcc: "", subject: "", body: "", originMessageId: null };
+  const d = { id, accountId: "acc-1", replyToMessageId: null, mode: "new", to: "", cc: "", bcc: "", subject: "", body: sigBlock(), originMessageId: null };
   DRAFTS[id] = d;
   return d;
 }

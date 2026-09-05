@@ -11,6 +11,8 @@ export interface Account {
   smtpPort: number;
   smtpSecurity: string;
   authKind: string;
+  /** Sign-off appended to mail from this account, without the "-- " delimiter. */
+  signature: string | null;
 }
 
 export interface ServerPreset {
