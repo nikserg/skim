@@ -487,10 +487,13 @@ export function updateAccountIdentity(
   return a;
 }
 
-export function setDraftAccount(id: number, accountId: string) {
+export function setDraftAccount(id: number, accountId: string, body: string) {
   const d = getDraft(id);
   const was = d.accountId;
   d.accountId = accountId;
+  // The editor's own text, not the stored copy — the real command takes it for
+  // the same reason: the composer's save is debounced.
+  d.body = body;
   const old = sigBlock(was);
   const next = sigBlock(accountId);
   if (old !== next) {

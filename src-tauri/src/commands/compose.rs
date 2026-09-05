@@ -142,6 +142,10 @@ fn reword_signature(body: &str, from: Option<&str>, to: Option<&str>) -> String 
 /// Only allowed while the draft is local-only: once it mirrors a server copy
 /// (reply chain or saved to a Drafts folder), moving it would orphan that copy.
 ///
+/// `body` is what the editor currently holds, not what the database last saw:
+/// the composer's save is debounced, so a mailbox switched mid-sentence would
+/// otherwise reword a stale copy and hand the newer text back as a deletion.
+///
 /// Returns the updated draft: the signature travels with the account, so the
 /// composer has a new body to show.
 #[tauri::command]
@@ -149,6 +153,7 @@ pub async fn set_draft_account(
     state: State<'_, AppState>,
     draft_id: i64,
     account_id: String,
+    body: String,
 ) -> Result<Draft> {
     let moved = state
         .db
@@ -174,7 +179,7 @@ pub async fn set_draft_account(
                 return Ok(None);
             };
             draft.body = reword_signature(
-                &draft.body,
+                &body,
                 signature_of(conn, &was)?.as_deref(),
                 signature_of(conn, &account_id)?.as_deref(),
             );

@@ -65,7 +65,10 @@
     try {
       // The signature belongs to the mailbox, so the backend swaps it and hands
       // back the rewritten body — an untouched block only, never a hand edit.
-      const moved = await api.setDraftAccount(draft.id, accountId);
+      // Send what the editor holds, not what the database last saw: the save is
+      // debounced, so a mailbox switched mid-sentence would otherwise come back
+      // with the unsaved words rewritten away.
+      const moved = await api.setDraftAccount(draft.id, accountId, draft.body);
       draft.accountId = accountId;
       draft.body = moved.body;
     } catch (e) {

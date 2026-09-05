@@ -824,12 +824,15 @@ impl Engine {
         let Some(name) = found else { return };
         let id = self.account.id.clone();
         let stored = name.clone();
-        if self
-            .db
-            .call(move |conn| db_accounts::adopt_display_name(conn, &id, &stored))
-            .await
-            .is_err()
-        {
+        // The scan above ran while the user could have been typing a name of
+        // their own; `adopt_display_name` rechecks that under the write lock
+        // and answers `false` if the guess is no longer wanted.
+        if !matches!(
+            self.db
+                .call(move |conn| db_accounts::adopt_display_name(conn, &id, &stored))
+                .await,
+            Ok(true)
+        ) {
             return;
         }
         // In memory too: the very next send builds its From from this copy, and

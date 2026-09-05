@@ -125,9 +125,10 @@ export const api = {
     invoke<Draft>("create_draft", { accountId: accountId ?? null }),
   getDraft: (draftId: number) => invoke<Draft>("get_draft", { draftId }),
   updateDraft: (draft: Draft) => invoke<void>("update_draft", { draft }),
-  /** Returns the moved draft: the signature travels with the account. */
-  setDraftAccount: (draftId: number, accountId: string) =>
-    invoke<Draft>("set_draft_account", { draftId, accountId }),
+  /** Returns the moved draft: the signature travels with the account. `body` is
+   *  what the editor holds right now — the debounced save may not have run. */
+  setDraftAccount: (draftId: number, accountId: string, body: string) =>
+    invoke<Draft>("set_draft_account", { draftId, accountId, body }),
   saveServerDraft: (draft: Draft) => invoke<void>("save_server_draft", { draft }),
   editDraft: (messageId: number) => invoke<Draft>("edit_draft", { messageId }),
   deleteDraft: (draftId: number) => invoke<void>("delete_draft", { draftId }),

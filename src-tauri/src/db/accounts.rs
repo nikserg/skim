@@ -79,12 +79,23 @@ pub fn mark_identity_settled(conn: &Connection, account_id: &str) -> rusqlite::R
 /// Adopt a name learned from the mailbox's own sent mail. Touches nothing else
 /// — a signature the user has already written is not ours to overwrite — and
 /// settles the field so the guess is never made twice.
-pub fn adopt_display_name(conn: &Connection, id: &str, name: &str) -> rusqlite::Result<()> {
-    conn.execute(
-        "UPDATE accounts SET display_name = ?2 WHERE id = ?1",
+///
+/// The settle check and the write happen together, on one connection, because
+/// scanning Sent takes long enough for the user to have opened Settings and
+/// typed (or cleared) a name in the meantime. Whoever they are, they win:
+/// `false` means the guess was dropped and nothing was written.
+pub fn adopt_display_name(conn: &Connection, id: &str, name: &str) -> rusqlite::Result<bool> {
+    if identity_settled(conn, id)? {
+        return Ok(false);
+    }
+    let wrote = conn.execute(
+        "UPDATE accounts SET display_name = ?2 WHERE id = ?1 AND display_name IS NULL",
         params![id, name],
     )?;
-    mark_identity_settled(conn, id)
+    // Settled either way: a name that arrived while we scanned is still a name,
+    // and re-guessing over it later would be the same mistake one sweep later.
+    mark_identity_settled(conn, id)?;
+    Ok(wrote > 0)
 }
 
 /// The two fields the user owns. Server settings stay insert-once — changing a
@@ -101,12 +112,20 @@ pub fn update_identity(
     fn clean(v: Option<&str>) -> Option<&str> {
         v.map(str::trim).filter(|s| !s.is_empty())
     }
+    let name = clean(display_name);
+    // Settings saves both fields on one blur, so a save is not by itself an
+    // answer about the name: someone writing only a signature left the name box
+    // empty because we hadn't guessed yet, not to refuse a name. Settle when the
+    // name was actually decided — typed, or cleared after having been there.
+    let had_name = get(conn, id)?.and_then(|a| a.display_name).is_some();
     conn.execute(
         "UPDATE accounts SET display_name = ?2, signature = ?3 WHERE id = ?1",
-        params![id, clean(display_name), clean(signature)],
+        params![id, name, clean(signature)],
     )?;
-    // The user has spoken, including if they cleared the name.
-    mark_identity_settled(conn, id)
+    if name.is_some() || had_name {
+        mark_identity_settled(conn, id)?;
+    }
+    Ok(())
 }
 
 pub fn delete(conn: &Connection, id: &str) -> rusqlite::Result<()> {
@@ -157,11 +176,32 @@ mod tests {
             seed(conn)?;
             assert!(!super::identity_settled(conn, "acc1")?);
 
-            // Clearing is a decision, not an absence of one.
+            // Clearing a name that was there is a decision, not an absence of one.
+            super::update_identity(conn, "acc1", Some("Jane Doe"), None)?;
             super::update_identity(conn, "acc1", Some("  "), None)?;
             let a = super::get(conn, "acc1")?.expect("account");
             assert_eq!(a.display_name, None);
             assert!(super::identity_settled(conn, "acc1")?);
+            assert!(!super::adopt_display_name(conn, "acc1", "Jane Doe")?);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    /// Settings saves name and signature on one blur. Writing only a signature
+    /// before the mailbox has ever been scanned must not read as "I want no
+    /// name" — that would be #43 all over again, silently.
+    #[test]
+    fn writing_only_a_signature_still_allows_the_guess() {
+        let db = Db::open_in_memory().unwrap();
+        db.with(|conn| {
+            seed(conn)?;
+            super::update_identity(conn, "acc1", Some(""), Some("Jane, Acme"))?;
+            assert!(!super::identity_settled(conn, "acc1")?);
+            assert!(super::adopt_display_name(conn, "acc1", "Jane Doe")?);
+            let a = super::get(conn, "acc1")?.expect("account");
+            assert_eq!(a.display_name.as_deref(), Some("Jane Doe"));
+            assert_eq!(a.signature.as_deref(), Some("Jane, Acme"));
             Ok(())
         })
         .unwrap();
@@ -172,8 +212,38 @@ mod tests {
         let db = Db::open_in_memory().unwrap();
         db.with(|conn| {
             seed(conn)?;
-            super::adopt_display_name(conn, "acc1", "Jane Doe")?;
+            assert!(super::adopt_display_name(conn, "acc1", "Jane Doe")?);
             assert!(super::identity_settled(conn, "acc1")?);
+            // A second sweep must not re-guess over the first answer.
+            assert!(!super::adopt_display_name(conn, "acc1", "Someone Else")?);
+            assert_eq!(
+                super::get(conn, "acc1")?
+                    .expect("account")
+                    .display_name
+                    .as_deref(),
+                Some("Jane Doe")
+            );
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    /// Scanning Sent is slow enough that the user can answer first. Whatever
+    /// they chose — a name of their own, or none at all — outranks the guess.
+    #[test]
+    fn a_name_chosen_while_the_scan_ran_wins() {
+        let db = Db::open_in_memory().unwrap();
+        db.with(|conn| {
+            seed(conn)?;
+            super::update_identity(conn, "acc1", Some("J. Doe"), None)?;
+            assert!(!super::adopt_display_name(conn, "acc1", "Jane Doe")?);
+            assert_eq!(
+                super::get(conn, "acc1")?
+                    .expect("account")
+                    .display_name
+                    .as_deref(),
+                Some("J. Doe")
+            );
             Ok(())
         })
         .unwrap();
