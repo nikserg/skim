@@ -13,6 +13,7 @@ use crate::mail::{imap_client, oauth, parse, smtp};
 use crate::secrets;
 use futures::StreamExt;
 use serde_json::json;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
@@ -824,11 +825,57 @@ impl Engine {
             }
         }
 
+        // Pruning below deletes cached mail, so a listing that plainly didn't
+        // come through in full must never look like "the server dropped every
+        // folder". Every account has an inbox.
+        let listing_is_sane = names
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("INBOX"));
+
         let account_id = self.account.id.clone();
         let provider = self.account.provider.clone();
-        self.db
+        let gone: Vec<i64> = self
+            .db
             .call(move |conn| {
                 let tx = conn.transaction()?;
+
+                // What the server has, as the reconcile below wants it. A
+                // \Noselect placeholder holds no mail and gets no row of its
+                // own, so it plays no role — it only has to be in the list, or
+                // it would read as a folder that vanished.
+                let listed: Vec<(String, Option<String>)> = names
+                    .iter()
+                    .map(|(imap_name, attrs)| {
+                        let attrs_joined = attrs.join(" ").to_lowercase();
+                        let role = if attrs_joined.contains("noselect") {
+                            None
+                        } else {
+                            detect_role(imap_name, &attrs_joined)
+                        };
+                        (imap_name.clone(), role)
+                    })
+                    .collect();
+                let stored: Vec<(i64, String, Option<String>)> = {
+                    let mut stmt = tx
+                        .prepare("SELECT id, imap_name, role FROM folders WHERE account_id = ?1")?;
+                    let rows = stmt
+                        .query_map(rusqlite::params![account_id], |r| {
+                            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                        })?
+                        .collect::<std::result::Result<Vec<_>, _>>()?;
+                    rows
+                };
+                let (renames, gone) = reconcile_folders(&stored, &listed);
+                // A mailbox that only changed its name keeps its row, and with
+                // it every header already fetched. Renaming before the sweep
+                // below lets that sweep's ON CONFLICT land on this very row.
+                for (id, imap_name) in renames {
+                    tx.execute(
+                        "UPDATE folders SET imap_name = ?2 WHERE id = ?1",
+                        rusqlite::params![id, imap_name],
+                    )?;
+                }
+
                 for (imap_name, attrs) in &names {
                     let attrs_joined = attrs.join(" ").to_lowercase();
                     if attrs_joined.contains("noselect") {
@@ -855,7 +902,24 @@ impl Engine {
                         rusqlite::params![account_id, imap_name, role, display_name, sort_order],
                     )?;
                 }
-                tx.commit()
+
+                // Offline-first: a folder created for a move that hasn't
+                // flushed yet, or one this device renamed, is legitimately
+                // absent from the server's list. Leave it for the next sweep.
+                let ops_pending: bool = tx.query_row(
+                    "SELECT EXISTS (SELECT 1 FROM pending_ops
+                                    WHERE account_id = ?1 AND state = 'pending'
+                                      AND kind IN ('move', 'rename_folder', 'delete_folder'))",
+                    rusqlite::params![account_id],
+                    |r| r.get(0),
+                )?;
+                let gone = if listing_is_sane && !ops_pending {
+                    gone
+                } else {
+                    Vec::new()
+                };
+                tx.commit()?;
+                Ok(gone)
             })
             .await?;
 
@@ -874,6 +938,31 @@ impl Engine {
                     .map(|_| ())
                 })
                 .await;
+        }
+
+        // Mailboxes the server no longer lists. Their cached mail is either
+        // gone for good or, after a rename the pairing above couldn't resolve,
+        // a second copy of a mailbox we already hold — both only cost the user
+        // disk, doubled counts and a doubled row in the sidebar.
+        if !gone.is_empty() {
+            for folder_id in &gone {
+                // Takes the FTS rows and the thread counts with it; the message
+                // rows themselves then cascade from the folder.
+                wipe_folder(&self.db, *folder_id).await?;
+            }
+            self.db
+                .call(move |conn| {
+                    let tx = conn.transaction()?;
+                    for folder_id in gone {
+                        tx.execute(
+                            "DELETE FROM folders WHERE id = ?1",
+                            rusqlite::params![folder_id],
+                        )?;
+                    }
+                    tx.commit()
+                })
+                .await?;
+            let _ = self.app.emit("mail:updated", json!({}));
         }
 
         // A folder can gain the 'all' role after its contents were already
@@ -1580,9 +1669,9 @@ impl Engine {
                                     let _ = self.app.emit("mail:updated", json!({}));
                                 }
                                 // Same for a folder we optimistically added to
-                                // the sidebar for a move that never landed:
-                                // discover_folders only ever inserts, so an
-                                // empty phantom would stay there forever.
+                                // the sidebar for a move that never landed: the
+                                // folder sweep holds off while an op is still
+                                // pending, so drop the empty phantom here.
                                 let orphan = if kind == "move"
                                     && parsed["createDest"].as_bool().unwrap_or(false)
                                 {
@@ -2513,6 +2602,60 @@ fn prefetch_targets(candidates: &[(i64, u32, Option<i64>)]) -> Vec<i64> {
     worth.iter().map(|(pk, _, _)| *pk).collect()
 }
 
+/// Match the folder rows we hold against a fresh LIST.
+///
+/// The sweep in [`Engine::discover_folders`] keys on `imap_name`, so a
+/// mailbox renamed on the server arrives as a *second* row for mail we already
+/// have — and since the sidebar labels a special folder by its role, the user
+/// sees two identical "Trash". Providers do rename these in bulk: a Gmail
+/// account switching interface language renames every `[Gmail]/*` at once.
+///
+/// So pair a vanished row with its new name where the role makes that
+/// unambiguous — the row, and the whole cache behind it, follows the rename —
+/// and report the rest as gone. Role-less folders (the user's own labels) have
+/// no such key, so they are never paired.
+///
+/// Takes `(row id, imap name, role)` as stored and `(imap name, role)` as
+/// listed; returns `(renames as (row id, new imap name), gone row ids)`.
+fn reconcile_folders(
+    stored: &[(i64, String, Option<String>)],
+    listed: &[(String, Option<String>)],
+) -> (Vec<(i64, String)>, Vec<i64>) {
+    let listed_names: HashSet<&str> = listed.iter().map(|(name, _)| name.as_str()).collect();
+    let stored_names: HashSet<&str> = stored.iter().map(|(_, name, _)| name.as_str()).collect();
+
+    let missing: Vec<(i64, Option<&str>)> = stored
+        .iter()
+        .filter(|(_, name, _)| !listed_names.contains(name.as_str()))
+        .map(|(id, _, role)| (*id, role.as_deref()))
+        .collect();
+    let fresh: Vec<(&str, Option<&str>)> = listed
+        .iter()
+        .filter(|(name, _)| !stored_names.contains(name.as_str()))
+        .map(|(name, role)| (name.as_str(), role.as_deref()))
+        .collect();
+
+    let mut renames = Vec::new();
+    let mut goners = Vec::new();
+    for (id, role) in &missing {
+        // One vanished row and one new name sharing a role is a rename. Two of
+        // either is a guess, and guessing here would drop the wrong mailbox.
+        let twin = role.and_then(|role| {
+            let mut same_role = fresh.iter().filter(|(_, r)| *r == Some(role));
+            let ambiguous = missing.iter().filter(|(_, r)| *r == Some(role)).count() > 1;
+            match (same_role.next(), same_role.next(), ambiguous) {
+                (Some((name, _)), None, false) => Some(*name),
+                _ => None,
+            }
+        });
+        match twin {
+            Some(name) => renames.push((*id, name.to_string())),
+            None => goners.push(*id),
+        }
+    }
+    (renames, goners)
+}
+
 fn detect_role(imap_name: &str, attrs_lower: &str) -> Option<String> {
     if imap_name.eq_ignore_ascii_case("INBOX") {
         return Some("inbox".into());
@@ -2734,6 +2877,103 @@ fn decode_imap_utf7(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod reconcile_tests {
+    use super::reconcile_folders;
+
+    fn stored(rows: &[(i64, &str, Option<&str>)]) -> Vec<(i64, String, Option<String>)> {
+        rows.iter()
+            .map(|(id, name, role)| (*id, name.to_string(), role.map(str::to_string)))
+            .collect()
+    }
+
+    fn listed(rows: &[(&str, Option<&str>)]) -> Vec<(String, Option<String>)> {
+        rows.iter()
+            .map(|(name, role)| (name.to_string(), role.map(str::to_string)))
+            .collect()
+    }
+
+    #[test]
+    fn a_renamed_special_folder_keeps_its_row() {
+        // The reported case as it starts: the provider renamed the mailbox, so
+        // the old name is gone and one new name carries the same role.
+        let (renames, gone) = reconcile_folders(
+            &stored(&[
+                (1, "INBOX", Some("inbox")),
+                (2, "[Mail]/Papierkorb", Some("trash")),
+            ]),
+            &listed(&[("INBOX", Some("inbox")), ("[Mail]/Bin", Some("trash"))]),
+        );
+        assert_eq!(renames, vec![(2, "[Mail]/Bin".to_string())]);
+        assert!(gone.is_empty());
+    }
+
+    #[test]
+    fn a_duplicate_left_by_an_earlier_rename_is_dropped() {
+        // The reported case as it ends up: both rows already stored, only the
+        // current name still listed. Nothing to pair — drop the leftover.
+        let (renames, gone) = reconcile_folders(
+            &stored(&[
+                (1, "INBOX", Some("inbox")),
+                (2, "[Mail]/Papierkorb", Some("trash")),
+                (3, "[Mail]/Bin", Some("trash")),
+            ]),
+            &listed(&[("INBOX", Some("inbox")), ("[Mail]/Bin", Some("trash"))]),
+        );
+        assert!(renames.is_empty());
+        assert_eq!(gone, vec![2]);
+    }
+
+    #[test]
+    fn two_folders_sharing_a_role_are_never_paired() {
+        // Gmail maps both Important and Starred to 'starred', so a role is not
+        // a unique key. Guessing here would drop the wrong mailbox.
+        let (renames, gone) = reconcile_folders(
+            &stored(&[
+                (1, "INBOX", Some("inbox")),
+                (2, "[Mail]/Wichtig", Some("starred")),
+                (3, "[Mail]/Markiert", Some("starred")),
+            ]),
+            &listed(&[
+                ("INBOX", Some("inbox")),
+                ("[Mail]/Important", Some("starred")),
+                ("[Mail]/Starred", Some("starred")),
+            ]),
+        );
+        assert!(renames.is_empty());
+        assert_eq!(gone, vec![2, 3]);
+    }
+
+    #[test]
+    fn user_labels_are_kept_or_dropped_but_never_paired() {
+        let (renames, gone) = reconcile_folders(
+            &stored(&[
+                (1, "INBOX", Some("inbox")),
+                (2, "Receipts", None),
+                (3, "Travel", None),
+            ]),
+            &listed(&[
+                ("INBOX", Some("inbox")),
+                ("Receipts", None),
+                ("Trips", None),
+            ]),
+        );
+        assert!(renames.is_empty());
+        assert_eq!(gone, vec![3]);
+    }
+
+    #[test]
+    fn a_listing_that_matches_leaves_everything_alone() {
+        let rows = [("INBOX", Some("inbox")), ("Receipts", None)];
+        let (renames, gone) = reconcile_folders(
+            &stored(&[(1, "INBOX", Some("inbox")), (2, "Receipts", None)]),
+            &listed(&rows),
+        );
+        assert!(renames.is_empty());
+        assert!(gone.is_empty());
+    }
 }
 
 #[cfg(test)]
