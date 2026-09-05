@@ -2,6 +2,7 @@ use crate::db::draft_attachments::{self, DraftAttachment};
 use crate::db::drafts::{self, Draft};
 use crate::db::{accounts as db_accounts, bodies};
 use crate::error::{Result, SkimError};
+use crate::mail::smtp::signature_block;
 use crate::mail::threading;
 use crate::state::AppState;
 use serde::Serialize;
@@ -87,9 +88,10 @@ pub async fn create_draft(state: State<'_, AppState>, account_id: Option<String>
         .into_iter()
         .find(|a| account_id.as_ref().is_none_or(|id| *id == a.id))
         .ok_or_else(|| SkimError::other("mail", "no account configured"))?;
+    let body = signature_block(account.signature.as_deref());
     state
         .db
-        .call(move |conn| drafts::create(conn, &account.id, "new", None, "", "", ""))
+        .call(move |conn| drafts::create(conn, &account.id, "new", None, "", "", &body))
         .await
 }
 
@@ -110,32 +112,91 @@ pub async fn update_draft(state: State<'_, AppState>, draft: Draft) -> Result<()
         .await
 }
 
+/// The opening body of a reply or forward: the sign-off above the quoted
+/// original, which is where a reply is actually signed — and where the
+/// composer's own tail split expects to find it, so the AI co-author rewrites
+/// the words above and leaves both of these alone.
+fn reply_body(signature: Option<&str>, quoted: &str) -> String {
+    format!("{}{quoted}", signature_block(signature))
+}
+
+/// Swap one account's signature block for another's in a draft body.
+///
+/// Only an *untouched* block is replaced: once the user has edited the sign-off
+/// it is theirs, and changing mailbox must not throw the edit away. The From
+/// picker only appears on a fresh compose, so there is never a quoted tail
+/// below the block to preserve — an empty outgoing block simply appends.
+fn reword_signature(body: &str, from: Option<&str>, to: Option<&str>) -> String {
+    let old = signature_block(from);
+    let new = signature_block(to);
+    if old == new {
+        return body.to_string();
+    }
+    match body.rfind(&old).filter(|_| !old.is_empty()) {
+        Some(at) => format!("{}{new}{}", &body[..at], &body[at + old.len()..]),
+        None => format!("{body}{new}"),
+    }
+}
+
 /// Move a draft to another mailbox — the From picker in the unified view.
 /// Only allowed while the draft is local-only: once it mirrors a server copy
 /// (reply chain or saved to a Drafts folder), moving it would orphan that copy.
+///
+/// `body` is what the editor currently holds, not what the database last saw:
+/// the composer's save is debounced, so a mailbox switched mid-sentence would
+/// otherwise reword a stale copy and hand the newer text back as a deletion.
+///
+/// Returns the updated draft: the signature travels with the account, so the
+/// composer has a new body to show.
 #[tauri::command]
 pub async fn set_draft_account(
     state: State<'_, AppState>,
     draft_id: i64,
     account_id: String,
-) -> Result<()> {
-    let changed = state
+    body: String,
+) -> Result<Draft> {
+    let moved = state
         .db
         .call(move |conn| {
+            use rusqlite::OptionalExtension;
+            // The mailbox it is leaving, read under the same guard the update
+            // uses — absent means the draft is already tied to a server copy.
+            let was: Option<String> = conn
+                .query_row(
+                    "SELECT account_id FROM drafts
+                     WHERE id = ?1 AND origin_message_id IS NULL AND imap_message_id IS NULL",
+                    rusqlite::params![draft_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            let Some(was) = was else { return Ok(None) };
+
             conn.execute(
-                "UPDATE drafts SET account_id = ?2
-                 WHERE id = ?1 AND origin_message_id IS NULL AND imap_message_id IS NULL",
-                rusqlite::params![draft_id, account_id],
-            )
+                "UPDATE drafts SET account_id = ?2 WHERE id = ?1",
+                rusqlite::params![draft_id, &account_id],
+            )?;
+            let Some(mut draft) = drafts::get(conn, draft_id)? else {
+                return Ok(None);
+            };
+            draft.body = reword_signature(
+                &body,
+                signature_of(conn, &was)?.as_deref(),
+                signature_of(conn, &account_id)?.as_deref(),
+            );
+            drafts::update(conn, &draft)?;
+            Ok(Some(draft))
         })
         .await?;
-    if changed == 0 {
-        return Err(SkimError::other(
-            "compose",
-            "draft is already tied to a mailbox",
-        ));
-    }
-    Ok(())
+    moved.ok_or_else(|| SkimError::other("compose", "draft is already tied to a mailbox"))
+}
+
+/// This account's stored signature, if any.
+fn signature_of(conn: &rusqlite::Connection, account_id: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT signature FROM accounts WHERE id = ?1",
+        rusqlite::params![account_id],
+        |r| r.get(0),
+    )
 }
 
 /// Persist edits to a draft and queue the write-back to the IMAP Drafts folder so
@@ -300,10 +361,10 @@ pub async fn get_reply_template(
             else {
                 return Ok(None);
             };
-            let account_email: String = conn.query_row(
-                "SELECT email FROM accounts WHERE id = ?1",
+            let (account_email, signature): (String, Option<String>) = conn.query_row(
+                "SELECT email, signature FROM accounts WHERE id = ?1",
                 rusqlite::params![account_id],
-                |r| r.get(0),
+                |r| Ok((r.get(0)?, r.get(1)?)),
             )?;
 
             // Recipients.
@@ -366,6 +427,7 @@ pub async fn get_reply_template(
                 q
             };
 
+            let body = reply_body(signature.as_deref(), &quoted);
             let draft = drafts::create(
                 conn,
                 &account_id,
@@ -373,7 +435,7 @@ pub async fn get_reply_template(
                 Some(message_id),
                 &to_field,
                 &subject_field,
-                &quoted,
+                &body,
             )?;
             Ok(Some(draft))
         })
@@ -662,4 +724,72 @@ pub async fn open_compose_window(app: AppHandle, draft_id: i64) -> Result<()> {
     .build()
     .map_err(|e| SkimError::other("window", e.to_string()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reword_signature;
+
+    #[test]
+    fn a_reply_is_signed_above_the_quote() {
+        let quoted = "\n\nOn Fri, Bob <bob@x.com> wrote:\n> hi\n";
+        assert_eq!(
+            super::reply_body(Some("Jane"), quoted),
+            "\n\n-- \nJane\n\nOn Fri, Bob <bob@x.com> wrote:\n> hi\n"
+        );
+        // The composer finds the quote by this anchor; the signature must not
+        // sit between the two newlines and the "On ".
+        assert!(super::reply_body(Some("Jane"), quoted).contains("\n\nOn "));
+        // No signature leaves the reply exactly as it was before the feature.
+        assert_eq!(super::reply_body(None, quoted), quoted);
+    }
+
+    #[test]
+    fn the_signature_follows_the_mailbox() {
+        let body = "Hi Bob\n\n-- \nJane, Acme";
+        assert_eq!(
+            reword_signature(body, Some("Jane, Acme"), Some("Jane at home")),
+            "Hi Bob\n\n-- \nJane at home"
+        );
+    }
+
+    #[test]
+    fn a_mailbox_without_one_leaves_the_body_bare() {
+        let body = "Hi Bob\n\n-- \nJane, Acme";
+        assert_eq!(reword_signature(body, Some("Jane, Acme"), None), "Hi Bob");
+        // …and moving the other way appends rather than replacing nothing.
+        assert_eq!(
+            reword_signature("Hi Bob", None, Some("Jane")),
+            "Hi Bob\n\n-- \nJane"
+        );
+    }
+
+    #[test]
+    fn a_hand_edited_signature_is_left_alone() {
+        // The user rewrote the block; it is theirs now, so the new mailbox's
+        // signature is added rather than silently overwriting the edit.
+        let body = "Hi Bob\n\n-- \nJane (mobile)";
+        assert_eq!(
+            reword_signature(body, Some("Jane, Acme"), Some("Jane at home")),
+            "Hi Bob\n\n-- \nJane (mobile)\n\n-- \nJane at home"
+        );
+    }
+
+    #[test]
+    fn two_mailboxes_sharing_a_signature_change_nothing() {
+        let body = "Hi Bob\n\n-- \nJane";
+        assert_eq!(reword_signature(body, Some("Jane"), Some("Jane")), body);
+        assert_eq!(reword_signature("Hi Bob", None, None), "Hi Bob");
+    }
+
+    #[test]
+    fn only_the_trailing_block_is_replaced() {
+        // A quoted "-- " earlier in the body must not be mistaken for the
+        // sign-off being swapped.
+        let body = "Look at this\n\n-- \nJane\n> some quote\n\n-- \nJane";
+        assert_eq!(
+            reword_signature(body, Some("Jane"), Some("Jo")),
+            "Look at this\n\n-- \nJane\n> some quote\n\n-- \nJo"
+        );
+    }
 }

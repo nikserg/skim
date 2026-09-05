@@ -212,6 +212,10 @@ export function invoke<T = any>(cmd: string, args: any = {}): Promise<T> {
     // compose
     case "create_draft":
       return ok(db.createDraft());
+    case "update_account_identity":
+      return ok(db.updateAccountIdentity(args.accountId, args.displayName, args.signature));
+    case "set_draft_account":
+      return ok(db.setDraftAccount(args.draftId, args.accountId, args.body));
     case "get_draft":
       return ok(db.getDraft(args.draftId));
     case "get_reply_template":

@@ -325,6 +325,7 @@ pub fn run() {
             commands::accounts::add_account,
             commands::accounts::start_google_oauth,
             commands::accounts::start_microsoft_oauth,
+            commands::accounts::update_account_identity,
             commands::accounts::remove_account,
             commands::accounts::inbox_unread_counts,
             commands::mail::list_folders,

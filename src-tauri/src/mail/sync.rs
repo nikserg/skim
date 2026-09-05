@@ -7,7 +7,7 @@
 //! flag/read state changed on another device), gated by a cheap STATUS probe.
 
 use crate::db::models::{Account, NewMessage};
-use crate::db::{bodies, queries, Db};
+use crate::db::{accounts as db_accounts, bodies, queries, Db};
 use crate::error::{Result, SkimError};
 use crate::mail::{imap_client, oauth, parse, smtp};
 use crate::secrets;
@@ -424,6 +424,27 @@ fn oauth_provider_for(account: &Account) -> oauth::OauthProvider {
     }
 }
 
+/// The name this mailbox most often signs with, out of its recent Sent mail.
+///
+/// Frequency, not recency: one message sent from a phone with a stray name
+/// shouldn't rename the account. A "name" that is really just the address
+/// again carries no information, so it is rejected — that is the bare-address
+/// case we are already handling correctly.
+fn most_common_name(names: &[String], email: &str) -> Option<String> {
+    let mut tally: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for name in names {
+        let name = name.trim();
+        if name.is_empty() || name.eq_ignore_ascii_case(email) {
+            continue;
+        }
+        *tally.entry(name).or_default() += 1;
+    }
+    tally
+        .into_iter()
+        .max_by_key(|&(name, count)| (count, std::cmp::Reverse(name)))
+        .map(|(name, _)| name.to_string())
+}
+
 fn now_unix() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -737,6 +758,7 @@ impl Engine {
         if any_changes {
             let _ = self.app.emit("mail:updated", json!({}));
         }
+        self.learn_display_name().await;
         tracing::info!(
             total,
             synced,
@@ -745,6 +767,79 @@ impl Engine {
             "folder sweep complete"
         );
         Ok(())
+    }
+
+    /// Re-read this engine's own account row. The identity fields (display
+    /// name, signature) are editable while the engine runs; everything else on
+    /// the row is insert-once, so this can never move the connection.
+    async fn refresh_account(&mut self) {
+        let id = self.account.id.clone();
+        if let Ok(Some(fresh)) = self.db.call(move |conn| db_accounts::get(conn, &id)).await {
+            self.account = fresh;
+        }
+    }
+
+    /// Adopt the name this mailbox already sends under.
+    ///
+    /// Every other client the user has — Gmail's web UI, Outlook — puts a name
+    /// on outgoing mail, and it is sitting right there in the Sent folder. Ask
+    /// for it and the answer is one the user has already given somewhere else;
+    /// read it and Skim's first message looks like every message before it.
+    ///
+    /// Guarded on the in-memory `Option`, so this is one indexed query once per
+    /// mailbox ever, not work repeated on every sweep. A mailbox that has never
+    /// sent anything keeps a bare address until the user types a name.
+    ///
+    /// The guess is made at most once, and never after the user has edited the
+    /// field themselves: a name someone deliberately cleared must stay cleared.
+    async fn learn_display_name(&mut self) {
+        if self.account.display_name.is_some() {
+            return;
+        }
+        let account_id = self.account.id.clone();
+        let email = self.account.email.clone();
+        let found = self
+            .db
+            .call(move |conn| {
+                if db_accounts::identity_settled(conn, &account_id)? {
+                    return Ok(None);
+                }
+                let mut stmt = conn.prepare_cached(
+                    "SELECT m.from_name FROM messages m JOIN folders f ON m.folder_id = f.id
+                     WHERE f.role = 'sent' AND m.account_id = ?1
+                       AND lower(m.from_addr) = lower(?2)
+                       AND m.from_name IS NOT NULL AND trim(m.from_name) <> ''
+                     ORDER BY m.date DESC LIMIT 20",
+                )?;
+                let names = stmt
+                    .query_map(rusqlite::params![account_id, &email], |r| {
+                        r.get::<_, String>(0)
+                    })?
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                Ok(most_common_name(&names, &email))
+            })
+            .await
+            .unwrap_or(None);
+
+        let Some(name) = found else { return };
+        let id = self.account.id.clone();
+        let stored = name.clone();
+        // The scan above ran while the user could have been typing a name of
+        // their own; `adopt_display_name` rechecks that under the write lock
+        // and answers `false` if the guess is no longer wanted.
+        if !matches!(
+            self.db
+                .call(move |conn| db_accounts::adopt_display_name(conn, &id, &stored))
+                .await,
+            Ok(true)
+        ) {
+            return;
+        }
+        // In memory too: the very next send builds its From from this copy, and
+        // waiting for a restart to sign correctly would be the surprising part.
+        tracing::info!(account = %self.account.email, "adopted display name from sent mail");
+        self.account.display_name = Some(name);
+        let _ = self.app.emit("accounts:updated", json!({}));
     }
 
     /// Cheap server-side snapshot of a folder — one round-trip, no SELECT.
@@ -1625,6 +1720,11 @@ impl Engine {
             let Some((op_id, kind, payload, attempts)) = next else {
                 break;
             };
+            // Settings may have changed the name or signature since this engine
+            // started. One primary-key lookup per op, paid only when there is
+            // work, buys an outgoing message that always matches what the user
+            // last saw — no cache to invalidate from the command side.
+            self.refresh_account().await;
 
             let parsed: serde_json::Value = match serde_json::from_str(&payload) {
                 Ok(v) => v,
@@ -2973,6 +3073,57 @@ mod reconcile_tests {
         );
         assert!(renames.is_empty());
         assert!(gone.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod display_name_tests {
+    use super::most_common_name;
+
+    fn names(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn takes_the_name_the_mailbox_signs_with_most() {
+        let sent = names(&["Jane Doe", "jane", "Jane Doe", "Jane Doe", "jane"]);
+        assert_eq!(
+            most_common_name(&sent, "jane@example.com").as_deref(),
+            Some("Jane Doe")
+        );
+    }
+
+    #[test]
+    fn an_address_repeated_as_a_name_says_nothing() {
+        let sent = names(&["jane@example.com", "JANE@EXAMPLE.COM"]);
+        assert_eq!(most_common_name(&sent, "jane@example.com"), None);
+        // …but a real name alongside it still wins.
+        let sent = names(&["jane@example.com", "Jane Doe"]);
+        assert_eq!(
+            most_common_name(&sent, "jane@example.com").as_deref(),
+            Some("Jane Doe")
+        );
+    }
+
+    #[test]
+    fn a_mailbox_that_never_signed_gets_no_name() {
+        assert_eq!(most_common_name(&[], "jane@example.com"), None);
+        assert_eq!(
+            most_common_name(&names(&["   ", ""]), "jane@example.com"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_tie_resolves_the_same_way_every_run() {
+        // Two names, one message each: whichever is chosen, it must not depend
+        // on hash order, or the account would rename itself between syncs.
+        let sent = names(&["Jane Doe", "J. Doe"]);
+        let first = most_common_name(&sent, "jane@example.com");
+        assert!(first.is_some());
+        for _ in 0..8 {
+            assert_eq!(most_common_name(&sent, "jane@example.com"), first);
+        }
     }
 }
 

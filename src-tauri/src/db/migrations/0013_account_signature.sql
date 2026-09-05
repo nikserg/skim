@@ -1,0 +1,13 @@
+-- The sign-off appended to mail written from this account. Plain text only:
+-- the composer is a textarea and every message Skim builds is text/plain, so a
+-- rich signature would have nowhere to render.
+--
+-- Stored without the "-- " delimiter line; that is protocol, not content, and
+-- is added when a draft is created (see `smtp::signature_block`). Keeping it
+-- out of the stored value means the user never has to type it, and an edit
+-- can't accidentally break the convention that lets other clients — and our
+-- own `parse::strip_quoted` — recognize a signature.
+--
+-- NULL or empty means "no signature"; drafts then start exactly as they did
+-- before this column existed.
+ALTER TABLE accounts ADD COLUMN signature TEXT;

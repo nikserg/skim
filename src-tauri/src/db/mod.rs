@@ -23,6 +23,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0010_folder_delimiter.sql"),
     include_str!("migrations/0011_translations.sql"),
     include_str!("migrations/0012_translated_subject.sql"),
+    include_str!("migrations/0013_account_signature.sql"),
 ];
 
 /// A read the user is waiting on has this long to answer before it is worth

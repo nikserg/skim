@@ -63,8 +63,14 @@
   async function changeFrom(accountId: string) {
     if (!draft || accountId === draft.accountId) return;
     try {
-      await api.setDraftAccount(draft.id, accountId);
+      // The signature belongs to the mailbox, so the backend swaps it and hands
+      // back the rewritten body — an untouched block only, never a hand edit.
+      // Send what the editor holds, not what the database last saw: the save is
+      // debounced, so a mailbox switched mid-sentence would otherwise come back
+      // with the unsaved words rewritten away.
+      const moved = await api.setDraftAccount(draft.id, accountId, draft.body);
       draft.accountId = accountId;
+      draft.body = moved.body;
     } catch (e) {
       error = errorMessage(e);
     }
@@ -183,7 +189,10 @@
   let aiBusy = $state(false);
   let cancelAi: (() => void) | null = null;
   const slowStart = createSlowStart();
-  /** Quoted original (reply/forward), preserved below AI-generated text. */
+  /** The RFC 3676 sign-off delimiter Rust puts above a signature — the marker
+   *  that tells the co-author where the user's own words stop. */
+  const SIG_MARK = "\n\n-- \n";
+  /** Signature and quoted original, preserved below AI-generated text. */
   let quotedTail = "";
 
   // The AI drafting session: one shared conversation the user refines turn by
@@ -219,12 +228,18 @@
     void ai.refresh().then(() => (aiAvailable = ai.keyPresent));
   });
 
-  function splitQuote(body: string): [string, string] {
-    const idx = body.indexOf("\n\nOn ");
-    if (idx >= 0 && body.slice(idx).includes(" wrote:\n")) {
-      return [body.slice(0, idx), body.slice(idx)];
-    }
-    return [body, ""];
+  /** Split the body into the part being written and the tail that must survive
+   *  a rewrite: the signature block, the quoted original, or both. The AI
+   *  co-author replaces everything above the split and nothing below it. */
+  function splitTail(body: string): [string, string] {
+    const quote = body.indexOf("\n\nOn ");
+    const marks = [
+      body.indexOf(SIG_MARK),
+      quote >= 0 && body.slice(quote).includes(" wrote:\n") ? quote : -1,
+    ].filter((i) => i >= 0);
+    if (marks.length === 0) return [body, ""];
+    const idx = Math.min(...marks);
+    return [body.slice(0, idx), body.slice(idx)];
   }
 
   /** Push an instruction into the session and stream the revised draft.
@@ -238,7 +253,7 @@
     // Respect manual edits: sync what the user currently sees back into the last
     // assistant turn, so the AI revises exactly that. For new mail the turn
     // carries the subject header too, so a hand-edited subject is fed back.
-    const [current, tail] = splitQuote(draft.body);
+    const [current, tail] = splitTail(draft.body);
     quotedTail = tail;
     if (current.trim()) {
       const synced = isReply
@@ -342,7 +357,7 @@
     if (!turn || turn.role !== "assistant") return;
 
     // Preserve whatever quoted original is currently below the editable text.
-    const [, tail] = splitQuote(draft.body);
+    const [, tail] = splitTail(draft.body);
     quotedTail = tail;
 
     let body = turn.content;
@@ -525,7 +540,9 @@
             onchange={(e) => void changeFrom(e.currentTarget.value)}
           >
             {#each accounts as a (a.id)}
-              <option value={a.id}>{a.email}</option>
+              <option value={a.id}>
+                {a.displayName ? `${a.displayName} <${a.email}>` : a.email}
+              </option>
             {/each}
           </select>
         </label>

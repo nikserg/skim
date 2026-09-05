@@ -99,6 +99,9 @@ async function attachListeners() {
   listenersAttached = true;
 
   await listen("folders:updated", () => void refreshFolders());
+  // The sync engine can adopt a display name from the mailbox's own sent mail;
+  // the settings screen and the From picker should show it without a restart.
+  await listen("accounts:updated", () => void refreshAccounts());
   await listen<{ folderId?: number }>("mail:updated", (e) => {
     // The unified list can show any folder's mail, so every update may
     // concern it — one bounded page query, cheap enough to just refresh.
@@ -199,6 +202,15 @@ function shown(rows: ThreadRow[]) {
 async function retryLoad() {
   await refreshFolders();
   await refreshThreads();
+}
+
+/** Re-read the account rows in place, keeping the current selection. */
+async function refreshAccounts() {
+  try {
+    state.accounts = await api.listAccounts();
+  } catch {
+    // A failed refresh just leaves the rows we already have.
+  }
 }
 
 async function refreshFolders() {
@@ -605,6 +617,11 @@ export const mail = {
 
   /** Called right after onboarding or settings connects a mailbox. A second
    *  mailbox turns on the unified view — that's its default experience. */
+  /** Swap in an account row the user just edited (name / signature). */
+  accountUpdated(account: Account) {
+    state.accounts = state.accounts.map((a) => (a.id === account.id ? account : a));
+  },
+
   async accountAdded(account: Account) {
     state.accounts = [...state.accounts, account];
     if (state.activeAccountId === UNIFIED) {

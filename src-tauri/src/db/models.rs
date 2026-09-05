@@ -13,6 +13,9 @@ pub struct Account {
     pub smtp_port: u16,
     pub smtp_security: String,
     pub auth_kind: String,
+    /// Sign-off appended to mail written from this account, without the "-- "
+    /// delimiter line. `None` (or blank) means the composer opens empty.
+    pub signature: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -100,6 +100,14 @@
   // Settings-hosted "add another mailbox": swaps the panel body for the
   // connect form.
   let addingAccount = $state(false);
+  // Which account has its identity fields open. A lone mailbox is always open
+  // and shows no disclosure at all — it is already the answer to "whose name
+  // and signature?" — and with several, the one in use starts open while the
+  // rest stay folded, so five mailboxes can't push the panel off the screen.
+  let expandedAccountId = $state<string | null>(mail.account?.id ?? null);
+  // Live edit buffers, keyed by account — committed on blur.
+  const nameDraft = $state<Record<string, string>>({});
+  const sigDraft = $state<Record<string, string>>({});
   let appVersion = $state("");
 
   // AI writer profile
@@ -464,6 +472,26 @@
     await mail.accountRemoved(id);
   }
 
+  /** The identity fields fall back to what is stored until the user types. */
+  function nameOf(a: Account): string {
+    return nameDraft[a.id] ?? a.displayName ?? "";
+  }
+  function sigOf(a: Account): string {
+    return sigDraft[a.id] ?? a.signature ?? "";
+  }
+
+  /** Commit the name and signature for one account. Blank clears the field. */
+  async function saveIdentity(a: Account) {
+    const name = nameOf(a).trim();
+    const sig = sigOf(a).replace(/\s+$/, "");
+    if (name === (a.displayName ?? "") && sig === (a.signature ?? "")) return;
+    try {
+      mail.accountUpdated(await api.updateAccountIdentity(a.id, name, sig));
+    } catch {
+      // Leave the typed text in place; the stored row is unchanged.
+    }
+  }
+
   async function accountConnected(account: Account) {
     addingAccount = false;
     await mail.accountAdded(account);
@@ -542,16 +570,20 @@
         <section>
           <div class="microlabel">{t("settings.account")}</div>
           {#each mail.accounts as account (account.id)}
+            {@const open = mail.accounts.length === 1 || expandedAccountId === account.id}
             <div class="row">
               <span class="avatar">{account.email.charAt(0).toUpperCase()}</span>
               <div class="grow">
                 <div class="strong">
-                  {account.email}
+                  {account.displayName || account.email}
                   {#if mail.accounts.length > 1 && account.id === mail.account?.id}
                     <span class="active-mark microlabel">{t("settings.active")}</span>
                   {/if}
                 </div>
-                <div class="dim">{account.imapHost}</div>
+                <!-- Once a name is known it takes the top line, and the address
+                     becomes the identifying detail; the host moves into the
+                     panel below, where it is still one click away. -->
+                <div class="dim">{account.displayName ? account.email : account.imapHost}</div>
               </div>
               {#if confirmingRemoveId === account.id}
                 <button class="danger" onclick={() => removeAccount(account.id)}>{t("settings.confirm_remove")}</button>
@@ -560,10 +592,45 @@
                 <button class="ghost" onclick={() => (confirmingRemoveId = account.id)}>
                   {t("settings.remove_account")}
                 </button>
+                {#if mail.accounts.length > 1}
+                  <button
+                    class="ghost chevron"
+                    class:open
+                    aria-expanded={open}
+                    aria-label={t("settings.sender_name")}
+                    onclick={() => (expandedAccountId = open ? null : account.id)}
+                  >▾</button>
+                {/if}
               {/if}
             </div>
             {#if confirmingRemoveId === account.id}
               <div class="warn">{t("settings.remove_confirm")}</div>
+            {:else if open}
+              <div class="identity">
+                <label class="writer-field">
+                  <span class="microlabel">{t("settings.sender_name")}</span>
+                  <input
+                    value={nameOf(account)}
+                    oninput={(e) => (nameDraft[account.id] = e.currentTarget.value)}
+                    onblur={() => void saveIdentity(account)}
+                    placeholder={account.email.split("@")[0]}
+                    spellcheck="false"
+                  />
+                  <span class="dim hint">{t("settings.sender_name_hint")}</span>
+                </label>
+                <label class="writer-field">
+                  <span class="microlabel">{t("settings.signature")}</span>
+                  <textarea
+                    rows="3"
+                    value={sigOf(account)}
+                    oninput={(e) => (sigDraft[account.id] = e.currentTarget.value)}
+                    onblur={() => void saveIdentity(account)}
+                    placeholder={t("settings.signature_ph")}
+                  ></textarea>
+                  <span class="dim hint">{t("settings.signature_hint")}</span>
+                </label>
+                <div class="dim host">{account.imapHost}</div>
+              </div>
             {/if}
           {/each}
           <button class="ghost add-btn" onclick={() => (addingAccount = true)}>
@@ -785,7 +852,9 @@
               <input
                 bind:value={aiName}
                 onblur={saveAiName}
-                placeholder={mail.account?.email.split("@")[0] ?? ""}
+                placeholder={mail.account?.displayName ||
+                  mail.account?.email.split("@")[0] ||
+                  ""}
                 spellcheck="false"
               />
               <span class="dim hint">{t("settings.ai_name_hint")}</span>
@@ -1048,6 +1117,35 @@
     margin-left: 6px;
     color: var(--text-faint);
   }
+  /* Name + signature for one mailbox. Indented to the avatar's right edge so
+     the fields read as belonging to the row above them. */
+  .identity {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 2px 0 6px 44px;
+  }
+  .identity .host {
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  /* These fields borrow .writer-field's shape, but not its violet focus ring:
+     the accent belongs to AI alone, and a name is ordinary UI. */
+  .identity input:focus,
+  .identity textarea:focus {
+    border-color: var(--text-faint);
+  }
+  /* Only shown with several mailboxes — one has nothing to fold away. */
+  .chevron {
+    padding: 4px 8px;
+    line-height: 1;
+    color: var(--text-dim);
+    transition: transform 0.12s ease;
+  }
+  .chevron.open {
+    transform: rotate(180deg);
+  }
+
   .add-btn {
     align-self: flex-start;
   }

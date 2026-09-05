@@ -132,6 +132,12 @@ pub struct OauthOutcome {
     pub access_token: String,
     /// Unix seconds when the access token expires.
     pub expires_at: i64,
+    /// The account holder's name, when the provider volunteered one. Microsoft
+    /// puts it in the id token we already decode; Google's mail-only scopes
+    /// don't carry it, and asking for `profile` there would re-open a
+    /// restricted-scope app's verification. The Sent-folder scan covers the
+    /// rest, so this is a head start, not the mechanism.
+    pub display_name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -156,15 +162,28 @@ struct UserInfo {
 /// token came straight from the provider's TLS token endpoint). Microsoft puts
 /// the address in `preferred_username`; fall back to the standard claims.
 fn email_from_id_token(id_token: &str) -> Option<String> {
+    claim(id_token, &["preferred_username", "email", "upn"])
+}
+
+/// The account holder's name from an id token, when the granted scopes carried
+/// one. Microsoft's `profile` scope fills `name`; Google is never asked for it.
+fn name_from_id_token(id_token: &str) -> Option<String> {
+    claim(id_token, &["name"])
+}
+
+/// First of these claims present in an OIDC id token (unverified: the token
+/// came straight from the provider's TLS token endpoint).
+fn claim(id_token: &str, keys: &[&str]) -> Option<String> {
     let payload = id_token.split('.').nth(1)?;
     let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(payload)
         .ok()?;
     let claims: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
-    ["preferred_username", "email", "upn"]
-        .iter()
+    keys.iter()
         .find_map(|k| claims.get(*k).and_then(|v| v.as_str()))
-        .map(|s| s.to_string())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 fn random_token() -> String {
@@ -266,11 +285,13 @@ pub async fn authorize(
 
     let email = resolve_email(client, config.provider, &tokens).await?;
 
+    let display_name = tokens.id_token.as_deref().and_then(name_from_id_token);
     Ok(OauthOutcome {
         email,
         refresh_token,
         access_token: tokens.access_token,
         expires_at: now_unix() + tokens.expires_in.unwrap_or(3600) - 60,
+        display_name,
     })
 }
 
