@@ -64,24 +64,9 @@ jobs:
               gh release delete-asset ${{ github.ref_name }} $_.Line --yes
             }
 
-  # Both package managers ship the NSIS installer — the same per-user .exe the
-  # site links to, and the one the in-app updater knows how to apply. The .msi
-  # stays a manual download for managed environments.
-
-  winget:
-    needs: build
-    # Needs RELEASE_TOKEN and a winget-pkgs fork under the same owner; forks
-    # have neither, and a failed job on every tag is just noise.
-    if: github.repository == 'nikserg/skim'
-    runs-on: ubuntu-latest
-    steps:
-      # Opens a PR against microsoft/winget-pkgs. The package must already
-      # exist there — see packaging/README.md for the one-time bootstrap.
-      - uses: vedantmgoyal9/winget-releaser@v2
-        with:
-          identifier: nikserg.Skim
-          installers-regex: '-setup\.exe$'
-          token: ${{ secrets.RELEASE_TOKEN }}
+  # Scoop ships the NSIS installer — the same per-user .exe the site links to,
+  # and the one the in-app updater knows how to apply. The .msi stays a manual
+  # download for managed environments.
 
   scoop:
     needs: build

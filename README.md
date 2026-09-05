@@ -103,11 +103,7 @@ Your key, your bill: Skim talks to the provider's API directly and adds no marku
 
 Download the latest installer from **[Releases](https://github.com/nikserg/skim/releases)** — the `.exe` (NSIS) installs per-user without admin rights; an `.msi` is also published for managed environments.
 
-Or use a package manager:
-
-```powershell
-winget install nikserg.Skim
-```
+Or use Scoop:
 
 ```powershell
 scoop bucket add skim https://github.com/nikserg/skim
