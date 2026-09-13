@@ -96,10 +96,16 @@ async fn finish_add_account(
 
     secrets::set(&secrets::mail_key(&account.id), secret)?;
     let acc = account.clone();
-    state
+    if let Err(e) = state
         .db
         .call(move |conn| db_accounts::insert(conn, &acc))
-        .await?;
+        .await
+    {
+        // Nothing will ever reference this id, so don't leave its credential
+        // sitting in the vault. The cleanup's own failure is not the news here.
+        let _ = secrets::delete(&secrets::mail_key(&account.id));
+        return Err(e);
+    }
 
     let handle = sync::spawn(
         app.clone(),
