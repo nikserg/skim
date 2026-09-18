@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { backdropClose } from "../lib/backdrop";
   import { t } from "../lib/i18n/index.svelte";
   import { mail } from "../lib/stores/mail.svelte";
   import { ui } from "../lib/stores/ui.svelte";
@@ -76,10 +77,8 @@
 
 <svelte:window onkeydown={onWindowKeydown} />
 
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="overlay" onclick={() => ui.closeShortcuts()}>
-  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="panel" onclick={(e) => e.stopPropagation()}>
+<div class="overlay" use:backdropClose={() => ui.closeShortcuts()}>
+  <div class="panel">
     <div class="head">
       <span class="title">{t("shortcuts.title")}</span>
       <kbd>ESC</kbd>

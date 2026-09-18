@@ -4,6 +4,7 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { aiApi, aiStream, api, credentialStoreError, errorMessage } from "../../lib/api";
   import type { AiModel, AiProvider } from "../../lib/api";
+  import { backdropClose } from "../../lib/backdrop";
   import { LOCALES, getLocale, setLocale, t, type Locale } from "../../lib/i18n/index.svelte";
   import { createOllamaDetection, ollamaV1 } from "../../lib/ollama-detect.svelte";
   import { ai } from "../../lib/stores/ai.svelte";
@@ -554,10 +555,8 @@
   {/if}
 {/snippet}
 
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="overlay" onclick={onclose}>
-  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="panel" onclick={(e) => e.stopPropagation()}>
+<div class="overlay" use:backdropClose={onclose}>
+  <div class="panel">
     <header>
       <h2>{t("settings.title")}</h2>
       <button class="close" onclick={onclose} aria-label={t("settings.close")}>

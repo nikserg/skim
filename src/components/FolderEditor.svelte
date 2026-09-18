@@ -8,6 +8,7 @@
   // the case this exists for is "I mistyped a folder into existence" — which is
   // always an empty one.
   import { api, errorMessage } from "../lib/api";
+  import { backdropClose } from "../lib/backdrop";
   import { t } from "../lib/i18n/index.svelte";
   import { ui } from "../lib/stores/ui.svelte";
 
@@ -93,8 +94,8 @@
 <svelte:window onkeydown={onWindowKeydown} />
 
 {#if folder}
-  <div class="overlay" role="presentation" onclick={close}>
-    <div class="panel" role="presentation" onclick={(e) => e.stopPropagation()}>
+  <div class="overlay" use:backdropClose={close}>
+    <div class="panel">
       <div class="input-row">
         <input
           bind:this={inputEl}

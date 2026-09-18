@@ -2,6 +2,7 @@
   // Ctrl+K palette: commands + instant local search, plus the mailbox-wide
   // AI chat (the "Ask Skim AI" row on any query).
   import { api, type Citation } from "../lib/api";
+  import { backdropClose } from "../lib/backdrop";
   import { folderLabel } from "../lib/folders";
   import { getLocale, t } from "../lib/i18n/index.svelte";
   import { ai } from "../lib/stores/ai.svelte";
@@ -219,10 +220,8 @@
 <svelte:window onkeydown={onWindowKeydown} />
 
 {#if palette.open}
-  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="overlay" onclick={() => palette.hide()}>
-    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-    <div class="panel" onclick={(e) => e.stopPropagation()}>
+  <div class="overlay" use:backdropClose={() => palette.hide()}>
+    <div class="panel">
       {#if chat}
         <AiChat
           session={chat}
