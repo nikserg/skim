@@ -12,6 +12,8 @@ use tauri_plugin_opener::OpenerExt;
 #[serde(rename_all = "camelCase")]
 pub struct AddAccountInput {
     pub email: String,
+    #[serde(default)]
+    pub imap_user: Option<String>,
     pub display_name: Option<String>,
     pub provider: String,
     pub imap_host: String,
@@ -131,13 +133,20 @@ pub async fn add_account(
     password: String,
 ) -> Result<Account> {
     let creds = imap_client::Credentials::Password(password.clone());
-    let session =
-        imap_client::login(&input.imap_host, input.imap_port, &input.email, &creds).await?;
+    let imap_user = input
+        .imap_user
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != input.email)
+        .map(str::to_string);
+    let user = imap_user.as_deref().unwrap_or(input.email.as_str());
+    let session = imap_client::login(&input.imap_host, input.imap_port, user, &creds).await?;
     drop(session); // connection verified; the sync engine opens its own
 
     let account = Account {
         id: uuid::Uuid::new_v4().to_string(),
         email: input.email,
+        imap_user,
         display_name: input.display_name,
         provider: input.provider,
         imap_host: input.imap_host,
@@ -179,6 +188,7 @@ pub async fn start_google_oauth(app: AppHandle, state: State<'_, AppState>) -> R
     let account = Account {
         id: uuid::Uuid::new_v4().to_string(),
         email: outcome.email.clone(),
+        imap_user: None,
         display_name: outcome.display_name.clone(),
         provider: "gmail".into(),
         imap_host: "imap.gmail.com".into(),
@@ -224,6 +234,7 @@ pub async fn start_microsoft_oauth(app: AppHandle, state: State<'_, AppState>) -
     let account = Account {
         id: uuid::Uuid::new_v4().to_string(),
         email: outcome.email.clone(),
+        imap_user: None,
         display_name: outcome.display_name.clone(),
         provider: "microsoft".into(),
         imap_host: "outlook.office365.com".into(),

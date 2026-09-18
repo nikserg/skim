@@ -668,7 +668,7 @@ impl Engine {
             let session = imap_client::login(
                 &self.account.imap_host,
                 self.account.imap_port,
-                &self.account.email,
+                self.account.login_user(),
                 &creds,
             )
             .await?;
@@ -2566,7 +2566,7 @@ async fn idle_session(
     let mut session = imap_client::login(
         &account.imap_host,
         account.imap_port,
-        &account.email,
+        account.login_user(),
         &creds,
     )
     .await?;

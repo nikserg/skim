@@ -3,6 +3,8 @@
 export interface Account {
   id: string;
   email: string;
+  /** IMAP/SMTP login when it differs from `email`. Null means use the email. */
+  imapUser: string | null;
   displayName: string | null;
   provider: string;
   imapHost: string;

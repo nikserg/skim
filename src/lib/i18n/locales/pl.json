@@ -43,6 +43,7 @@
   "onb.ms_unverified_note": "Microsoft może oznaczyć Skim jako „niezweryfikowany” — logowanie i tak działa.",
   "onb.advanced": "Ustawienia serwera",
   "onb.imap_host": "Serwer IMAP",
+  "onb.username": "Nazwa użytkownika",
   "onb.smtp_host": "Serwer SMTP",
   "onb.port": "Port",
   "onb.connect_btn": "Połącz",

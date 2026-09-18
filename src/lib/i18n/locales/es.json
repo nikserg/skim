@@ -41,6 +41,7 @@
   "onb.ms_unverified_note": "Microsoft puede marcar Skim como «no verificado»; el inicio de sesión funciona igualmente.",
   "onb.advanced": "Configuración del servidor",
   "onb.imap_host": "Servidor IMAP",
+  "onb.username": "Usuario",
   "onb.smtp_host": "Servidor SMTP",
   "onb.port": "Puerto",
   "onb.connect_btn": "Conectar",

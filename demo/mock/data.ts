@@ -11,6 +11,7 @@ const D = 86400;
 export const ACCOUNT = {
   id: "acc-1",
   email: "alex@brightwave.io",
+  imapUser: null,
   displayName: "Alex Morgan",
   provider: "generic",
   imapHost: "imap.brightwave.io",
@@ -168,6 +169,7 @@ export const THREADS_BY_FOLDER: Record<number, typeof INBOX_THREADS> = {
 export const ACCOUNT2 = {
   id: "acc-2",
   email: "morgan.alex@fastmail.example",
+  imapUser: null,
   displayName: "Alex Morgan",
   provider: "generic",
   imapHost: "imap.fastmail.example",

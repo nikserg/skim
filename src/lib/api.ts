@@ -15,6 +15,7 @@ import type {
 
 export interface AddAccountInput {
   email: string;
+  imapUser?: string | null;
   displayName?: string | null;
   provider: string;
   imapHost: string;

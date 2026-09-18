@@ -35,6 +35,7 @@
   let detecting = $state(false);
   // Blur and Enter can both fire a lookup — only the newest address may win.
   let lookupSeq = 0;
+  let imapUser = $state("");
   let imapHost = $state("");
   let imapPort = $state(993);
   let smtpHost = $state("");
@@ -181,6 +182,7 @@
     try {
       const input: AddAccountInput = {
         email: email.trim(),
+        imapUser: imapUser.trim() || null,
         provider: preset?.provider ?? "custom",
         imapHost: imapHost.trim(),
         imapPort,
@@ -225,6 +227,10 @@
   </button>
   {#if showAdvanced}
     <div class="grid">
+      <label class="wide">
+        <span class="microlabel">{t("onb.username")}</span>
+        <input bind:value={imapUser} placeholder={email} spellcheck="false" autocomplete="off" />
+      </label>
       <label>
         <span class="microlabel">{t("onb.imap_host")}</span>
         <input bind:value={imapHost} spellcheck="false" />
@@ -614,6 +620,9 @@
     display: grid;
     grid-template-columns: 1fr 110px;
     gap: 10px 12px;
+  }
+  .wide {
+    grid-column: 1 / -1;
   }
 
   .error {

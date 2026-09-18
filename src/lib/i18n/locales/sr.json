@@ -42,6 +42,7 @@
   "onb.ms_unverified_note": "Microsoft može označiti Skim kao „nepotvrđen“ — prijava i dalje radi.",
   "onb.advanced": "Podešavanja servera",
   "onb.imap_host": "IMAP server",
+  "onb.username": "Korisničko ime",
   "onb.smtp_host": "SMTP server",
   "onb.port": "Port",
   "onb.connect_btn": "Poveži",

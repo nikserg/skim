@@ -205,11 +205,14 @@ pub async fn send(account: &Account, credentials: &Credentials, raw: &[u8]) -> R
 
     builder = match credentials {
         Credentials::Password(password) => builder.credentials(SmtpCredentials::new(
-            account.email.clone(),
+            account.login_user().to_string(),
             password.clone(),
         )),
         Credentials::OauthToken(token) => builder
-            .credentials(SmtpCredentials::new(account.email.clone(), token.clone()))
+            .credentials(SmtpCredentials::new(
+                account.login_user().to_string(),
+                token.clone(),
+            ))
             .authentication(vec![Mechanism::Xoauth2]),
     };
 
@@ -288,6 +291,7 @@ mod tests {
         Account {
             id: "acct".into(),
             email: "me@example.com".into(),
+            imap_user: None,
             display_name: Some("Me".into()),
             provider: "generic".into(),
             imap_host: "imap.example.com".into(),

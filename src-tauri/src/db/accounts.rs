@@ -5,29 +5,31 @@ fn row_to_account(r: &rusqlite::Row) -> rusqlite::Result<Account> {
     Ok(Account {
         id: r.get(0)?,
         email: r.get(1)?,
-        display_name: r.get(2)?,
-        provider: r.get(3)?,
-        imap_host: r.get(4)?,
-        imap_port: r.get::<_, i64>(5)? as u16,
-        smtp_host: r.get(6)?,
-        smtp_port: r.get::<_, i64>(7)? as u16,
-        smtp_security: r.get(8)?,
-        auth_kind: r.get(9)?,
-        signature: r.get(10)?,
+        imap_user: r.get(2)?,
+        display_name: r.get(3)?,
+        provider: r.get(4)?,
+        imap_host: r.get(5)?,
+        imap_port: r.get::<_, i64>(6)? as u16,
+        smtp_host: r.get(7)?,
+        smtp_port: r.get::<_, i64>(8)? as u16,
+        smtp_security: r.get(9)?,
+        auth_kind: r.get(10)?,
+        signature: r.get(11)?,
     })
 }
 
-const COLS: &str = "id, email, display_name, provider, imap_host, imap_port, smtp_host, smtp_port, smtp_security, auth_kind, signature";
+const COLS: &str = "id, email, imap_user, display_name, provider, imap_host, imap_port, smtp_host, smtp_port, smtp_security, auth_kind, signature";
 
 pub fn insert(conn: &Connection, a: &Account) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO accounts (id, email, display_name, provider, imap_host, imap_port,
+        "INSERT INTO accounts (id, email, imap_user, display_name, provider, imap_host, imap_port,
                                smtp_host, smtp_port, smtp_security, auth_kind, signature,
                                created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, unixepoch())",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, unixepoch())",
         params![
             a.id,
             a.email,
+            a.imap_user,
             a.display_name,
             a.provider,
             a.imap_host,
@@ -267,6 +269,40 @@ mod tests {
                     .as_deref(),
                 Some("Jane")
             );
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn a_distinct_login_is_stored() {
+        let db = Db::open_in_memory().unwrap();
+        db.with(|conn| {
+            seed(conn)?;
+            let a = super::get(conn, "acc1")?.expect("account");
+            assert_eq!(a.imap_user, None);
+            assert_eq!(a.login_user(), "me@example.com");
+
+            super::insert(
+                conn,
+                &super::Account {
+                    id: "acc2".into(),
+                    email: "other@example.com".into(),
+                    imap_user: Some("other".into()),
+                    display_name: None,
+                    provider: "custom".into(),
+                    imap_host: "imap.example.com".into(),
+                    imap_port: 993,
+                    smtp_host: "smtp.example.com".into(),
+                    smtp_port: 587,
+                    smtp_security: "starttls".into(),
+                    auth_kind: "password".into(),
+                    signature: None,
+                },
+            )?;
+            let got = super::get(conn, "acc2")?.expect("account");
+            assert_eq!(got.imap_user.as_deref(), Some("other"));
+            assert_eq!(got.login_user(), "other");
             Ok(())
         })
         .unwrap();

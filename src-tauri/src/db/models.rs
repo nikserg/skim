@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 pub struct Account {
     pub id: String,
     pub email: String,
+    /// IMAP/SMTP login when it differs from `email`. `None` means use the email.
+    #[serde(default)]
+    pub imap_user: Option<String>,
     pub display_name: Option<String>,
     pub provider: String,
     pub imap_host: String,
@@ -16,6 +19,15 @@ pub struct Account {
     /// Sign-off appended to mail written from this account, without the "-- "
     /// delimiter line. `None` (or blank) means the composer opens empty.
     pub signature: Option<String>,
+}
+
+impl Account {
+    pub fn login_user(&self) -> &str {
+        match self.imap_user.as_deref() {
+            Some(u) if !u.is_empty() => u,
+            _ => &self.email,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
