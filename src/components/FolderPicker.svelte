@@ -4,6 +4,7 @@
   // button, V, and the palette) — a folder list is long enough to need a
   // filter, and a filter box is a palette, so it may as well look like one.
   import { api } from "../lib/api";
+  import { backdropClose } from "../lib/backdrop";
   import { folderIcon, folderLabel } from "../lib/folders";
   import { t } from "../lib/i18n/index.svelte";
   import { mail } from "../lib/stores/mail.svelte";
@@ -110,12 +111,8 @@
 <svelte:window onkeydown={onWindowKeydown} />
 
 {#if request}
-  <div
-    class="overlay"
-    role="presentation"
-    onclick={close}
-  >
-    <div class="panel" role="presentation" onclick={(e) => e.stopPropagation()}>
+  <div class="overlay" use:backdropClose={close}>
+    <div class="panel">
       <div class="input-row">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round">
           <path d="M1.5 3.5h4l1.5 2h7.5v7h-13v-9z" />
