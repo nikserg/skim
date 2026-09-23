@@ -143,9 +143,9 @@ struct Engine {
     // (and, for Microsoft, rotate) the stored OAuth token concurrently.
     oauth_token: Arc<Mutex<Option<(String, i64)>>>,
     /// When this connection last completed a round-trip with the server. Only
-    /// the fetch worker reads it: the sync connection talks to its server every
-    /// five minutes anyway, so it never sits idle long enough to go stale
-    /// unnoticed.
+    /// the fetch worker reads it: the sync connection finds a stale socket by
+    /// failing the next pass, and reconnects once in `run_sync`/`sync_inbox`
+    /// without showing the user.
     last_ok: std::time::Instant,
     /// Where to send prefetch requests — the fetch connection, so a sync pass
     /// never waits for them. `None` on the fetch engine itself, which is the
@@ -604,7 +604,19 @@ impl Engine {
 
     async fn run_sync(&mut self) {
         self.emit_status("syncing", None);
-        match self.sync_all_folders().await {
+        let reused = self.session.is_some();
+        let mut result = self.sync_all_folders().await;
+        if let Err(e) = &result {
+            // Between two polls the connection sits idle for minutes, and a
+            // NAT, a VPN or sleep/wake drops it unannounced. That is ours to
+            // absorb with one fresh login, not the user's to see.
+            if pass_worth_retrying(reused, e) {
+                tracing::info!(error = %e, "sync connection went stale, reconnecting");
+                self.reset_session();
+                result = self.sync_all_folders().await;
+            }
+        }
+        match result {
             Ok(()) => self.emit_status("idle", None),
             Err(e) => {
                 tracing::warn!(error = %e, "sync failed");
@@ -634,7 +646,16 @@ impl Engine {
     async fn sync_inbox(&mut self) {
         let inbox = self.inbox_folder().await;
         if let Ok((folder_id, imap_name)) = inbox {
-            if let Err(e) = self.sync_folder(folder_id, &imap_name).await {
+            let reused = self.session.is_some();
+            let mut result = self.sync_folder(folder_id, &imap_name).await;
+            if let Err(e) = &result {
+                if pass_worth_retrying(reused, e) {
+                    tracing::info!(error = %e, "sync connection went stale, reconnecting");
+                    self.reset_session();
+                    result = self.sync_folder(folder_id, &imap_name).await;
+                }
+            }
+            if let Err(e) = result {
                 tracing::warn!(error = %e, "inbox sync failed");
                 self.reset_session();
             }
@@ -686,7 +707,7 @@ impl Engine {
         session
             .select(imap_name)
             .await
-            .map_err(|e| SkimError::other("folder", format!("cannot open {imap_name}: {e}")))?;
+            .map_err(|e| select_err(imap_name, e))?;
         self.selected = Some(imap_name.to_string());
         Ok(())
     }
@@ -1101,7 +1122,7 @@ impl Engine {
         let mailbox = session
             .select(imap_name)
             .await
-            .map_err(|e| SkimError::other("folder", format!("cannot open {imap_name}: {e}")))?;
+            .map_err(|e| select_err(imap_name, e))?;
         self.selected = Some(imap_name.to_string());
 
         let uidvalidity = mailbox.uid_validity.unwrap_or(0) as i64;
@@ -2654,8 +2675,25 @@ async fn wipe_folder(db: &Db, folder_id: i64) -> Result<()> {
     .await
 }
 
+/// A dead socket is a `network` problem, not the server's answer: tagging it
+/// `imap` made a dropped connection look like a real failure, so a pass kept
+/// walking folders on it and the op queue burnt attempts on it.
 fn imap_err(e: async_imap::error::Error) -> SkimError {
-    SkimError::other("imap", e.to_string())
+    use async_imap::error::Error;
+    let code = match e {
+        Error::Io(_) | Error::ConnectionLost => "network",
+        _ => "imap",
+    };
+    SkimError::other(code, e.to_string())
+}
+
+/// A failed SELECT names the folder, except when the socket died under it —
+/// that has to stay `network` so the caller knows a reconnect will help.
+fn select_err(imap_name: &str, e: async_imap::error::Error) -> SkimError {
+    match imap_err(e) {
+        e if e.code() == "network" => e,
+        e => SkimError::other("folder", format!("cannot open {imap_name}: {e}")),
+    }
 }
 
 /// One NOOP on a short leash: does this session still have a server on the
@@ -2688,6 +2726,13 @@ fn is_connection_error(e: &SkimError) -> bool {
 /// the message really is gone, the next flag reconciliation drops the row.
 fn worth_retrying(reused: bool, e: &SkimError) -> bool {
     reused && (is_connection_error(e) || e.code() == "mail")
+}
+
+/// Whether a failed sync pass is worth one reconnect. Only a connection that
+/// was already open can have gone stale; a fresh login that fails is a real
+/// outage (or bad credentials) and retrying it just delays the error.
+fn pass_worth_retrying(reused: bool, e: &SkimError) -> bool {
+    reused && matches!(e.code(), "network" | "tls")
 }
 
 /// Which just-arrived messages are worth pulling before they are clicked:
@@ -3181,9 +3226,10 @@ mod backfill_tests {
 #[cfg(test)]
 mod fetch_tests {
     use super::{
-        is_connection_error, noop_probe, prefetch_targets, worth_retrying, BODY_FETCH_TIMEOUT,
-        BODY_FETCH_WAIT, FETCH_REQUEST_BUDGET, POLL_INTERVAL, PREFETCH_MAX_BYTES,
-        PREFETCH_MAX_MESSAGES, PREFETCH_TIMEOUT, PROBE_AFTER_IDLE, PROBE_TIMEOUT,
+        imap_err, is_connection_error, noop_probe, pass_worth_retrying, prefetch_targets,
+        select_err, worth_retrying, BODY_FETCH_TIMEOUT, BODY_FETCH_WAIT, FETCH_REQUEST_BUDGET,
+        POLL_INTERVAL, PREFETCH_MAX_BYTES, PREFETCH_MAX_MESSAGES, PREFETCH_TIMEOUT,
+        PROBE_AFTER_IDLE, PROBE_TIMEOUT,
     };
     use crate::error::SkimError;
     use crate::mail::oauth;
@@ -3252,6 +3298,36 @@ mod fetch_tests {
         // A failed local write is not the connection's fault either way.
         assert!(!worth_retrying(true, &SkimError::other("db", "boom")));
         assert!(!worth_retrying(false, &SkimError::other("imap", "boom")));
+    }
+
+    #[test]
+    fn a_dead_socket_is_a_network_error() {
+        use async_imap::error::Error;
+        let reset = std::io::Error::new(std::io::ErrorKind::ConnectionReset, "os error 10054");
+        assert_eq!(imap_err(Error::Io(reset)).code(), "network");
+        assert_eq!(imap_err(Error::ConnectionLost).code(), "network");
+        assert_eq!(imap_err(Error::No("nope".into())).code(), "imap");
+
+        let reset = std::io::Error::new(std::io::ErrorKind::ConnectionReset, "reset");
+        assert_eq!(select_err("INBOX", Error::Io(reset)).code(), "network");
+        assert_eq!(
+            select_err("INBOX", Error::No("nope".into())).code(),
+            "folder"
+        );
+    }
+
+    #[test]
+    fn a_stale_sync_connection_earns_one_reconnect() {
+        let dropped = SkimError::other("network", "io: connection reset");
+        assert!(pass_worth_retrying(true, &dropped));
+        // A fresh login that fails is a real outage: say so at once.
+        assert!(!pass_worth_retrying(false, &dropped));
+        for code in ["auth", "oauth", "imap", "db", "io"] {
+            assert!(
+                !pass_worth_retrying(true, &SkimError::other(code, "boom")),
+                "{code} is not a dropped connection"
+            );
+        }
     }
 
     #[test]

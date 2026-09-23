@@ -618,6 +618,29 @@ mod tests {
         )
     }
 
+    /// Issue #53: Chinese mail showed up as U+FFFD because mail-parser was
+    /// built without its multi-byte decoders.
+    #[test]
+    fn cjk_charsets_decode_in_headers() {
+        let msg = headers(
+            "Subject: =?GBK?Q?=C4=E3=BA=C3=CA=C0=BD=E7?=\r\n\
+             From: =?gb18030?Q?=CC=DA=D1=B6?= <news@example.com>\r\n\
+             To: =?big5?Q?=A7A=A6n?= <a@example.com>, =?shift_jis?Q?=83=6E=83=8D=81=5B?= <b@example.com>\r\n\r\n",
+        );
+        assert_eq!(msg.subject.as_deref(), Some("你好世界"));
+        assert_eq!(msg.from_name.as_deref(), Some("腾讯"));
+        let names: Vec<_> = msg.to_addrs.iter().map(|a| a.name.as_deref()).collect();
+        assert_eq!(names, [Some("你好"), Some("ハロー")]);
+    }
+
+    #[test]
+    fn cjk_charsets_decode_in_bodies() {
+        let mut raw = b"Subject: x\r\nContent-Type: text/plain; charset=gb2312\r\n\r\n".to_vec();
+        raw.extend_from_slice(b"\xC4\xE3\xBA\xC3\xCA\xC0\xBD\xE7");
+        let body = parse_body(&raw);
+        assert_eq!(body.text.as_deref().map(str::trim), Some("你好世界"));
+    }
+
     #[test]
     fn strip_css_drops_a_stylesheet_flattened_into_the_text_part() {
         // The shape a real newsletter arrived in: its `text/plain` is the HTML

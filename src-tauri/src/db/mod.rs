@@ -26,6 +26,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0013_account_signature.sql"),
     include_str!("migrations/0014_thread_folder_index.sql"),
     include_str!("migrations/0015_account_imap_user.sql"),
+    include_str!("migrations/0016_redecode_cjk.sql"),
 ];
 
 /// A read the user is waiting on has this long to answer before it is worth
@@ -287,6 +288,39 @@ mod tests {
     fn in_memory_reads_through_the_writer() {
         let db = Db::open_in_memory().unwrap();
         assert!(Arc::ptr_eq(&db.conn, &db.reader));
+    }
+
+    #[test]
+    fn mojibake_folders_are_marked_for_a_resync() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let (before, redecode) = MIGRATIONS.split_at(MIGRATIONS.len() - 1);
+        migrate(&mut conn, before).unwrap();
+        conn.execute_batch(
+            "INSERT INTO accounts (id, email, provider, imap_host, smtp_host, created_at)
+                  VALUES ('a', 'me@example.com', 'imap', 'imap.example.com', 'smtp.example.com', 0);
+             INSERT INTO folders (id, account_id, imap_name, display_name, uidvalidity,
+                                  status_uidvalidity)
+                  VALUES (1, 'a', 'INBOX', 'Inbox', 7, 7), (2, 'a', 'Archive', 'Archive', 9, 9);
+             INSERT INTO messages (account_id, folder_id, uid, subject, from_name, date)
+                  VALUES ('a', 1, 1, 'Hello', 'Ann', 0),
+                         ('a', 1, 2, 'Hi', '\u{FFFD}\u{FFFD}', 0),
+                         ('a', 2, 1, 'Fine', 'Bob', 0);",
+        )
+        .unwrap();
+        let mut all = before.to_vec();
+        all.extend_from_slice(redecode);
+        migrate(&mut conn, &all).unwrap();
+
+        let state = |id: i64| -> (Option<i64>, Option<i64>) {
+            conn.query_row(
+                "SELECT uidvalidity, status_uidvalidity FROM folders WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap()
+        };
+        assert_eq!(state(1), (Some(-1), None), "garbled folder must resync");
+        assert_eq!(state(2), (Some(9), Some(9)), "clean folder stays as is");
     }
 
     #[test]
