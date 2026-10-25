@@ -65,11 +65,9 @@ const PREFETCH_MAX_BYTES: i64 = 256 * 1024;
 // few are the ones about to be read. A click can queue behind the batch, so
 // keep it short.
 const PREFETCH_MAX_MESSAGES: usize = 3;
-// How long one arrival's prefetch may keep a click on another message waiting.
-// This is the whole risk the feature carries: the batch holds the fetch
-// connection, so such a click waits this long at worst — which is why it is a
-// budget for the batch and not a leash per message. A click on the message
-// being fetched just waits for that fetch to land (see `prefetch_one`).
+// How long one arrival's prefetch keeps starting new bodies. A click never waits
+// for more than the one body in flight: the batch yields between bodies, and a
+// body once started is never cut short (see `prefetch_bodies`).
 const PREFETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
 pub enum SyncCommand {
@@ -207,15 +205,10 @@ impl FetchQueue {
         }
     }
 
-    /// Whether a click is waiting that this prefetch of `pk` stands in the way
-    /// of. A click for `pk` itself doesn't count: it is best served by letting
-    /// the fetch already under way finish.
-    fn blocked_by(&self, pk: Option<i64>) -> bool {
-        self.backlog.iter().any(|cmd| match cmd {
-            SyncCommand::FetchBody { message_pk, .. } => Some(*message_pk) != pk,
-            SyncCommand::Stop => true,
-            _ => false,
-        })
+    /// Whether a click (or Stop) is in the backlog, for background work to
+    /// give way to.
+    fn click_waiting(&self) -> bool {
+        self.backlog.iter().any(is_urgent)
     }
 }
 
@@ -265,19 +258,36 @@ struct FetchPhases {
     login_ms: u128,
     select_ms: u128,
     fetch_ms: u128,
+    /// Parsing and saving the body — the save also waits for the one SQLite
+    /// connection.
+    store_ms: u128,
     bytes: usize,
+}
+
+impl FetchPhases {
+    /// Fold one fetch into a batch total.
+    fn add(&mut self, other: &FetchPhases) {
+        self.db_ms += other.db_ms;
+        self.cred_ms += other.cred_ms;
+        self.login_ms += other.login_ms;
+        self.select_ms += other.select_ms;
+        self.fetch_ms += other.fetch_ms;
+        self.store_ms += other.store_ms;
+        self.bytes += other.bytes;
+    }
 }
 
 impl std::fmt::Display for FetchPhases {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "db {}ms, cred {}ms, login {}ms, select {}ms, fetch {}ms, {}KiB",
+            "db {}ms, cred {}ms, login {}ms, select {}ms, fetch {}ms, store {}ms, {}KiB",
             self.db_ms,
             self.cred_ms,
             self.login_ms,
             self.select_ms,
             self.fetch_ms,
+            self.store_ms,
             self.bytes / 1024
         )
     }
@@ -403,13 +413,14 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
                         // never hold this serial worker longer than one.
                         match tokio::time::timeout(BODY_FETCH_TIMEOUT, fetcher.warm()).await {
                             Ok(Ok(())) => {}
-                            Ok(Err(e)) => {
-                                tracing::debug!(error = %e, "warming the fetch connection failed")
-                            }
+                            Ok(Err(e)) => crate::append_log(
+                                "skim-slow.log",
+                                &format!("warm-up failed: {} ({e})", e.code()),
+                            ),
                             Err(_) => {
                                 // The dropped future left the response stream
                                 // desynced, so this session is finished.
-                                tracing::debug!("warming the fetch connection timed out");
+                                crate::append_log("skim-slow.log", "warm-up timed out");
                                 fetcher.reset_session();
                             }
                         }
@@ -634,76 +645,56 @@ impl Engine {
             Ok(t) if !t.is_empty() => t,
             _ => return,
         };
-        self.probe_if_idle().await;
+        let probed = self.probe_if_idle().await;
+        let reused = self.session.is_some();
         let started = std::time::Instant::now();
-        let deadline = started + PREFETCH_TIMEOUT;
-        let (mut done, mut bytes) = (0usize, 0usize);
+        let mut done = 0usize;
+        let mut total = FetchPhases::default();
         for pk in &targets {
             // A waiting click outranks the rest of the batch, and the batch
             // budget is spent: neither is why the user is here.
             queue.drain();
-            if queue.blocked_by(None) || std::time::Instant::now() >= deadline {
+            if queue.click_waiting() || started.elapsed() >= PREFETCH_TIMEOUT {
                 break;
             }
-            match self.prefetch_one(*pk, deadline, queue).await {
-                Ok(n) => {
-                    done += 1;
-                    bytes += n;
-                }
-                Err(e) => {
-                    tracing::debug!(error = %e, "prefetching a body failed");
-                    // A cancelled command leaves the response stream desynced,
-                    // and the click this was meant to serve must not inherit that.
-                    self.reset_session();
-                    break;
-                }
+            // Never cut short once started. Whoever clicked next — usually on
+            // this very message — needs the session this is paying for, and
+            // cancelling throws it away: the click then pays the login and
+            // SELECT again, at the moment the server is slowest to give them.
+            let mut phases = FetchPhases::default();
+            let result = self.fetch_body(*pk, BODY_FETCH_TIMEOUT, &mut phases).await;
+            total.add(&phases);
+            if let Err(e) = result {
+                // Logged however quick: a failure here also drops the session,
+                // and the click that follows pays for a fresh login without
+                // this line saying why.
+                crate::append_log(
+                    "skim-slow.log",
+                    &format!(
+                        "prefetch failed after {}ms: {} ({e}), probed={probed}, reused={reused}, {phases}",
+                        started.elapsed().as_millis(),
+                        e.code()
+                    ),
+                );
+                // A timed-out command leaves the response stream desynced,
+                // and the click this was meant to serve must not inherit that.
+                self.reset_session();
+                break;
             }
+            done += 1;
         }
         let took = started.elapsed();
         if took > SLOW_FETCH_LOG {
             crate::append_log(
                 "skim-slow.log",
                 &format!(
-                    "slow prefetch: {}/{} bodies, {}ms, {}KiB",
+                    "slow prefetch: {}/{} bodies, {}ms, probed={probed}, reused={reused}, {total}",
                     done,
                     targets.len(),
                     took.as_millis(),
-                    bytes / 1024
                 ),
             );
         }
-    }
-
-    /// Prefetch one body; returns its size.
-    ///
-    /// `deadline` is the batch budget, and it only bounds how long a click on
-    /// some *other* message can be kept waiting. Past it, the fetch runs on
-    /// under the ordinary click leash for as long as nobody else is queued:
-    /// cancelling it regardless threw away a FETCH that was most of the way
-    /// there — usually for the message just tapped in the notification, whose
-    /// click then started over from a fresh login.
-    async fn prefetch_one(
-        &mut self,
-        pk: i64,
-        deadline: std::time::Instant,
-        queue: &mut FetchQueue,
-    ) -> Result<usize> {
-        let mut phases = FetchPhases::default();
-        let mut fetch = Box::pin(self.fetch_body(pk, BODY_FETCH_TIMEOUT, &mut phases));
-        let deadline = tokio::time::Instant::from_std(deadline);
-        let mut overdue = false;
-        let result = loop {
-            tokio::select! {
-                res = &mut fetch => break res,
-                _ = tokio::time::sleep_until(deadline), if !overdue => overdue = true,
-                _ = queue.recv_one(), if !queue.closed => {}
-            }
-            if overdue && queue.blocked_by(Some(pk)) {
-                break Err(SkimError::other("network", "prefetch gave way to a click"));
-            }
-        };
-        drop(fetch);
-        result.map(|()| phases.bytes)
     }
 
     /// Which of the just-arrived messages still need a body and are worth one.
@@ -781,6 +772,7 @@ impl Engine {
     async fn sync_inbox(&mut self) {
         let inbox = self.inbox_folder().await;
         if let Ok((folder_id, imap_name)) = inbox {
+            let started = std::time::Instant::now();
             let reused = self.session.is_some();
             let mut result = self.sync_folder(folder_id, &imap_name).await;
             if let Err(e) = &result {
@@ -789,6 +781,20 @@ impl Engine {
                     self.reset_session();
                     result = self.sync_folder(folder_id, &imap_name).await;
                 }
+            }
+            let took = started.elapsed();
+            if took > SLOW_FETCH_LOG {
+                // This pass runs on the other connection at the very moment an
+                // arrival's prefetch and the notification's click do, so its
+                // timing next to theirs says whether the two collide.
+                crate::append_log(
+                    "skim-slow.log",
+                    &format!(
+                        "slow inbox sync: {}ms, reused={reused}, ok={}",
+                        took.as_millis(),
+                        result.is_ok()
+                    ),
+                );
             }
             if let Err(e) = result {
                 tracing::warn!(error = %e, "inbox sync failed");
@@ -1772,6 +1778,7 @@ impl Engine {
             return Err(SkimError::other("mail", "server returned no message body"));
         };
         phases.bytes = raw.len();
+        let store_started = std::time::Instant::now();
 
         let parsed = parse::parse_body(&raw);
 
@@ -1852,6 +1859,7 @@ impl Engine {
                 Ok(())
             })
             .await?;
+        phases.store_ms = store_started.elapsed().as_millis();
         Ok(())
     }
 
@@ -3624,12 +3632,10 @@ mod fetch_queue_tests {
     }
 
     #[test]
-    fn only_a_click_on_another_message_interrupts_a_prefetch() {
-        let queue = queue_of(vec![click(5), SyncCommand::WarmFetch]);
-        assert!(!queue.blocked_by(Some(5)));
-        assert!(queue.blocked_by(Some(6)));
-        assert!(queue.blocked_by(None));
-        assert!(!queue_of(vec![prefetch(&[1])]).blocked_by(None));
+    fn only_a_click_or_stop_counts_as_waiting() {
+        assert!(queue_of(vec![click(5), SyncCommand::WarmFetch]).click_waiting());
+        assert!(queue_of(vec![SyncCommand::Stop]).click_waiting());
+        assert!(!queue_of(vec![prefetch(&[1]), SyncCommand::WarmFetch]).click_waiting());
     }
 }
 
