@@ -182,6 +182,7 @@
   "ai.stop": "Stop",
   "ai.empty_response": "AI nie zwróciło treści — spróbuj przeformułować polecenie.",
   "ai.needs_key": "Dodaj klucz API AI w onboardingu lub ustawieniach, aby korzystać z AI.",
+  "ai.unavailable": "Dostawca AI w tej chwili nie odpowiada. Spróbuj ponownie za minutę.",
   "onb.ai_title": "Podłącz własną AI",
   "onb.ai_subtitle": "Wklej klucz API Anthropic, aby odblokować funkcje AI. Zapytania idą prosto z twojego komputera do Claude — Skim trzyma klucz w Menedżerze poświadczeń Windows i nigdzie indziej go nie wysyła.",
   "onb.ai_subtitle_or": "Jeden klucz, modele wszystkich dostawców — Claude, GPT, Gemini, Grok i inne. Zapytania idą z twojego komputera prosto do OpenRouter; Skim przechowuje klucz w Menedżerze poświadczeń Windows i nigdzie go nie wysyła.",

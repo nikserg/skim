@@ -21,8 +21,11 @@ fn convert_addrs(value: &mail_parser::Address) -> Vec<Address> {
     }
 }
 
-/// Parse fetched header bytes into a `NewMessage`. `internal_date` (unix
-/// seconds) is the fallback when the Date header is missing or invalid.
+/// Parse fetched header bytes into a `NewMessage`. `date` is when the message
+/// arrived — the server's `internal_date` (unix seconds) — so mail delivered
+/// late (or with a skewed Date header) lands on top of the list, where the
+/// user expects new mail, instead of days down. The Date header is only the
+/// fallback when the server gave no INTERNALDATE.
 #[allow(clippy::too_many_arguments)] // flat FETCH attributes, one call site
 pub fn parse_headers(
     account_id: &str,
@@ -56,10 +59,12 @@ pub fn parse_headers(
     msg.subject = parsed.subject().map(|s| s.to_string());
     msg.message_id = parsed.message_id().map(|s| format!("<{s}>"));
 
-    if let Some(date) = parsed.date() {
-        let ts = date.to_timestamp();
-        if ts > 0 {
-            msg.date = ts;
+    if internal_date.is_none() {
+        if let Some(date) = parsed.date() {
+            let ts = date.to_timestamp();
+            if ts > 0 {
+                msg.date = ts;
+            }
         }
     }
 
@@ -616,6 +621,18 @@ mod tests {
             false,
             false,
         )
+    }
+
+    /// A late delivery sorts by arrival, not by its (days old) Date header;
+    /// the header only fills in when the server sent no INTERNALDATE.
+    #[test]
+    fn date_is_arrival_with_header_fallback() {
+        let raw = b"Date: Fri, 23 Oct 2026 11:12:10 +0000\r\nSubject: x\r\n\r\n";
+        let arrived = 1_792_914_000;
+        let msg = parse_headers("acct", 1, 42, raw, Some(arrived), None, false, false, false);
+        assert_eq!(msg.date, arrived);
+        let msg = parse_headers("acct", 1, 42, raw, None, None, false, false, false);
+        assert_eq!(msg.date, 1_792_753_930);
     }
 
     /// Issue #53: Chinese mail showed up as U+FFFD because mail-parser was

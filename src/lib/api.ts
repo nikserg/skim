@@ -273,6 +273,7 @@ export const aiApi = {
  *  the provider said. */
 export function aiErrorText(code: string, message: string): string {
   if (code === "ai_key") return t("ai.needs_key");
+  if (code === "ai_overloaded") return t("ai.unavailable");
   if (code === "ai_truncated") return t("ai.truncated");
   if (code === "ai_no_answer") return t("ai.no_answer");
   return message || t("ai.no_answer");

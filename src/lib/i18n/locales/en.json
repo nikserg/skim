@@ -193,6 +193,7 @@
   "ai.stop": "Stop",
   "ai.empty_response": "AI returned an empty draft — try rephrasing your prompt.",
   "ai.needs_key": "Add your AI API key in onboarding or settings to use AI.",
+  "ai.unavailable": "The AI provider isn't responding right now. Try again in a minute.",
   "onb.ai_title": "Bring your own AI",
   "onb.ai_subtitle": "Paste an Anthropic API key to unlock AI features. Requests go straight from your machine to Claude — Skim stores the key in Windows Credential Manager and sends it nowhere else.",
   "onb.ai_subtitle_or": "One key, models from every vendor — Claude, GPT, Gemini, Grok and more. Requests go straight from your machine to OpenRouter; Skim stores the key in Windows Credential Manager and sends it nowhere else.",

@@ -172,7 +172,10 @@ fn refuses_tools_while_reasoning(body: &Value) -> bool {
 /// Map a non-200 response to the shared error codes; `Ok` for 200.
 async fn check_status(resp: reqwest::Response) -> Result<reqwest::Response> {
     let status = resp.status().as_u16();
-    if status == 429 || status == 502 || status == 503 {
+    // 502–599 is the provider (or the Cloudflare in front of it, 520–524)
+    // down for a moment, not the request: retry, then say so. A 500 keeps its
+    // own message — local endpoints explain real failures that way.
+    if status == 429 || (502..600).contains(&status) {
         return Err(SkimError::other("ai_overloaded", "the API is overloaded"));
     }
     if status == 401 || status == 403 {

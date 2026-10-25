@@ -146,7 +146,10 @@ async fn stream_once(
         .map_err(|e| SkimError::other("network", e.to_string()))?;
 
     let status = resp.status().as_u16();
-    if status == 429 || status == 529 {
+    // 502–599 is the provider (or the Cloudflare in front of it, 520–524)
+    // down for a moment, not the request: retry, then say so. A 500 keeps its
+    // own message — local endpoints explain real failures that way.
+    if status == 429 || (502..600).contains(&status) {
         return Err(SkimError::other("ai_overloaded", "the API is overloaded"));
     }
     if status == 401 || status == 403 {
@@ -366,7 +369,10 @@ async fn stream_tools_once(
         .map_err(|e| SkimError::other("network", e.to_string()))?;
 
     let status = resp.status().as_u16();
-    if status == 429 || status == 529 {
+    // 502–599 is the provider (or the Cloudflare in front of it, 520–524)
+    // down for a moment, not the request: retry, then say so. A 500 keeps its
+    // own message — local endpoints explain real failures that way.
+    if status == 429 || (502..600).contains(&status) {
         return Err(SkimError::other("ai_overloaded", "the API is overloaded"));
     }
     if status == 401 || status == 403 {
