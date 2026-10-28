@@ -385,6 +385,19 @@ function buildLandingPages(i18n, articles) {
     html = html.replace(/\{\{nav_blog_href\}\}/g, blogHref);
     html = html.replace(/\{\{nav_blog_label\}\}/g, escapeHTML(dict.nav_blog || "Blog"));
 
+    // 8a. root-relative asset paths — the landing lives under /<lang>/ for
+    // non-English, where the template's relative hrefs (`assets/zine.css`,
+    // `skim-light.jpg`, `stickers/*.webp`, `privacy.html`, …) would resolve
+    // to `/<lang>/assets/…` and 404. Rewrite anything that isn't absolute,
+    // scheme-prefixed, anchor-only, or data: to start at the site root.
+    const landingRoot = urlPathFor(lang, "");
+    html = html.replace(/\s(href|src|poster)="\.\/"/g,
+      (_, attr) => ` ${attr}="${landingRoot}"`);
+    html = html.replace(
+      /\s(href|src|poster)="(?!https?:|\/\/|\/|#|data:|mailto:|\{\{)([^"]+)"/g,
+      (_, attr, p) => ` ${attr}="/${p}"`
+    );
+
     // 8b. blog teaser block on the landing
     html = html.replace(/\{\{landing_blog_kicker\}\}/g,
       escapeHTML(dict.landing_blog_kicker || enDict.landing_blog_kicker || ""));
