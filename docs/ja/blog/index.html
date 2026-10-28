@@ -26,31 +26,38 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23eadfc2'/%3E%3Cg fill='%230d0d10'%3E%3Crect x='25' y='39' width='46' height='8.5' rx='4.25'/%3E%3Crect x='25' y='55' width='29' height='8.5' rx='4.25' fill-opacity='0.55'/%3E%3C/g%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link href="/assets/blog.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@500;600;700&family=Oswald:wght@600;700&family=Permanent+Marker&family=Rock+Salt&family=Special+Elite&family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="/assets/zine.css?v=3" rel="stylesheet">
+  <link href="/assets/blog.css?v=3" rel="stylesheet">
 </head>
 <body class="blog-index-page">
 
-<header class="site-header">
-  <a class="site-logo" href="/ja/">Skim</a>
-  <nav>
-    <a href="/ja/#product">機能</a>
-    <a href="/ja/#ai">AI</a>
-    <a href="/ja/blog/" class="current">ブログ</a>
-    <a href="https://github.com/nikserg/skim">GitHub</a>
-    <label class="lang">
-      <select onchange="window.location=this.value"><option value="/blog/">English</option><option value="/ru/blog/">Русский</option><option value="/sr/blog/">Srpski</option><option value="/fr/blog/">Français</option><option value="/de/blog/">Deutsch</option><option value="/es/blog/">Español</option><option value="/it/blog/">Italiano</option><option value="/pl/blog/">Polski</option><option value="/zh/blog/">中文</option><option value="/ja/blog/" selected>日本語</option><option value="/ko/blog/">한국어</option></select>
-    </label>
-  </nav>
-</header>
+<div class="frame">
+  <div class="sheet">
+    <div class="grain"></div>
+    <div class="holes"></div>
 
-<main>
-  <section class="blog-header">
-    <h1>Skim ブログ</h1>
-    <p class="lead">高速で最小限、AI ネイティブな Windows メールクライアント作りについてのノート。そして、そもそもメールクライアントをどう選ぶかについて。</p>
-  </section>
-  <ul class="blog-list">
-    
+    <header class="masthead">
+      <a class="mast-logo" href="/ja/">Skim</a>
+      <nav class="mast-nav">
+        <a href="/ja/#product">機能</a>
+        <a href="/ja/#ai">AI</a>
+        <a href="/ja/blog/" class="current">ブログ</a>
+        <a href="https://github.com/nikserg/skim">GitHub</a>
+        <label class="lang" title="Language">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <select id="langSelect" aria-label="Language"><option value="/blog/">English</option><option value="/ru/blog/">Русский</option><option value="/sr/blog/">Srpski</option><option value="/fr/blog/">Français</option><option value="/de/blog/">Deutsch</option><option value="/es/blog/">Español</option><option value="/it/blog/">Italiano</option><option value="/pl/blog/">Polski</option><option value="/zh/blog/">中文</option><option value="/ja/blog/" selected>日本語</option><option value="/ko/blog/">한국어</option></select>
+        </label>
+      </nav>
+    </header>
+
+    <main class="section">
+      <section class="blog-header">
+        <h1>Skim ブログ</h1>
+        <p class="lead">高速で最小限、AI ネイティブな Windows メールクライアント作りについてのノート。そして、そもそもメールクライアントをどう選ぶかについて。</p>
+      </section>
+      <ul class="blog-list">
+        
       <li class="blog-card">
         <a href="/ja/blog/best-free-email-client-for-windows-11/">
           <h2>2026 年 Windows 11 向け最良の無料メールクライアント</h2>
@@ -93,17 +100,22 @@
           <div class="meta"><time datetime="2026-10-23">2026-10-23</time> · 1 分で読める</div>
         </a>
       </li>
-  </ul>
-</main>
+      </ul>
+    </main>
 
-<footer class="site-footer">
-  <span>MIT © Skim contributors</span>
-  <span>
-    <a href="https://github.com/nikserg/skim">ソース</a>
-    <a href="https://github.com/nikserg/skim/releases">リリース</a>
-    <a href="/privacy.html">Privacy</a>
-    <a href="/terms.html">Terms</a>
-  </span>
-</footer>
+    <footer class="zine-footer">
+      <span>MIT © Skim contributors</span>
+      <span class="foot-links">
+        <a href="https://github.com/nikserg/skim">ソース</a>
+        <a href="https://github.com/nikserg/skim/releases">リリース</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </span>
+    </footer>
+  </div>
+</div>
+
+<script src="/assets/locales.js?v=3"></script>
+<script src="/assets/app.js?v=3"></script>
 </body>
 </html>

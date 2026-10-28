@@ -35,43 +35,50 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link href="/assets/blog.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@500;600;700&family=Oswald:wght@600;700&family=Permanent+Marker&family=Rock+Salt&family=Special+Elite&family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="/assets/zine.css?v=3" rel="stylesheet">
+  <link href="/assets/blog.css?v=3" rel="stylesheet">
 
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Client email open-source per Windows — la lista realistica del 2026","description":"Cinque client email open-source attivamente mantenuti per Windows nel 2026, con licenze, dove conservano le credenziali e quando \"open source\" ha un asterisco.","datePublished":"2026-10-24","dateModified":"2026-10-28","author":{"@type":"Organization","name":"Skim contributors","url":"https://github.com/nikserg/skim"},"publisher":{"@type":"Organization","name":"Skim","logo":{"@type":"ImageObject","url":"https://skim-tech.com/social-preview.jpg"}},"image":"https://skim-tech.com/social-preview.jpg","mainEntityOfPage":"https://skim-tech.com/it/blog/open-source-email-client-for-windows/","inLanguage":"it"}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://skim-tech.com/it/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://skim-tech.com/it/blog/"},{"@type":"ListItem","position":3,"name":"Client email open-source per Windows — la lista realistica del 2026","item":"https://skim-tech.com/it/blog/open-source-email-client-for-windows/"}]}</script>
 </head>
 <body class="article-page">
 
-<header class="site-header">
-  <a class="site-logo" href="/it/">Skim</a>
-  <nav>
-    <a href="/it/#product">Funzionalità</a>
-    <a href="/it/#ai">AI</a>
-    <a href="/it/blog/" class="current">Blog</a>
-    <a href="https://github.com/nikserg/skim">GitHub</a>
-    <label class="lang">
-      <select onchange="window.location=this.value"><option value="/blog/open-source-email-client-for-windows/">English</option><option value="/ru/blog/open-source-email-client-for-windows/">Русский</option><option value="/sr/blog/open-source-email-client-for-windows/">Srpski</option><option value="/fr/blog/open-source-email-client-for-windows/">Français</option><option value="/de/blog/open-source-email-client-for-windows/">Deutsch</option><option value="/es/blog/open-source-email-client-for-windows/">Español</option><option value="/it/blog/open-source-email-client-for-windows/" selected>Italiano</option><option value="/pl/blog/open-source-email-client-for-windows/">Polski</option><option value="/zh/blog/open-source-email-client-for-windows/">中文</option><option value="/ja/blog/open-source-email-client-for-windows/">日本語</option><option value="/ko/blog/open-source-email-client-for-windows/">한국어</option></select>
-    </label>
-  </nav>
-</header>
+<div class="frame">
+  <div class="sheet">
+    <div class="grain"></div>
+    <div class="holes"></div>
 
-<main>
-  <article>
-    <nav class="breadcrumbs">
-      <a href="/it/">Skim</a> / <a href="/it/blog/">Blog</a> / <span>Client email open-source per Windows — la lista realistica del 2026</span>
-    </nav>
+    <header class="masthead">
+      <a class="mast-logo" href="/it/">Skim</a>
+      <nav class="mast-nav">
+        <a href="/it/#product">Funzionalità</a>
+        <a href="/it/#ai">AI</a>
+        <a href="/it/blog/" class="current">Blog</a>
+        <a href="https://github.com/nikserg/skim">GitHub</a>
+        <label class="lang" title="Language">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <select id="langSelect" aria-label="Language"><option value="/blog/open-source-email-client-for-windows/">English</option><option value="/ru/blog/open-source-email-client-for-windows/">Русский</option><option value="/sr/blog/open-source-email-client-for-windows/">Srpski</option><option value="/fr/blog/open-source-email-client-for-windows/">Français</option><option value="/de/blog/open-source-email-client-for-windows/">Deutsch</option><option value="/es/blog/open-source-email-client-for-windows/">Español</option><option value="/it/blog/open-source-email-client-for-windows/" selected>Italiano</option><option value="/pl/blog/open-source-email-client-for-windows/">Polski</option><option value="/zh/blog/open-source-email-client-for-windows/">中文</option><option value="/ja/blog/open-source-email-client-for-windows/">日本語</option><option value="/ko/blog/open-source-email-client-for-windows/">한국어</option></select>
+        </label>
+      </nav>
+    </header>
 
-    <h1>Client email open-source per Windows — la lista realistica del 2026</h1>
-    <p class="dek">Cinque client email open-source attivamente mantenuti per Windows nel 2026, con licenze, dove conservano le credenziali e quando &quot;open source&quot; ha un asterisco.</p>
-    <div class="meta">
-      <time datetime="2026-10-24">Pubblicato 2026-10-24</time>
-      · 2 min di lettura
-    </div>
-    
-    <nav class="toc" aria-label="Table of contents"><ol><li><a href="#cosa-controllare">Cosa controllare</a></li><li><a href="#lista-breve">Lista breve</a></li><li><a href="#confronto">Confronto</a></li><li><a href="#perch-lopen-source-conta-qui">Perché l&#39;open-source conta qui</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+    <main class="section">
+      <article>
+        <nav class="breadcrumbs">
+          <a href="/it/">Skim</a> / <a href="/it/blog/">Blog</a> / <span>Client email open-source per Windows — la lista realistica del 2026</span>
+        </nav>
 
-    <p>"Open source" su una landing di un client email significa cose diverse. A volte "client MIT, nessun server, leggi il codice". A volte "client aperto, ma le funzioni utili girano sui nostri server con le tue credenziali". Entrambi sono legittimi, ma non sono la stessa cosa.</p>
+        <h1>Client email open-source per Windows — la lista realistica del 2026</h1>
+        <p class="dek">Cinque client email open-source attivamente mantenuti per Windows nel 2026, con licenze, dove conservano le credenziali e quando &quot;open source&quot; ha un asterisco.</p>
+        <div class="meta">
+          <time datetime="2026-10-24">Pubblicato 2026-10-24</time>
+          · 2 min di lettura
+        </div>
+        
+        <nav class="toc" aria-label="Table of contents"><ol><li><a href="#cosa-controllare">Cosa controllare</a></li><li><a href="#lista-breve">Lista breve</a></li><li><a href="#confronto">Confronto</a></li><li><a href="#perch-lopen-source-conta-qui">Perché l&#39;open-source conta qui</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+
+        <p>"Open source" su una landing di un client email significa cose diverse. A volte "client MIT, nessun server, leggi il codice". A volte "client aperto, ma le funzioni utili girano sui nostri server con le tue credenziali". Entrambi sono legittimi, ma non sono la stessa cosa.</p>
 <h2 id="cosa-controllare">Cosa controllare</h2>
 <p>Tre domande: dove sono le credenziali?, anche il server è open-source?, è ancora mantenuto (data ultimo commit)?</p>
 <h2 id="lista-breve">Lista breve</h2>
@@ -100,34 +107,38 @@
 <p><strong>Auto-ospitare il back-end Mailspring?</strong> No, solo il client è aperto.</p>
 <p><strong>Thunderbird ha IA?</strong> Non integrata. Add-on. Skim porta IA nel prodotto sulla tua chiave, <a href="/#ai">AI</a>.</p>
 
-    
+        
     <section class="related">
       <h2>Letture correlate</h2>
       <ul><li><a href="/it/blog/best-free-email-client-for-windows-11/">Il miglior client email gratuito per Windows 11 nel 2026</a></li><li><a href="/it/blog/thunderbird-alternatives-in-2026/">Alternative a Thunderbird nel 2026 — sei opzioni oneste per Windows</a></li><li><a href="/it/blog/best-email-client-for-windows-2026/">Il miglior client email per Windows nel 2026 — classificato onestamente</a></li></ul>
     </section>
 
-    <section class="post-cta">
-      <h2>Prova Skim</h2>
-      <p>Un client email veloce, gratuito e open-source per Windows con AI sulla tua chiave. ~5 MB, senza diritti di admin, senza telemetria.</p>
-      <div class="cta-row">
-        <a class="btn primary" href="https://github.com/nikserg/skim/releases/latest">⬇  Scarica per Windows</a>
-        <a class="btn ghost" href="https://github.com/nikserg/skim">Vedi su GitHub</a>
-      </div>
-    </section>
+        <section class="post-cta">
+          <h2>Prova Skim</h2>
+          <p>Un client email veloce, gratuito e open-source per Windows con AI sulla tua chiave. ~5 MB, senza diritti di admin, senza telemetria.</p>
+          <div class="cta-row">
+            <a class="btn-zine" href="https://github.com/nikserg/skim/releases/latest">⬇  Scarica per Windows</a>
+            <a class="btn-zine ink" href="https://github.com/nikserg/skim">Vedi su GitHub</a>
+          </div>
+        </section>
 
-    <p class="back-link"><a href="/it/blog/">← Torna al blog</a></p>
-  </article>
-</main>
+        <p class="back-link"><a href="/it/blog/">← Torna al blog</a></p>
+      </article>
+    </main>
 
-<footer class="site-footer">
-  <span>MIT © Skim contributors</span>
-  <span>
-    <a href="https://github.com/nikserg/skim">Sorgente</a>
-    <a href="https://github.com/nikserg/skim/releases">Release</a>
-    <a href="/privacy.html">Privacy</a>
-    <a href="/terms.html">Terms</a>
-  </span>
-</footer>
+    <footer class="zine-footer">
+      <span>MIT © Skim contributors</span>
+      <span class="foot-links">
+        <a href="https://github.com/nikserg/skim">Sorgente</a>
+        <a href="https://github.com/nikserg/skim/releases">Release</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </span>
+    </footer>
+  </div>
+</div>
 
+<script src="/assets/locales.js?v=3"></script>
+<script src="/assets/app.js?v=3"></script>
 </body>
 </html>

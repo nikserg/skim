@@ -35,43 +35,50 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link href="/assets/blog.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@500;600;700&family=Oswald:wght@600;700&family=Permanent+Marker&family=Rock+Salt&family=Special+Elite&family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="/assets/zine.css?v=3" rel="stylesheet">
+  <link href="/assets/blog.css?v=3" rel="stylesheet">
 
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Windows 向け AI メールクライアント — 2026 年の正直な短いリスト","description":"AI メールクライアントが実際に何をするか、誰がサブスクを課金するか、誰が自分のキーを許すか、そして Ollama 経由のローカル LLM が最も合理的な時。","datePublished":"2026-10-26","dateModified":"2026-10-28","author":{"@type":"Organization","name":"Skim contributors","url":"https://github.com/nikserg/skim"},"publisher":{"@type":"Organization","name":"Skim","logo":{"@type":"ImageObject","url":"https://skim-tech.com/social-preview.jpg"}},"image":"https://skim-tech.com/social-preview.jpg","mainEntityOfPage":"https://skim-tech.com/ja/blog/ai-email-client-for-windows/","inLanguage":"ja"}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://skim-tech.com/ja/"},{"@type":"ListItem","position":2,"name":"ブログ","item":"https://skim-tech.com/ja/blog/"},{"@type":"ListItem","position":3,"name":"Windows 向け AI メールクライアント — 2026 年の正直な短いリスト","item":"https://skim-tech.com/ja/blog/ai-email-client-for-windows/"}]}</script>
 </head>
 <body class="article-page">
 
-<header class="site-header">
-  <a class="site-logo" href="/ja/">Skim</a>
-  <nav>
-    <a href="/ja/#product">機能</a>
-    <a href="/ja/#ai">AI</a>
-    <a href="/ja/blog/" class="current">ブログ</a>
-    <a href="https://github.com/nikserg/skim">GitHub</a>
-    <label class="lang">
-      <select onchange="window.location=this.value"><option value="/blog/ai-email-client-for-windows/">English</option><option value="/ru/blog/ai-email-client-for-windows/">Русский</option><option value="/sr/blog/ai-email-client-for-windows/">Srpski</option><option value="/fr/blog/ai-email-client-for-windows/">Français</option><option value="/de/blog/ai-email-client-for-windows/">Deutsch</option><option value="/es/blog/ai-email-client-for-windows/">Español</option><option value="/it/blog/ai-email-client-for-windows/">Italiano</option><option value="/pl/blog/ai-email-client-for-windows/">Polski</option><option value="/zh/blog/ai-email-client-for-windows/">中文</option><option value="/ja/blog/ai-email-client-for-windows/" selected>日本語</option><option value="/ko/blog/ai-email-client-for-windows/">한국어</option></select>
-    </label>
-  </nav>
-</header>
+<div class="frame">
+  <div class="sheet">
+    <div class="grain"></div>
+    <div class="holes"></div>
 
-<main>
-  <article>
-    <nav class="breadcrumbs">
-      <a href="/ja/">Skim</a> / <a href="/ja/blog/">ブログ</a> / <span>Windows 向け AI メールクライアント — 2026 年の正直な短いリスト</span>
-    </nav>
+    <header class="masthead">
+      <a class="mast-logo" href="/ja/">Skim</a>
+      <nav class="mast-nav">
+        <a href="/ja/#product">機能</a>
+        <a href="/ja/#ai">AI</a>
+        <a href="/ja/blog/" class="current">ブログ</a>
+        <a href="https://github.com/nikserg/skim">GitHub</a>
+        <label class="lang" title="Language">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <select id="langSelect" aria-label="Language"><option value="/blog/ai-email-client-for-windows/">English</option><option value="/ru/blog/ai-email-client-for-windows/">Русский</option><option value="/sr/blog/ai-email-client-for-windows/">Srpski</option><option value="/fr/blog/ai-email-client-for-windows/">Français</option><option value="/de/blog/ai-email-client-for-windows/">Deutsch</option><option value="/es/blog/ai-email-client-for-windows/">Español</option><option value="/it/blog/ai-email-client-for-windows/">Italiano</option><option value="/pl/blog/ai-email-client-for-windows/">Polski</option><option value="/zh/blog/ai-email-client-for-windows/">中文</option><option value="/ja/blog/ai-email-client-for-windows/" selected>日本語</option><option value="/ko/blog/ai-email-client-for-windows/">한국어</option></select>
+        </label>
+      </nav>
+    </header>
 
-    <h1>Windows 向け AI メールクライアント — 2026 年の正直な短いリスト</h1>
-    <p class="dek">AI メールクライアントが実際に何をするか、誰がサブスクを課金するか、誰が自分のキーを許すか、そして Ollama 経由のローカル LLM が最も合理的な時。</p>
-    <div class="meta">
-      <time datetime="2026-10-26">公開日 2026-10-26</time>
-      · 1 分で読める
-    </div>
-    
-    <nav class="toc" aria-label="Table of contents"><ol><li><a href="#ai">メールでの AI の実用的な用途</a></li><li><a href="#2026-windows-ai">2026 年 Windows の AI メールクライアント</a></li><li><a href="#">比較</a></li><li><a href="#byok">BYOK とサブスク：実数字</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+    <main class="section">
+      <article>
+        <nav class="breadcrumbs">
+          <a href="/ja/">Skim</a> / <a href="/ja/blog/">ブログ</a> / <span>Windows 向け AI メールクライアント — 2026 年の正直な短いリスト</span>
+        </nav>
 
-    <p>「AI メールクライアント」はベンダーによって意味が異なります。Gmail なら長いスレッドの上の Gemini 要約バブル。Spark+ と Canary なら「AI で作成」ボタンと月額請求。Skim なら自分の API キー、自分のモデル、メールは自分のマシンに残る。</p>
+        <h1>Windows 向け AI メールクライアント — 2026 年の正直な短いリスト</h1>
+        <p class="dek">AI メールクライアントが実際に何をするか、誰がサブスクを課金するか、誰が自分のキーを許すか、そして Ollama 経由のローカル LLM が最も合理的な時。</p>
+        <div class="meta">
+          <time datetime="2026-10-26">公開日 2026-10-26</time>
+          · 1 分で読める
+        </div>
+        
+        <nav class="toc" aria-label="Table of contents"><ol><li><a href="#ai">メールでの AI の実用的な用途</a></li><li><a href="#2026-windows-ai">2026 年 Windows の AI メールクライアント</a></li><li><a href="#">比較</a></li><li><a href="#byok">BYOK とサブスク：実数字</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+
+        <p>「AI メールクライアント」はベンダーによって意味が異なります。Gmail なら長いスレッドの上の Gemini 要約バブル。Spark+ と Canary なら「AI で作成」ボタンと月額請求。Skim なら自分の API キー、自分のモデル、メールは自分のマシンに残る。</p>
 <h2 id="ai">メールでの AI の実用的な用途</h2>
 <p>節約時間順に四つ：返信の第一稿（最良のクライアントは送信済みから文体を学ぶ）、長いスレッドの要約、受信箱全体への質問、未読のダイジェスト。残りはマーケティングの包装。</p>
 <h2 id="2026-windows-ai">2026 年 Windows の AI メールクライアント</h2>
@@ -97,34 +104,38 @@
 <p><strong>ローカル LLM は？</strong> Skim で可能, 任意の OpenAI 互換エンドポイント。</p>
 <p><strong>Gmail の Gemini との違いは？</strong> あります。Gemini は Google アカウントのサーバー側で動くので、デスクトップクライアントは不要。BYOK デスクトップ AI は、自分のキーでローカルにメールを扱いたい人向けです。</p>
 
-    
+        
     <section class="related">
       <h2>関連記事</h2>
       <ul><li><a href="/ja/blog/best-free-email-client-for-windows-11/">2026 年 Windows 11 向け最良の無料メールクライアント</a></li><li><a href="/ja/blog/outlook-alternatives-for-windows/">Windows の Outlook 代替 — 2026 年の静かな短いリスト</a></li><li><a href="/ja/blog/open-source-email-client-for-windows/">Windows 向けオープンソースのメールクライアント — 2026 年の現実的な短いリスト</a></li></ul>
     </section>
 
-    <section class="post-cta">
-      <h2>Skim を試す</h2>
-      <p>Windows 向けの高速・無料・オープンソースのメールクライアント。AI は自分のキーで。約 5 MB、管理者権限不要、テレメトリーなし。</p>
-      <div class="cta-row">
-        <a class="btn primary" href="https://github.com/nikserg/skim/releases/latest">⬇  Windows 版をダウンロード</a>
-        <a class="btn ghost" href="https://github.com/nikserg/skim">GitHub で見る</a>
-      </div>
-    </section>
+        <section class="post-cta">
+          <h2>Skim を試す</h2>
+          <p>Windows 向けの高速・無料・オープンソースのメールクライアント。AI は自分のキーで。約 5 MB、管理者権限不要、テレメトリーなし。</p>
+          <div class="cta-row">
+            <a class="btn-zine" href="https://github.com/nikserg/skim/releases/latest">⬇  Windows 版をダウンロード</a>
+            <a class="btn-zine ink" href="https://github.com/nikserg/skim">GitHub で見る</a>
+          </div>
+        </section>
 
-    <p class="back-link"><a href="/ja/blog/">← ブログに戻る</a></p>
-  </article>
-</main>
+        <p class="back-link"><a href="/ja/blog/">← ブログに戻る</a></p>
+      </article>
+    </main>
 
-<footer class="site-footer">
-  <span>MIT © Skim contributors</span>
-  <span>
-    <a href="https://github.com/nikserg/skim">ソース</a>
-    <a href="https://github.com/nikserg/skim/releases">リリース</a>
-    <a href="/privacy.html">Privacy</a>
-    <a href="/terms.html">Terms</a>
-  </span>
-</footer>
+    <footer class="zine-footer">
+      <span>MIT © Skim contributors</span>
+      <span class="foot-links">
+        <a href="https://github.com/nikserg/skim">ソース</a>
+        <a href="https://github.com/nikserg/skim/releases">リリース</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </span>
+    </footer>
+  </div>
+</div>
 
+<script src="/assets/locales.js?v=3"></script>
+<script src="/assets/app.js?v=3"></script>
 </body>
 </html>

@@ -1,175 +1,280 @@
-/* Skim blog — a quieter, read-first layout that lives alongside the zine
-   landing. Shares the cream-paper palette but drops the ransom-note décor
-   so long-form reading stays painless. */
+/* Skim blog — reader-first layout that lives INSIDE the zine .sheet.
+   zine.css already paints the cream paper, the masthead, the dashed
+   divider and the footer. This file only styles the article body and the
+   blog index so long-form reading stays painless. */
 
 :root {
-  --frame:  #1b1610;
-  --paper:  #eadfc2;
-  --scrap:  #fbf8ef;
-  --ink:    #171310;
-  --muted:  #5a4a2e;
-  --accent: #d8321f;
-  --rule:   rgba(23,19,16,0.14);
-
   --f-sans: 'Hanken Grotesk', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  --f-serif: Georgia, 'Times New Roman', serif;
   --f-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --rule:   rgba(23,19,16,0.14);
 }
 
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body {
-  margin: 0;
-  background: var(--paper);
-  color: var(--ink);
+body.article-page, body.blog-index-page {
   font-family: var(--f-sans);
   line-height: 1.65;
-  -webkit-font-smoothing: antialiased;
 }
-a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
-a:hover { text-decoration-color: var(--accent); color: var(--accent); }
-
-/* ============================ HEADER / FOOTER ============================ */
-
-.site-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 22px 32px; max-width: 1120px; margin: 0 auto;
-  border-bottom: 1px solid var(--rule);
-}
-.site-logo { font-family: var(--f-mono); font-weight: 700; font-size: 22px; letter-spacing: 0.05em; text-decoration: none; }
-.site-header nav { display: flex; gap: 18px; align-items: center; font-size: 15px; }
-.site-header nav a { text-decoration: none; color: var(--muted); }
-.site-header nav a:hover,
-.site-header nav a.current { color: var(--ink); }
-.site-header .lang { margin-left: 8px; }
-.site-header .lang select {
-  font: inherit; background: transparent; border: 1px solid var(--rule);
-  border-radius: 999px; padding: 4px 10px; color: var(--ink); cursor: pointer;
-}
-
-.site-footer {
-  display: flex; align-items: center; justify-content: space-between;
-  max-width: 1120px; margin: 60px auto 32px; padding: 20px 32px;
-  border-top: 1px solid var(--rule); color: var(--muted); font-size: 14px;
-}
-.site-footer a { color: var(--muted); text-decoration: none; margin-right: 14px; }
-.site-footer a:hover { color: var(--accent); }
 
 /* ============================ BLOG INDEX ============================ */
 
-.blog-index-page main { max-width: 980px; margin: 0 auto; padding: 60px 32px 0; }
-.blog-header h1 { font-family: var(--f-serif); font-weight: 400; font-size: clamp(32px, 5vw, 56px); margin: 0 0 10px; letter-spacing: -0.01em; }
-.blog-header .lead { font-size: 18px; color: var(--muted); max-width: 60ch; margin: 0 0 48px; }
-
-.blog-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 24px; }
-@media (min-width: 760px) { .blog-list { grid-template-columns: 1fr 1fr; } }
-.blog-card { background: var(--scrap); border: 1px solid var(--rule); border-radius: 8px; }
-.blog-card a {
-  display: block; padding: 24px 26px; text-decoration: none; color: inherit;
-  transition: transform 0.15s ease, border-color 0.15s ease;
+.blog-index-page .blog-header { padding-bottom: 16px; }
+.blog-index-page h1 {
+  font-family: 'Anton', 'Oswald', Impact, sans-serif;
+  font-weight: 400;
+  font-size: clamp(44px, 7vw, 72px);
+  line-height: 0.95;
+  letter-spacing: 0.01em;
+  margin: 10px 0 14px;
+  color: var(--ink);
 }
-.blog-card:hover { border-color: var(--ink); }
-.blog-card h2 { font-family: var(--f-serif); font-weight: 400; font-size: 22px; margin: 0 0 10px; line-height: 1.3; }
-.blog-card p { font-size: 15px; color: var(--muted); margin: 0 0 16px; }
-.blog-card .meta { font-size: 13px; color: var(--muted); font-family: var(--f-mono); }
+.blog-index-page .lead {
+  font-family: var(--f-sans);
+  font-size: 18px;
+  color: var(--muted);
+  max-width: 60ch;
+  margin: 0 0 32px;
+}
+.blog-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 28px; }
+@media (min-width: 760px) { .blog-list { grid-template-columns: 1fr 1fr; } }
+
+.blog-list li {
+  position: relative;
+  background: var(--scrap);
+  padding: 24px 26px 22px;
+  box-shadow: 2px 3px 0 rgba(23,19,16,0.1);
+  border: 1px solid rgba(23,19,16,0.1);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.blog-list li:nth-child(odd)  { transform: rotate(-0.5deg); }
+.blog-list li:nth-child(even) { transform: rotate(0.4deg); }
+.blog-list li:hover {
+  transform: translateY(-2px) rotate(0deg);
+  box-shadow: 3px 5px 0 rgba(23,19,16,0.18);
+}
+/* Little tape strip on each card */
+.blog-list li::before {
+  content: ''; position: absolute; top: -10px; left: 24px;
+  width: 60px; height: 18px; transform: rotate(-6deg);
+  background: rgba(236,28,125,0.55);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+.blog-list li:nth-child(even)::before {
+  background: rgba(23,179,173,0.55); transform: rotate(5deg);
+}
+.blog-list a { display: block; text-decoration: none; color: inherit; }
+.blog-list h2 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 500;
+  font-size: 24px;
+  line-height: 1.25;
+  margin: 6px 0 10px;
+}
+.blog-list p {
+  font-family: var(--f-sans);
+  font-size: 15px;
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+.blog-list .meta {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
 
 /* ============================ ARTICLE ============================ */
 
-.article-page main { max-width: 760px; margin: 0 auto; padding: 40px 32px 0; }
-.breadcrumbs { font-size: 13px; color: var(--muted); margin-bottom: 32px; }
-.breadcrumbs a { color: var(--muted); text-decoration: none; }
-.breadcrumbs a:hover { color: var(--ink); }
+.article-page main { max-width: 760px; margin: 0 auto; }
+.article-page .breadcrumbs {
+  font-family: var(--f-mono); font-size: 13px; color: var(--muted);
+  margin-bottom: 24px;
+}
+.article-page .breadcrumbs a { color: var(--muted); text-decoration: none; }
+.article-page .breadcrumbs a:hover { color: var(--red); }
 
 .article-page h1 {
-  font-family: var(--f-serif); font-weight: 400;
-  font-size: clamp(30px, 4.5vw, 46px); margin: 0 0 14px; letter-spacing: -0.01em; line-height: 1.15;
+  font-family: 'Anton', 'Oswald', Impact, sans-serif;
+  font-weight: 400;
+  font-size: clamp(36px, 5.5vw, 56px);
+  line-height: 1.05;
+  letter-spacing: 0.005em;
+  margin: 0 0 14px;
+  color: var(--ink);
 }
 .article-page .dek {
-  font-size: 20px; color: var(--muted); margin: 0 0 20px; line-height: 1.5;
-  font-family: var(--f-serif); font-style: italic;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 20px;
+  color: var(--muted);
+  margin: 0 0 18px;
+  line-height: 1.5;
 }
-.article-page .meta { font-family: var(--f-mono); font-size: 13px; color: var(--muted); margin-bottom: 32px; }
+.article-page .meta {
+  font-family: var(--f-mono);
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 28px;
+}
 
 .translated-banner {
   background: #fff6d8; border: 1px solid #e8d78b; color: #5c4b14;
-  padding: 10px 14px; border-radius: 6px; font-size: 14px; margin-bottom: 32px;
+  padding: 10px 14px; border-radius: 2px;
+  font-family: var(--f-mono); font-size: 13px;
+  margin-bottom: 28px;
 }
 
 .toc {
-  background: var(--scrap); border: 1px solid var(--rule); border-radius: 8px;
-  padding: 18px 22px; margin: 0 0 40px; font-size: 15px;
+  background: var(--scrap);
+  border: 1px solid rgba(23,19,16,0.12);
+  padding: 16px 20px;
+  margin: 0 0 36px;
+  font-family: var(--f-sans);
+  font-size: 15px;
+  transform: rotate(-0.3deg);
 }
 .toc ol { padding-left: 20px; margin: 0; }
 .toc li { margin: 4px 0; }
 .toc a { color: var(--muted); text-decoration: none; }
-.toc a:hover { color: var(--accent); text-decoration: underline; }
+.toc a:hover { color: var(--red); text-decoration: underline; }
 
 .article-page article h2 {
-  font-family: var(--f-serif); font-weight: 500; font-size: 28px;
-  margin: 48px 0 14px; padding-top: 8px; border-top: 1px solid var(--rule);
-  line-height: 1.25;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 500;
+  font-size: 30px;
+  line-height: 1.2;
+  margin: 48px 0 14px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(23,19,16,0.25);
+  color: var(--ink);
 }
 .article-page article h3 {
-  font-family: var(--f-serif); font-weight: 500; font-size: 21px; margin: 32px 0 10px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 500;
+  font-size: 22px;
+  margin: 32px 0 10px;
+  color: var(--ink);
 }
-.article-page article p { font-size: 17px; margin: 0 0 18px; }
-.article-page article ul, .article-page article ol { font-size: 17px; margin: 0 0 20px; padding-left: 24px; }
+.article-page article p {
+  font-family: var(--f-sans);
+  font-size: 17px;
+  line-height: 1.65;
+  margin: 0 0 18px;
+  color: var(--ink);
+}
+.article-page article a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--red);
+  text-underline-offset: 3px;
+}
+.article-page article a:hover {
+  color: var(--red);
+}
+.article-page article ul,
+.article-page article ol {
+  font-family: var(--f-sans);
+  font-size: 17px;
+  margin: 0 0 20px;
+  padding-left: 24px;
+}
 .article-page article li { margin: 6px 0; }
 .article-page article code {
-  font-family: var(--f-mono); font-size: 0.92em;
-  background: var(--scrap); padding: 2px 6px; border-radius: 4px;
-  border: 1px solid var(--rule);
+  font-family: var(--f-mono);
+  font-size: 0.92em;
+  background: var(--scrap);
+  padding: 2px 6px;
+  border: 1px solid rgba(23,19,16,0.1);
 }
 .article-page article pre {
-  background: var(--scrap); border: 1px solid var(--rule); border-radius: 6px;
-  padding: 14px 16px; overflow-x: auto; font-size: 14px; margin: 0 0 20px;
+  background: var(--scrap);
+  border: 1px solid rgba(23,19,16,0.12);
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 14px;
+  margin: 0 0 20px;
 }
 .article-page article pre code { background: transparent; border: none; padding: 0; font-size: inherit; }
 .article-page article blockquote {
-  border-left: 3px solid var(--accent); padding: 2px 18px; margin: 24px 0;
-  font-family: var(--f-serif); font-style: italic; color: var(--muted);
+  border-left: 3px solid var(--red);
+  padding: 2px 18px;
+  margin: 24px 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  color: var(--muted);
 }
-.article-page article hr { border: 0; border-top: 1px solid var(--rule); margin: 36px 0; }
+.article-page article hr {
+  border: 0;
+  border-top: 1px dashed rgba(23,19,16,0.25);
+  margin: 36px 0;
+}
 
 .article-page .table-wrap { overflow-x: auto; margin: 24px 0; }
 .article-page table {
-  width: 100%; border-collapse: collapse; font-size: 15px; min-width: 520px;
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--f-sans);
+  font-size: 15px;
+  min-width: 520px;
+  background: var(--scrap);
+  border: 1px solid rgba(23,19,16,0.1);
 }
 .article-page th, .article-page td {
-  text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--rule); vertical-align: top;
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(23,19,16,0.12);
+  vertical-align: top;
 }
-.article-page th { background: var(--scrap); font-weight: 600; }
+.article-page th {
+  background: var(--paper);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 600;
+}
 
-.related { margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--rule); }
-.related h2 { font-family: var(--f-serif); font-size: 22px; margin: 0 0 14px; border: none; padding: 0; }
+.related { margin-top: 56px; padding-top: 24px; border-top: 1px dashed rgba(23,19,16,0.25); }
+.related h2 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 500;
+  font-size: 22px;
+  margin: 0 0 14px;
+  border: none;
+  padding: 0;
+}
 .related ul { list-style: none; padding: 0; margin: 0; }
 .related li { margin: 8px 0; }
+.related a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--red); }
 
 .post-cta {
-  margin-top: 56px; padding: 32px; background: var(--scrap);
-  border: 1px solid var(--rule); border-radius: 10px; text-align: center;
+  margin-top: 56px;
+  padding: 28px 28px 32px;
+  background: var(--scrap);
+  border: 1px solid rgba(23,19,16,0.12);
+  box-shadow: 2px 3px 0 rgba(23,19,16,0.1);
+  text-align: center;
+  transform: rotate(-0.3deg);
 }
 .post-cta h2 {
-  font-family: var(--f-serif); font-size: 26px; margin: 0 0 10px; border: none; padding: 0;
+  font-family: 'Anton', 'Oswald', Impact, sans-serif;
+  font-size: 32px;
+  margin: 0 0 10px;
+  border: none;
+  padding: 0;
+  letter-spacing: 0.015em;
+  color: var(--ink);
 }
-.post-cta p { color: var(--muted); margin: 0 0 20px; }
-.cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-.btn {
-  display: inline-block; padding: 10px 20px; border-radius: 999px;
-  font-size: 15px; text-decoration: none; font-weight: 500;
-  border: 1px solid var(--ink); transition: transform 0.1s ease;
+.post-cta p { color: var(--muted); margin: 0 0 22px; font-size: 16px; }
+.cta-row {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
 }
-.btn.primary { background: var(--ink); color: var(--paper); }
-.btn.ghost { background: transparent; color: var(--ink); }
-.btn:hover { transform: translateY(-1px); }
 
-.back-link { margin: 40px 0 20px; font-size: 15px; }
+.back-link { margin: 36px 0 16px; font-family: var(--f-mono); font-size: 14px; }
 .back-link a { color: var(--muted); text-decoration: none; }
-.back-link a:hover { color: var(--accent); text-decoration: underline; }
+.back-link a:hover { color: var(--red); text-decoration: underline; }
 
 @media (max-width: 640px) {
-  .site-header { flex-wrap: wrap; gap: 12px; padding: 18px 20px; }
-  .site-header nav { gap: 12px; font-size: 14px; }
-  .article-page main, .blog-index-page main { padding: 32px 20px 0; }
-  .article-page article p, .article-page article ul, .article-page article ol { font-size: 16px; }
+  .article-page article p,
+  .article-page article ul,
+  .article-page article ol { font-size: 16px; }
+  .post-cta h2 { font-size: 26px; }
 }

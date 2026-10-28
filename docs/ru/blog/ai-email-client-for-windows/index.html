@@ -35,43 +35,50 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link href="/assets/blog.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@500;600;700&family=Oswald:wght@600;700&family=Permanent+Marker&family=Rock+Salt&family=Special+Elite&family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="/assets/zine.css?v=3" rel="stylesheet">
+  <link href="/assets/blog.css?v=3" rel="stylesheet">
 
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"ИИ-почтовые клиенты для Windows — честный шорт-лист на 2026","description":"Что на самом деле делает ИИ-почтовик, кто берёт за это подписку, кто разрешает приносить свой ключ, и когда локальная LLM через Ollama осмысленнее их всех.","datePublished":"2026-10-26","dateModified":"2026-10-28","author":{"@type":"Organization","name":"Skim contributors","url":"https://github.com/nikserg/skim"},"publisher":{"@type":"Organization","name":"Skim","logo":{"@type":"ImageObject","url":"https://skim-tech.com/social-preview.jpg"}},"image":"https://skim-tech.com/social-preview.jpg","mainEntityOfPage":"https://skim-tech.com/ru/blog/ai-email-client-for-windows/","inLanguage":"ru"}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://skim-tech.com/ru/"},{"@type":"ListItem","position":2,"name":"Блог","item":"https://skim-tech.com/ru/blog/"},{"@type":"ListItem","position":3,"name":"ИИ-почтовые клиенты для Windows — честный шорт-лист на 2026","item":"https://skim-tech.com/ru/blog/ai-email-client-for-windows/"}]}</script>
 </head>
 <body class="article-page">
 
-<header class="site-header">
-  <a class="site-logo" href="/ru/">Skim</a>
-  <nav>
-    <a href="/ru/#product">Возможности</a>
-    <a href="/ru/#ai">AI</a>
-    <a href="/ru/blog/" class="current">Блог</a>
-    <a href="https://github.com/nikserg/skim">GitHub</a>
-    <label class="lang">
-      <select onchange="window.location=this.value"><option value="/blog/ai-email-client-for-windows/">English</option><option value="/ru/blog/ai-email-client-for-windows/" selected>Русский</option><option value="/sr/blog/ai-email-client-for-windows/">Srpski</option><option value="/fr/blog/ai-email-client-for-windows/">Français</option><option value="/de/blog/ai-email-client-for-windows/">Deutsch</option><option value="/es/blog/ai-email-client-for-windows/">Español</option><option value="/it/blog/ai-email-client-for-windows/">Italiano</option><option value="/pl/blog/ai-email-client-for-windows/">Polski</option><option value="/zh/blog/ai-email-client-for-windows/">中文</option><option value="/ja/blog/ai-email-client-for-windows/">日本語</option><option value="/ko/blog/ai-email-client-for-windows/">한국어</option></select>
-    </label>
-  </nav>
-</header>
+<div class="frame">
+  <div class="sheet">
+    <div class="grain"></div>
+    <div class="holes"></div>
 
-<main>
-  <article>
-    <nav class="breadcrumbs">
-      <a href="/ru/">Skim</a> / <a href="/ru/blog/">Блог</a> / <span>ИИ-почтовые клиенты для Windows — честный шорт-лист на 2026</span>
-    </nav>
+    <header class="masthead">
+      <a class="mast-logo" href="/ru/">Skim</a>
+      <nav class="mast-nav">
+        <a href="/ru/#product">Возможности</a>
+        <a href="/ru/#ai">AI</a>
+        <a href="/ru/blog/" class="current">Блог</a>
+        <a href="https://github.com/nikserg/skim">GitHub</a>
+        <label class="lang" title="Language">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <select id="langSelect" aria-label="Language"><option value="/blog/ai-email-client-for-windows/">English</option><option value="/ru/blog/ai-email-client-for-windows/" selected>Русский</option><option value="/sr/blog/ai-email-client-for-windows/">Srpski</option><option value="/fr/blog/ai-email-client-for-windows/">Français</option><option value="/de/blog/ai-email-client-for-windows/">Deutsch</option><option value="/es/blog/ai-email-client-for-windows/">Español</option><option value="/it/blog/ai-email-client-for-windows/">Italiano</option><option value="/pl/blog/ai-email-client-for-windows/">Polski</option><option value="/zh/blog/ai-email-client-for-windows/">中文</option><option value="/ja/blog/ai-email-client-for-windows/">日本語</option><option value="/ko/blog/ai-email-client-for-windows/">한국어</option></select>
+        </label>
+      </nav>
+    </header>
 
-    <h1>ИИ-почтовые клиенты для Windows — честный шорт-лист на 2026</h1>
-    <p class="dek">Что на самом деле делает ИИ-почтовик, кто берёт за это подписку, кто разрешает приносить свой ключ, и когда локальная LLM через Ollama осмысленнее их всех.</p>
-    <div class="meta">
-      <time datetime="2026-10-26">Опубликовано 2026-10-26</time>
-      · 4 мин чтения
-    </div>
-    
-    <nav class="toc" aria-label="Table of contents"><ol><li><a href="#">Для чего ИИ в почте реально полезен</a></li><li><a href="#--windows-2026">ИИ-почтовики для Windows в 2026</a></li><li><a href="#">Сравнение</a></li><li><a href="#byok-vs">BYOK vs подписка: реальные цифры</a></li><li><a href="#ollama">Локальный ИИ в почте, путь через Ollama</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+    <main class="section">
+      <article>
+        <nav class="breadcrumbs">
+          <a href="/ru/">Skim</a> / <a href="/ru/blog/">Блог</a> / <span>ИИ-почтовые клиенты для Windows — честный шорт-лист на 2026</span>
+        </nav>
 
-    <p>«ИИ-почтовик» для разных вендоров означает разное. Для Gmail это бабл Gemini-резюме наверху длинного треда. Для Spark+ и Canary, кнопка «Написать с ИИ» и ежемесячный счёт. Для Spike, чат-подобный инбокс, который сам пишет ответы. Для Skim, ваш собственный API-ключ, ваша собственная модель, почта остаётся на машине.</p>
+        <h1>ИИ-почтовые клиенты для Windows — честный шорт-лист на 2026</h1>
+        <p class="dek">Что на самом деле делает ИИ-почтовик, кто берёт за это подписку, кто разрешает приносить свой ключ, и когда локальная LLM через Ollama осмысленнее их всех.</p>
+        <div class="meta">
+          <time datetime="2026-10-26">Опубликовано 2026-10-26</time>
+          · 4 мин чтения
+        </div>
+        
+        <nav class="toc" aria-label="Table of contents"><ol><li><a href="#">Для чего ИИ в почте реально полезен</a></li><li><a href="#--windows-2026">ИИ-почтовики для Windows в 2026</a></li><li><a href="#">Сравнение</a></li><li><a href="#byok-vs">BYOK vs подписка: реальные цифры</a></li><li><a href="#ollama">Локальный ИИ в почте, путь через Ollama</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+
+        <p>«ИИ-почтовик» для разных вендоров означает разное. Для Gmail это бабл Gemini-резюме наверху длинного треда. Для Spark+ и Canary, кнопка «Написать с ИИ» и ежемесячный счёт. Для Spike, чат-подобный инбокс, который сам пишет ответы. Для Skim, ваш собственный API-ключ, ваша собственная модель, почта остаётся на машине.</p>
 <p>Эта статья, для пользователей Windows, которые хотят десктопный ИИ-почтовик и не хотят перечитывать шесть вендорских лендингов, чтобы понять, что каждый из них на самом деле везёт. Ниже, на что ИИ в почте реально годится, какие клиенты на Windows это умеют в 2026-м, и как заплатить меньше за больше.</p>
 <h2 id="">Для чего ИИ в почте реально полезен</h2>
 <p>Четыре вещи, примерно по убыванию сэкономленного времени:</p>
@@ -107,34 +114,38 @@
 <p><strong>Локальную LLM можно?</strong> В Skim, да, через любой OpenAI-совместимый эндпоинт (Ollama, LM Studio, vLLM). В Thunderbird-аддонах, зависит от аддона.</p>
 <p><strong>Это как-то отличается от Gemini в Gmail?</strong> Да. Gemini в Gmail работает на стороне сервера в вашем Google-аккаунте; клиент не нужен. Если предпочитаете использовать почту локально со своим ключом, это ровно то, куда вписывается BYOK десктоп-ИИ-почтовик.</p>
 
-    
+        
     <section class="related">
       <h2>Связанные статьи</h2>
       <ul><li><a href="/ru/blog/best-free-email-client-for-windows-11/">Лучший бесплатный почтовый клиент для Windows 11 в 2026</a></li><li><a href="/ru/blog/outlook-alternatives-for-windows/">Альтернативы Outlook для Windows — короткий тихий список на 2026</a></li><li><a href="/ru/blog/open-source-email-client-for-windows/">Почтовые клиенты с открытым кодом для Windows — реалистичный шорт-лист 2026</a></li></ul>
     </section>
 
-    <section class="post-cta">
-      <h2>Попробовать Skim</h2>
-      <p>Быстрый бесплатный почтовый клиент для Windows с открытым кодом. ИИ — на вашем собственном ключе. ~5 МБ, без прав администратора, без телеметрии.</p>
-      <div class="cta-row">
-        <a class="btn primary" href="https://github.com/nikserg/skim/releases/latest">⬇  Скачать для Windows</a>
-        <a class="btn ghost" href="https://github.com/nikserg/skim">Смотреть на GitHub</a>
-      </div>
-    </section>
+        <section class="post-cta">
+          <h2>Попробовать Skim</h2>
+          <p>Быстрый бесплатный почтовый клиент для Windows с открытым кодом. ИИ — на вашем собственном ключе. ~5 МБ, без прав администратора, без телеметрии.</p>
+          <div class="cta-row">
+            <a class="btn-zine" href="https://github.com/nikserg/skim/releases/latest">⬇  Скачать для Windows</a>
+            <a class="btn-zine ink" href="https://github.com/nikserg/skim">Смотреть на GitHub</a>
+          </div>
+        </section>
 
-    <p class="back-link"><a href="/ru/blog/">← Назад в блог</a></p>
-  </article>
-</main>
+        <p class="back-link"><a href="/ru/blog/">← Назад в блог</a></p>
+      </article>
+    </main>
 
-<footer class="site-footer">
-  <span>MIT © участники Skim</span>
-  <span>
-    <a href="https://github.com/nikserg/skim">Исходный код</a>
-    <a href="https://github.com/nikserg/skim/releases">Релизы</a>
-    <a href="/privacy.html">Privacy</a>
-    <a href="/terms.html">Terms</a>
-  </span>
-</footer>
+    <footer class="zine-footer">
+      <span>MIT © участники Skim</span>
+      <span class="foot-links">
+        <a href="https://github.com/nikserg/skim">Исходный код</a>
+        <a href="https://github.com/nikserg/skim/releases">Релизы</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </span>
+    </footer>
+  </div>
+</div>
 
+<script src="/assets/locales.js?v=3"></script>
+<script src="/assets/app.js?v=3"></script>
 </body>
 </html>

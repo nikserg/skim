@@ -35,43 +35,50 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link href="/assets/blog.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@500;600;700&family=Oswald:wght@600;700&family=Permanent+Marker&family=Rock+Salt&family=Special+Elite&family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="/assets/zine.css?v=3" rel="stylesheet">
+  <link href="/assets/blog.css?v=3" rel="stylesheet">
 
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Windows용 오픈소스 이메일 클라이언트 — 2026년의 현실적인 짧은 목록","description":"2026년 Windows에서 실제로 유지보수되는 다섯 개의 오픈소스 이메일 클라이언트, 라이선스, 자격 증명 저장 위치, 그리고 \"오픈소스\"에 별표가 붙을 때.","datePublished":"2026-10-24","dateModified":"2026-10-28","author":{"@type":"Organization","name":"Skim contributors","url":"https://github.com/nikserg/skim"},"publisher":{"@type":"Organization","name":"Skim","logo":{"@type":"ImageObject","url":"https://skim-tech.com/social-preview.jpg"}},"image":"https://skim-tech.com/social-preview.jpg","mainEntityOfPage":"https://skim-tech.com/ko/blog/open-source-email-client-for-windows/","inLanguage":"ko"}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://skim-tech.com/ko/"},{"@type":"ListItem","position":2,"name":"블로그","item":"https://skim-tech.com/ko/blog/"},{"@type":"ListItem","position":3,"name":"Windows용 오픈소스 이메일 클라이언트 — 2026년의 현실적인 짧은 목록","item":"https://skim-tech.com/ko/blog/open-source-email-client-for-windows/"}]}</script>
 </head>
 <body class="article-page">
 
-<header class="site-header">
-  <a class="site-logo" href="/ko/">Skim</a>
-  <nav>
-    <a href="/ko/#product">기능</a>
-    <a href="/ko/#ai">AI</a>
-    <a href="/ko/blog/" class="current">블로그</a>
-    <a href="https://github.com/nikserg/skim">GitHub</a>
-    <label class="lang">
-      <select onchange="window.location=this.value"><option value="/blog/open-source-email-client-for-windows/">English</option><option value="/ru/blog/open-source-email-client-for-windows/">Русский</option><option value="/sr/blog/open-source-email-client-for-windows/">Srpski</option><option value="/fr/blog/open-source-email-client-for-windows/">Français</option><option value="/de/blog/open-source-email-client-for-windows/">Deutsch</option><option value="/es/blog/open-source-email-client-for-windows/">Español</option><option value="/it/blog/open-source-email-client-for-windows/">Italiano</option><option value="/pl/blog/open-source-email-client-for-windows/">Polski</option><option value="/zh/blog/open-source-email-client-for-windows/">中文</option><option value="/ja/blog/open-source-email-client-for-windows/">日本語</option><option value="/ko/blog/open-source-email-client-for-windows/" selected>한국어</option></select>
-    </label>
-  </nav>
-</header>
+<div class="frame">
+  <div class="sheet">
+    <div class="grain"></div>
+    <div class="holes"></div>
 
-<main>
-  <article>
-    <nav class="breadcrumbs">
-      <a href="/ko/">Skim</a> / <a href="/ko/blog/">블로그</a> / <span>Windows용 오픈소스 이메일 클라이언트 — 2026년의 현실적인 짧은 목록</span>
-    </nav>
+    <header class="masthead">
+      <a class="mast-logo" href="/ko/">Skim</a>
+      <nav class="mast-nav">
+        <a href="/ko/#product">기능</a>
+        <a href="/ko/#ai">AI</a>
+        <a href="/ko/blog/" class="current">블로그</a>
+        <a href="https://github.com/nikserg/skim">GitHub</a>
+        <label class="lang" title="Language">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <select id="langSelect" aria-label="Language"><option value="/blog/open-source-email-client-for-windows/">English</option><option value="/ru/blog/open-source-email-client-for-windows/">Русский</option><option value="/sr/blog/open-source-email-client-for-windows/">Srpski</option><option value="/fr/blog/open-source-email-client-for-windows/">Français</option><option value="/de/blog/open-source-email-client-for-windows/">Deutsch</option><option value="/es/blog/open-source-email-client-for-windows/">Español</option><option value="/it/blog/open-source-email-client-for-windows/">Italiano</option><option value="/pl/blog/open-source-email-client-for-windows/">Polski</option><option value="/zh/blog/open-source-email-client-for-windows/">中文</option><option value="/ja/blog/open-source-email-client-for-windows/">日本語</option><option value="/ko/blog/open-source-email-client-for-windows/" selected>한국어</option></select>
+        </label>
+      </nav>
+    </header>
 
-    <h1>Windows용 오픈소스 이메일 클라이언트 — 2026년의 현실적인 짧은 목록</h1>
-    <p class="dek">2026년 Windows에서 실제로 유지보수되는 다섯 개의 오픈소스 이메일 클라이언트, 라이선스, 자격 증명 저장 위치, 그리고 &quot;오픈소스&quot;에 별표가 붙을 때.</p>
-    <div class="meta">
-      <time datetime="2026-10-24">게시 2026-10-24</time>
-      · 2 분 분량
-    </div>
-    
-    <nav class="toc" aria-label="Table of contents"><ol><li><a href="#">확인할 것</a></li><li><a href="#">짧은 목록</a></li><li><a href="#">비교</a></li><li><a href="#">오픈소스가 여기서 중요한 이유</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+    <main class="section">
+      <article>
+        <nav class="breadcrumbs">
+          <a href="/ko/">Skim</a> / <a href="/ko/blog/">블로그</a> / <span>Windows용 오픈소스 이메일 클라이언트 — 2026년의 현실적인 짧은 목록</span>
+        </nav>
 
-    <p>이메일 클라이언트 랜딩 페이지의 "오픈소스"는 여러 의미. 때로는 "클라이언트는 MIT, 서버 없음, 코드 읽어라". 때로는 "클라이언트는 열려 있지만 유용한 기능(검색, 지연 발송, 수신 확인)은 우리 서버에서 돌고 자격 증명도 거기 있음". 둘 다 정당하지만 같지 않습니다.</p>
+        <h1>Windows용 오픈소스 이메일 클라이언트 — 2026년의 현실적인 짧은 목록</h1>
+        <p class="dek">2026년 Windows에서 실제로 유지보수되는 다섯 개의 오픈소스 이메일 클라이언트, 라이선스, 자격 증명 저장 위치, 그리고 &quot;오픈소스&quot;에 별표가 붙을 때.</p>
+        <div class="meta">
+          <time datetime="2026-10-24">게시 2026-10-24</time>
+          · 2 분 분량
+        </div>
+        
+        <nav class="toc" aria-label="Table of contents"><ol><li><a href="#">확인할 것</a></li><li><a href="#">짧은 목록</a></li><li><a href="#">비교</a></li><li><a href="#">오픈소스가 여기서 중요한 이유</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+
+        <p>이메일 클라이언트 랜딩 페이지의 "오픈소스"는 여러 의미. 때로는 "클라이언트는 MIT, 서버 없음, 코드 읽어라". 때로는 "클라이언트는 열려 있지만 유용한 기능(검색, 지연 발송, 수신 확인)은 우리 서버에서 돌고 자격 증명도 거기 있음". 둘 다 정당하지만 같지 않습니다.</p>
 <h2 id="">확인할 것</h2>
 <p>세 가지 질문: 자격 증명이 어디에 저장되나? 서버 구성 요소도 오픈소스인가? 아직 유지보수되는가(마지막 커밋 날짜)?</p>
 <h2 id="">짧은 목록</h2>
@@ -100,34 +107,38 @@
 <p><strong>Mailspring 백엔드 자체 호스팅?</strong> 안 됨, 클라이언트만 열려 있음.</p>
 <p><strong>Thunderbird에 AI?</strong> 내장 없음. 애드온 있음. Skim은 자기 키로 제품 내 AI를 제공, <a href="/#ai">AI</a>.</p>
 
-    
+        
     <section class="related">
       <h2>관련 글</h2>
       <ul><li><a href="/ko/blog/best-free-email-client-for-windows-11/">2026년 Windows 11용 최고의 무료 이메일 클라이언트</a></li><li><a href="/ko/blog/thunderbird-alternatives-in-2026/">2026년의 Thunderbird 대안 — Windows를 위한 솔직한 여섯 가지</a></li><li><a href="/ko/blog/best-email-client-for-windows-2026/">2026년 Windows용 최고의 이메일 클라이언트 — 솔직한 순위</a></li></ul>
     </section>
 
-    <section class="post-cta">
-      <h2>Skim 사용해보기</h2>
-      <p>Windows용 빠르고 무료인 오픈소스 이메일 클라이언트. AI는 당신의 키로. 약 5 MB, 관리자 권한 불필요, 텔레메트리 없음.</p>
-      <div class="cta-row">
-        <a class="btn primary" href="https://github.com/nikserg/skim/releases/latest">⬇  Windows용 다운로드</a>
-        <a class="btn ghost" href="https://github.com/nikserg/skim">GitHub에서 보기</a>
-      </div>
-    </section>
+        <section class="post-cta">
+          <h2>Skim 사용해보기</h2>
+          <p>Windows용 빠르고 무료인 오픈소스 이메일 클라이언트. AI는 당신의 키로. 약 5 MB, 관리자 권한 불필요, 텔레메트리 없음.</p>
+          <div class="cta-row">
+            <a class="btn-zine" href="https://github.com/nikserg/skim/releases/latest">⬇  Windows용 다운로드</a>
+            <a class="btn-zine ink" href="https://github.com/nikserg/skim">GitHub에서 보기</a>
+          </div>
+        </section>
 
-    <p class="back-link"><a href="/ko/blog/">← 블로그로 돌아가기</a></p>
-  </article>
-</main>
+        <p class="back-link"><a href="/ko/blog/">← 블로그로 돌아가기</a></p>
+      </article>
+    </main>
 
-<footer class="site-footer">
-  <span>MIT © Skim contributors</span>
-  <span>
-    <a href="https://github.com/nikserg/skim">소스</a>
-    <a href="https://github.com/nikserg/skim/releases">릴리스</a>
-    <a href="/privacy.html">Privacy</a>
-    <a href="/terms.html">Terms</a>
-  </span>
-</footer>
+    <footer class="zine-footer">
+      <span>MIT © Skim contributors</span>
+      <span class="foot-links">
+        <a href="https://github.com/nikserg/skim">소스</a>
+        <a href="https://github.com/nikserg/skim/releases">릴리스</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </span>
+    </footer>
+  </div>
+</div>
 
+<script src="/assets/locales.js?v=3"></script>
+<script src="/assets/app.js?v=3"></script>
 </body>
 </html>

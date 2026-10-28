@@ -35,43 +35,50 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link href="/assets/blog.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@500;600;700&family=Oswald:wght@600;700&family=Permanent+Marker&family=Rock+Salt&family=Special+Elite&family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="/assets/zine.css?v=3" rel="stylesheet">
+  <link href="/assets/blog.css?v=3" rel="stylesheet">
 
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"2026 年 Windows 11 向け最良の無料メールクライアント","description":"Windows 11 の無料メールクライアントの短く率直なガイド — それぞれの得意分野、ハマりどころ、Gmail・Outlook・ただのメール整理のための選び方。","datePublished":"2026-10-28","dateModified":"2026-10-28","author":{"@type":"Organization","name":"Skim contributors","url":"https://github.com/nikserg/skim"},"publisher":{"@type":"Organization","name":"Skim","logo":{"@type":"ImageObject","url":"https://skim-tech.com/social-preview.jpg"}},"image":"https://skim-tech.com/social-preview.jpg","mainEntityOfPage":"https://skim-tech.com/ja/blog/best-free-email-client-for-windows-11/","inLanguage":"ja"}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://skim-tech.com/ja/"},{"@type":"ListItem","position":2,"name":"ブログ","item":"https://skim-tech.com/ja/blog/"},{"@type":"ListItem","position":3,"name":"2026 年 Windows 11 向け最良の無料メールクライアント","item":"https://skim-tech.com/ja/blog/best-free-email-client-for-windows-11/"}]}</script>
 </head>
 <body class="article-page">
 
-<header class="site-header">
-  <a class="site-logo" href="/ja/">Skim</a>
-  <nav>
-    <a href="/ja/#product">機能</a>
-    <a href="/ja/#ai">AI</a>
-    <a href="/ja/blog/" class="current">ブログ</a>
-    <a href="https://github.com/nikserg/skim">GitHub</a>
-    <label class="lang">
-      <select onchange="window.location=this.value"><option value="/blog/best-free-email-client-for-windows-11/">English</option><option value="/ru/blog/best-free-email-client-for-windows-11/">Русский</option><option value="/sr/blog/best-free-email-client-for-windows-11/">Srpski</option><option value="/fr/blog/best-free-email-client-for-windows-11/">Français</option><option value="/de/blog/best-free-email-client-for-windows-11/">Deutsch</option><option value="/es/blog/best-free-email-client-for-windows-11/">Español</option><option value="/it/blog/best-free-email-client-for-windows-11/">Italiano</option><option value="/pl/blog/best-free-email-client-for-windows-11/">Polski</option><option value="/zh/blog/best-free-email-client-for-windows-11/">中文</option><option value="/ja/blog/best-free-email-client-for-windows-11/" selected>日本語</option><option value="/ko/blog/best-free-email-client-for-windows-11/">한국어</option></select>
-    </label>
-  </nav>
-</header>
+<div class="frame">
+  <div class="sheet">
+    <div class="grain"></div>
+    <div class="holes"></div>
 
-<main>
-  <article>
-    <nav class="breadcrumbs">
-      <a href="/ja/">Skim</a> / <a href="/ja/blog/">ブログ</a> / <span>2026 年 Windows 11 向け最良の無料メールクライアント</span>
-    </nav>
+    <header class="masthead">
+      <a class="mast-logo" href="/ja/">Skim</a>
+      <nav class="mast-nav">
+        <a href="/ja/#product">機能</a>
+        <a href="/ja/#ai">AI</a>
+        <a href="/ja/blog/" class="current">ブログ</a>
+        <a href="https://github.com/nikserg/skim">GitHub</a>
+        <label class="lang" title="Language">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <select id="langSelect" aria-label="Language"><option value="/blog/best-free-email-client-for-windows-11/">English</option><option value="/ru/blog/best-free-email-client-for-windows-11/">Русский</option><option value="/sr/blog/best-free-email-client-for-windows-11/">Srpski</option><option value="/fr/blog/best-free-email-client-for-windows-11/">Français</option><option value="/de/blog/best-free-email-client-for-windows-11/">Deutsch</option><option value="/es/blog/best-free-email-client-for-windows-11/">Español</option><option value="/it/blog/best-free-email-client-for-windows-11/">Italiano</option><option value="/pl/blog/best-free-email-client-for-windows-11/">Polski</option><option value="/zh/blog/best-free-email-client-for-windows-11/">中文</option><option value="/ja/blog/best-free-email-client-for-windows-11/" selected>日本語</option><option value="/ko/blog/best-free-email-client-for-windows-11/">한국어</option></select>
+        </label>
+      </nav>
+    </header>
 
-    <h1>2026 年 Windows 11 向け最良の無料メールクライアント</h1>
-    <p class="dek">Windows 11 の無料メールクライアントの短く率直なガイド — それぞれの得意分野、ハマりどころ、Gmail・Outlook・ただのメール整理のための選び方。</p>
-    <div class="meta">
-      <time datetime="2026-10-28">公開日 2026-10-28</time>
-      · 1 分で読める
-    </div>
-    
-    <nav class="toc" aria-label="Table of contents"><ol><li><a href="#">何を見るか</a></li><li><a href="#">短いリスト</a></li><li><a href="#">比較</a></li><li><a href="#outlook">新しい Outlook はどう？</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+    <main class="section">
+      <article>
+        <nav class="breadcrumbs">
+          <a href="/ja/">Skim</a> / <a href="/ja/blog/">ブログ</a> / <span>2026 年 Windows 11 向け最良の無料メールクライアント</span>
+        </nav>
 
-    <p>Microsoft は今年、従来の Mail と Calendar アプリを廃止し、全員を新しい Outlook. Web ラッパーで、メールを Microsoft のサーバー経由で受信箱に届ける, に押し出しました。メールを自分のマシンに置いておきたいなら、Windows 11 向けの無料メールクライアントを探すことになります。</p>
+        <h1>2026 年 Windows 11 向け最良の無料メールクライアント</h1>
+        <p class="dek">Windows 11 の無料メールクライアントの短く率直なガイド — それぞれの得意分野、ハマりどころ、Gmail・Outlook・ただのメール整理のための選び方。</p>
+        <div class="meta">
+          <time datetime="2026-10-28">公開日 2026-10-28</time>
+          · 1 分で読める
+        </div>
+        
+        <nav class="toc" aria-label="Table of contents"><ol><li><a href="#">何を見るか</a></li><li><a href="#">短いリスト</a></li><li><a href="#">比較</a></li><li><a href="#outlook">新しい Outlook はどう？</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+
+        <p>Microsoft は今年、従来の Mail と Calendar アプリを廃止し、全員を新しい Outlook. Web ラッパーで、メールを Microsoft のサーバー経由で受信箱に届ける, に押し出しました。メールを自分のマシンに置いておきたいなら、Windows 11 向けの無料メールクライアントを探すことになります。</p>
 <h2 id="">何を見るか</h2>
 <p>三つ：邪魔しない IMAP、Gmail ラベルの正しい扱い、妥当な RAM 使用量。</p>
 <h2 id="">短いリスト</h2>
@@ -98,34 +105,38 @@
 <p><strong>Windows で AI を持つのは？</strong> Spike（有料）、Skim（BYOK、<a href="/#ai">AI</a> 参照）、Thunderbird と eM Client はアドオンで。</p>
 <p><strong>結局どれを選ぶ？</strong> オールインワン：<a href="https://www.thunderbird.net">Thunderbird</a>。速く軽くサブスクなしの AI：<a href="https://github.com/nikserg/skim/releases/latest">Skim</a>。Microsoft 抜きの Outlook 形：<a href="https://www.emclient.com">eM Client</a>。</p>
 
-    
+        
     <section class="related">
       <h2>関連記事</h2>
       <ul><li><a href="/ja/blog/outlook-alternatives-for-windows/">Windows の Outlook 代替 — 2026 年の静かな短いリスト</a></li><li><a href="/ja/blog/open-source-email-client-for-windows/">Windows 向けオープンソースのメールクライアント — 2026 年の現実的な短いリスト</a></li><li><a href="/ja/blog/thunderbird-alternatives-in-2026/">2026 年の Thunderbird 代替 — Windows 向け 6 つの正直な選択肢</a></li></ul>
     </section>
 
-    <section class="post-cta">
-      <h2>Skim を試す</h2>
-      <p>Windows 向けの高速・無料・オープンソースのメールクライアント。AI は自分のキーで。約 5 MB、管理者権限不要、テレメトリーなし。</p>
-      <div class="cta-row">
-        <a class="btn primary" href="https://github.com/nikserg/skim/releases/latest">⬇  Windows 版をダウンロード</a>
-        <a class="btn ghost" href="https://github.com/nikserg/skim">GitHub で見る</a>
-      </div>
-    </section>
+        <section class="post-cta">
+          <h2>Skim を試す</h2>
+          <p>Windows 向けの高速・無料・オープンソースのメールクライアント。AI は自分のキーで。約 5 MB、管理者権限不要、テレメトリーなし。</p>
+          <div class="cta-row">
+            <a class="btn-zine" href="https://github.com/nikserg/skim/releases/latest">⬇  Windows 版をダウンロード</a>
+            <a class="btn-zine ink" href="https://github.com/nikserg/skim">GitHub で見る</a>
+          </div>
+        </section>
 
-    <p class="back-link"><a href="/ja/blog/">← ブログに戻る</a></p>
-  </article>
-</main>
+        <p class="back-link"><a href="/ja/blog/">← ブログに戻る</a></p>
+      </article>
+    </main>
 
-<footer class="site-footer">
-  <span>MIT © Skim contributors</span>
-  <span>
-    <a href="https://github.com/nikserg/skim">ソース</a>
-    <a href="https://github.com/nikserg/skim/releases">リリース</a>
-    <a href="/privacy.html">Privacy</a>
-    <a href="/terms.html">Terms</a>
-  </span>
-</footer>
+    <footer class="zine-footer">
+      <span>MIT © Skim contributors</span>
+      <span class="foot-links">
+        <a href="https://github.com/nikserg/skim">ソース</a>
+        <a href="https://github.com/nikserg/skim/releases">リリース</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </span>
+    </footer>
+  </div>
+</div>
 
+<script src="/assets/locales.js?v=3"></script>
+<script src="/assets/app.js?v=3"></script>
 </body>
 </html>

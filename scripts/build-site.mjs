@@ -553,69 +553,80 @@ function renderArticleHTML({ article, lang, i18n, allArticles }) {
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link href="${urlPathFor('en', 'assets/blog.css')}" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@500;600;700&family=Oswald:wght@600;700&family=Permanent+Marker&family=Rock+Salt&family=Special+Elite&family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="/assets/zine.css?v=3" rel="stylesheet">
+  <link href="/assets/blog.css?v=3" rel="stylesheet">
 
   <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
   <script type="application/ld+json">${JSON.stringify(breadcrumbLd)}</script>
 </head>
 <body class="article-page">
 
-<header class="site-header">
-  <a class="site-logo" href="${urlPathFor(lang, '')}">Skim</a>
-  <nav>
-    <a href="${urlPathFor(lang, '#product')}">${escapeHTML(dict.nav_features || 'Features')}</a>
-    <a href="${urlPathFor(lang, '#ai')}">${escapeHTML(dict.nav_ai || 'AI')}</a>
-    <a href="${urlPathFor(lang, 'blog/')}" class="current">${escapeHTML(dict.nav_blog)}</a>
-    <a href="https://github.com/nikserg/skim">${escapeHTML(dict.nav_github || 'GitHub')}</a>
-    <label class="lang">
-      <select onchange="window.location=this.value">${langSwitchOptions}</select>
-    </label>
-  </nav>
-</header>
+<div class="frame">
+  <div class="sheet">
+    <div class="grain"></div>
+    <div class="holes"></div>
 
-<main>
-  <article>
-    <nav class="breadcrumbs">
-      <a href="${urlPathFor(lang, '')}">Skim</a> / <a href="${urlPathFor(lang, 'blog/')}">${escapeHTML(dict.nav_blog)}</a> / <span>${escapeHTML(title)}</span>
-    </nav>
+    <header class="masthead">
+      <a class="mast-logo" href="${urlPathFor(lang, '')}">Skim</a>
+      <nav class="mast-nav">
+        <a href="${urlPathFor(lang, '#product')}">${escapeHTML(dict.nav_features || 'Features')}</a>
+        <a href="${urlPathFor(lang, '#ai')}">${escapeHTML(dict.nav_ai || 'AI')}</a>
+        <a href="${urlPathFor(lang, 'blog/')}" class="current">${escapeHTML(dict.nav_blog)}</a>
+        <a href="https://github.com/nikserg/skim">${escapeHTML(dict.nav_github || 'GitHub')}</a>
+        <label class="lang" title="Language">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <select id="langSelect" aria-label="Language">${langSwitchOptions}</select>
+        </label>
+      </nav>
+    </header>
 
-    <h1>${escapeHTML(title)}</h1>
-    <p class="dek">${escapeHTML(description)}</p>
-    <div class="meta">
-      <time datetime="${datePublished}">${escapeHTML(dict.blog_published)} ${datePublished}</time>
-      · ${minRead} ${escapeHTML(dict.blog_min_read)}
-    </div>
-    ${translatedBanner}
-    ${toc}
+    <main class="section">
+      <article>
+        <nav class="breadcrumbs">
+          <a href="${urlPathFor(lang, '')}">Skim</a> / <a href="${urlPathFor(lang, 'blog/')}">${escapeHTML(dict.nav_blog)}</a> / <span>${escapeHTML(title)}</span>
+        </nav>
 
-    ${bodyHTML}
+        <h1>${escapeHTML(title)}</h1>
+        <p class="dek">${escapeHTML(description)}</p>
+        <div class="meta">
+          <time datetime="${datePublished}">${escapeHTML(dict.blog_published)} ${datePublished}</time>
+          · ${minRead} ${escapeHTML(dict.blog_min_read)}
+        </div>
+        ${translatedBanner}
+        ${toc}
 
-    ${relatedHTML}
+        ${bodyHTML}
 
-    <section class="post-cta">
-      <h2>${escapeHTML(dict.blog_cta_h)}</h2>
-      <p>${escapeHTML(dict.blog_cta_p)}</p>
-      <div class="cta-row">
-        <a class="btn primary" href="https://github.com/nikserg/skim/releases/latest">${escapeHTML(dict.blog_cta_dl)}</a>
-        <a class="btn ghost" href="https://github.com/nikserg/skim">${escapeHTML(dict.blog_cta_gh)}</a>
-      </div>
-    </section>
+        ${relatedHTML}
 
-    <p class="back-link"><a href="${urlPathFor(lang, 'blog/')}">${escapeHTML(dict.blog_back)}</a></p>
-  </article>
-</main>
+        <section class="post-cta">
+          <h2>${escapeHTML(dict.blog_cta_h)}</h2>
+          <p>${escapeHTML(dict.blog_cta_p)}</p>
+          <div class="cta-row">
+            <a class="btn-zine" href="https://github.com/nikserg/skim/releases/latest">${escapeHTML(dict.blog_cta_dl)}</a>
+            <a class="btn-zine ink" href="https://github.com/nikserg/skim">${escapeHTML(dict.blog_cta_gh)}</a>
+          </div>
+        </section>
 
-<footer class="site-footer">
-  <span>${escapeHTML(i18n[lang].foot_copy || 'MIT © Skim contributors')}</span>
-  <span>
-    <a href="https://github.com/nikserg/skim">${escapeHTML(dict.foot_source || 'Source')}</a>
-    <a href="https://github.com/nikserg/skim/releases">${escapeHTML(dict.foot_releases || 'Releases')}</a>
-    <a href="${urlPathFor('en', 'privacy.html')}">${escapeHTML(dict.foot_privacy || 'Privacy')}</a>
-    <a href="${urlPathFor('en', 'terms.html')}">${escapeHTML(dict.foot_terms || 'Terms')}</a>
-  </span>
-</footer>
+        <p class="back-link"><a href="${urlPathFor(lang, 'blog/')}">${escapeHTML(dict.blog_back)}</a></p>
+      </article>
+    </main>
 
+    <footer class="zine-footer">
+      <span>${escapeHTML(i18n[lang].foot_copy || 'MIT © Skim contributors')}</span>
+      <span class="foot-links">
+        <a href="https://github.com/nikserg/skim">${escapeHTML(dict.foot_source || 'Source')}</a>
+        <a href="https://github.com/nikserg/skim/releases">${escapeHTML(dict.foot_releases || 'Releases')}</a>
+        <a href="/privacy.html">${escapeHTML(dict.foot_privacy || 'Privacy')}</a>
+        <a href="/terms.html">${escapeHTML(dict.foot_terms || 'Terms')}</a>
+      </span>
+    </footer>
+  </div>
+</div>
+
+<script src="/assets/locales.js?v=3"></script>
+<script src="/assets/app.js?v=3"></script>
 </body>
 </html>`;
 }
@@ -667,43 +678,55 @@ function renderBlogIndex({ lang, articles, i18n }) {
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23eadfc2'/%3E%3Cg fill='%230d0d10'%3E%3Crect x='25' y='39' width='46' height='8.5' rx='4.25'/%3E%3Crect x='25' y='55' width='29' height='8.5' rx='4.25' fill-opacity='0.55'/%3E%3C/g%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link href="${urlPathFor('en', 'assets/blog.css')}" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@500;600;700&family=Oswald:wght@600;700&family=Permanent+Marker&family=Rock+Salt&family=Special+Elite&family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="/assets/zine.css?v=3" rel="stylesheet">
+  <link href="/assets/blog.css?v=3" rel="stylesheet">
 </head>
 <body class="blog-index-page">
 
-<header class="site-header">
-  <a class="site-logo" href="${urlPathFor(lang, '')}">Skim</a>
-  <nav>
-    <a href="${urlPathFor(lang, '#product')}">${escapeHTML(dict.nav_features || 'Features')}</a>
-    <a href="${urlPathFor(lang, '#ai')}">${escapeHTML(dict.nav_ai || 'AI')}</a>
-    <a href="${urlPathFor(lang, 'blog/')}" class="current">${escapeHTML(dict.nav_blog)}</a>
-    <a href="https://github.com/nikserg/skim">${escapeHTML(dict.nav_github || 'GitHub')}</a>
-    <label class="lang">
-      <select onchange="window.location=this.value">${langSwitchOptions}</select>
-    </label>
-  </nav>
-</header>
+<div class="frame">
+  <div class="sheet">
+    <div class="grain"></div>
+    <div class="holes"></div>
 
-<main>
-  <section class="blog-header">
-    <h1>${escapeHTML(dict.blog_h1)}</h1>
-    <p class="lead">${escapeHTML(dict.blog_lead)}</p>
-  </section>
-  <ul class="blog-list">
-    ${cards}
-  </ul>
-</main>
+    <header class="masthead">
+      <a class="mast-logo" href="${urlPathFor(lang, '')}">Skim</a>
+      <nav class="mast-nav">
+        <a href="${urlPathFor(lang, '#product')}">${escapeHTML(dict.nav_features || 'Features')}</a>
+        <a href="${urlPathFor(lang, '#ai')}">${escapeHTML(dict.nav_ai || 'AI')}</a>
+        <a href="${urlPathFor(lang, 'blog/')}" class="current">${escapeHTML(dict.nav_blog)}</a>
+        <a href="https://github.com/nikserg/skim">${escapeHTML(dict.nav_github || 'GitHub')}</a>
+        <label class="lang" title="Language">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <select id="langSelect" aria-label="Language">${langSwitchOptions}</select>
+        </label>
+      </nav>
+    </header>
 
-<footer class="site-footer">
-  <span>${escapeHTML(i18n[lang].foot_copy || 'MIT © Skim contributors')}</span>
-  <span>
-    <a href="https://github.com/nikserg/skim">${escapeHTML(dict.foot_source || 'Source')}</a>
-    <a href="https://github.com/nikserg/skim/releases">${escapeHTML(dict.foot_releases || 'Releases')}</a>
-    <a href="${urlPathFor('en', 'privacy.html')}">${escapeHTML(dict.foot_privacy || 'Privacy')}</a>
-    <a href="${urlPathFor('en', 'terms.html')}">${escapeHTML(dict.foot_terms || 'Terms')}</a>
-  </span>
-</footer>
+    <main class="section">
+      <section class="blog-header">
+        <h1>${escapeHTML(dict.blog_h1)}</h1>
+        <p class="lead">${escapeHTML(dict.blog_lead)}</p>
+      </section>
+      <ul class="blog-list">
+        ${cards}
+      </ul>
+    </main>
+
+    <footer class="zine-footer">
+      <span>${escapeHTML(i18n[lang].foot_copy || 'MIT © Skim contributors')}</span>
+      <span class="foot-links">
+        <a href="https://github.com/nikserg/skim">${escapeHTML(dict.foot_source || 'Source')}</a>
+        <a href="https://github.com/nikserg/skim/releases">${escapeHTML(dict.foot_releases || 'Releases')}</a>
+        <a href="/privacy.html">${escapeHTML(dict.foot_privacy || 'Privacy')}</a>
+        <a href="/terms.html">${escapeHTML(dict.foot_terms || 'Terms')}</a>
+      </span>
+    </footer>
+  </div>
+</div>
+
+<script src="/assets/locales.js?v=3"></script>
+<script src="/assets/app.js?v=3"></script>
 </body>
 </html>`;
 }

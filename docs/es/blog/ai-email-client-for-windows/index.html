@@ -35,43 +35,50 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link href="/assets/blog.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@500;600;700&family=Oswald:wght@600;700&family=Permanent+Marker&family=Rock+Salt&family=Special+Elite&family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="/assets/zine.css?v=3" rel="stylesheet">
+  <link href="/assets/blog.css?v=3" rel="stylesheet">
 
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Clientes de correo con IA para Windows — la lista corta honesta de 2026","description":"Qué hace realmente un cliente de correo con IA, quién cobra suscripción por ello, quién acepta tu propia clave, y cuándo las LLM locales vía Ollama tienen más sentido.","datePublished":"2026-10-26","dateModified":"2026-10-28","author":{"@type":"Organization","name":"Skim contributors","url":"https://github.com/nikserg/skim"},"publisher":{"@type":"Organization","name":"Skim","logo":{"@type":"ImageObject","url":"https://skim-tech.com/social-preview.jpg"}},"image":"https://skim-tech.com/social-preview.jpg","mainEntityOfPage":"https://skim-tech.com/es/blog/ai-email-client-for-windows/","inLanguage":"es"}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://skim-tech.com/es/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://skim-tech.com/es/blog/"},{"@type":"ListItem","position":3,"name":"Clientes de correo con IA para Windows — la lista corta honesta de 2026","item":"https://skim-tech.com/es/blog/ai-email-client-for-windows/"}]}</script>
 </head>
 <body class="article-page">
 
-<header class="site-header">
-  <a class="site-logo" href="/es/">Skim</a>
-  <nav>
-    <a href="/es/#product">Funciones</a>
-    <a href="/es/#ai">IA</a>
-    <a href="/es/blog/" class="current">Blog</a>
-    <a href="https://github.com/nikserg/skim">GitHub</a>
-    <label class="lang">
-      <select onchange="window.location=this.value"><option value="/blog/ai-email-client-for-windows/">English</option><option value="/ru/blog/ai-email-client-for-windows/">Русский</option><option value="/sr/blog/ai-email-client-for-windows/">Srpski</option><option value="/fr/blog/ai-email-client-for-windows/">Français</option><option value="/de/blog/ai-email-client-for-windows/">Deutsch</option><option value="/es/blog/ai-email-client-for-windows/" selected>Español</option><option value="/it/blog/ai-email-client-for-windows/">Italiano</option><option value="/pl/blog/ai-email-client-for-windows/">Polski</option><option value="/zh/blog/ai-email-client-for-windows/">中文</option><option value="/ja/blog/ai-email-client-for-windows/">日本語</option><option value="/ko/blog/ai-email-client-for-windows/">한국어</option></select>
-    </label>
-  </nav>
-</header>
+<div class="frame">
+  <div class="sheet">
+    <div class="grain"></div>
+    <div class="holes"></div>
 
-<main>
-  <article>
-    <nav class="breadcrumbs">
-      <a href="/es/">Skim</a> / <a href="/es/blog/">Blog</a> / <span>Clientes de correo con IA para Windows — la lista corta honesta de 2026</span>
-    </nav>
+    <header class="masthead">
+      <a class="mast-logo" href="/es/">Skim</a>
+      <nav class="mast-nav">
+        <a href="/es/#product">Funciones</a>
+        <a href="/es/#ai">IA</a>
+        <a href="/es/blog/" class="current">Blog</a>
+        <a href="https://github.com/nikserg/skim">GitHub</a>
+        <label class="lang" title="Language">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <select id="langSelect" aria-label="Language"><option value="/blog/ai-email-client-for-windows/">English</option><option value="/ru/blog/ai-email-client-for-windows/">Русский</option><option value="/sr/blog/ai-email-client-for-windows/">Srpski</option><option value="/fr/blog/ai-email-client-for-windows/">Français</option><option value="/de/blog/ai-email-client-for-windows/">Deutsch</option><option value="/es/blog/ai-email-client-for-windows/" selected>Español</option><option value="/it/blog/ai-email-client-for-windows/">Italiano</option><option value="/pl/blog/ai-email-client-for-windows/">Polski</option><option value="/zh/blog/ai-email-client-for-windows/">中文</option><option value="/ja/blog/ai-email-client-for-windows/">日本語</option><option value="/ko/blog/ai-email-client-for-windows/">한국어</option></select>
+        </label>
+      </nav>
+    </header>
 
-    <h1>Clientes de correo con IA para Windows — la lista corta honesta de 2026</h1>
-    <p class="dek">Qué hace realmente un cliente de correo con IA, quién cobra suscripción por ello, quién acepta tu propia clave, y cuándo las LLM locales vía Ollama tienen más sentido.</p>
-    <div class="meta">
-      <time datetime="2026-10-26">Publicado 2026-10-26</time>
-      · 2 min de lectura
-    </div>
-    
-    <nav class="toc" aria-label="Table of contents"><ol><li><a href="#para-qu-sirve-realmente-la-ia-en-correo">Para qué sirve realmente la IA en correo</a></li><li><a href="#clientes-de-correo-con-ia-para-windows-en-2026">Clientes de correo con IA para Windows en 2026</a></li><li><a href="#comparacin">Comparación</a></li><li><a href="#byok-vs-suscripcin-nmeros-reales">BYOK vs suscripción: números reales</a></li><li><a href="#ia-local-camino-ollama">IA local, camino Ollama</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+    <main class="section">
+      <article>
+        <nav class="breadcrumbs">
+          <a href="/es/">Skim</a> / <a href="/es/blog/">Blog</a> / <span>Clientes de correo con IA para Windows — la lista corta honesta de 2026</span>
+        </nav>
 
-    <p>"Cliente de correo con IA" significa cosas diferentes para distintos proveedores. Para Gmail, es el resumen Gemini encima de un hilo largo. Para Spark+ y Canary, un botón "Redactar con IA" y una factura mensual. Para Skim, tu propia clave API, tu propio modelo, correo que se queda en tu máquina.</p>
+        <h1>Clientes de correo con IA para Windows — la lista corta honesta de 2026</h1>
+        <p class="dek">Qué hace realmente un cliente de correo con IA, quién cobra suscripción por ello, quién acepta tu propia clave, y cuándo las LLM locales vía Ollama tienen más sentido.</p>
+        <div class="meta">
+          <time datetime="2026-10-26">Publicado 2026-10-26</time>
+          · 2 min de lectura
+        </div>
+        
+        <nav class="toc" aria-label="Table of contents"><ol><li><a href="#para-qu-sirve-realmente-la-ia-en-correo">Para qué sirve realmente la IA en correo</a></li><li><a href="#clientes-de-correo-con-ia-para-windows-en-2026">Clientes de correo con IA para Windows en 2026</a></li><li><a href="#comparacin">Comparación</a></li><li><a href="#byok-vs-suscripcin-nmeros-reales">BYOK vs suscripción: números reales</a></li><li><a href="#ia-local-camino-ollama">IA local, camino Ollama</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+
+        <p>"Cliente de correo con IA" significa cosas diferentes para distintos proveedores. Para Gmail, es el resumen Gemini encima de un hilo largo. Para Spark+ y Canary, un botón "Redactar con IA" y una factura mensual. Para Skim, tu propia clave API, tu propio modelo, correo que se queda en tu máquina.</p>
 <h2 id="para-qu-sirve-realmente-la-ia-en-correo">Para qué sirve realmente la IA en correo</h2>
 <p>Cuatro cosas, por tiempo ahorrado: redactar borrador de respuesta (los mejores clientes aprenden tu estilo del Enviados), resumir un hilo largo, responder preguntas sobre toda la bandeja, y digest de los no leídos. Lo demás es envoltorio de marketing.</p>
 <h2 id="clientes-de-correo-con-ia-para-windows-en-2026">Clientes de correo con IA para Windows en 2026</h2>
@@ -100,34 +107,38 @@
 <p><strong>¿LLM local?</strong> En Skim sí, cualquier endpoint compatible con OpenAI.</p>
 <p><strong>¿Diferente de Gemini en Gmail?</strong> Sí. Gemini corre en el servidor de tu cuenta Google; no hace falta cliente de escritorio. BYOK desktop encaja para quien quiere su correo local con su propia clave.</p>
 
-    
+        
     <section class="related">
       <h2>Lectura relacionada</h2>
       <ul><li><a href="/es/blog/best-free-email-client-for-windows-11/">El mejor cliente de correo gratuito para Windows 11 en 2026</a></li><li><a href="/es/blog/outlook-alternatives-for-windows/">Alternativas a Outlook para Windows — una lista corta y tranquila para 2026</a></li><li><a href="/es/blog/open-source-email-client-for-windows/">Clientes de correo de código abierto para Windows — lista corta realista 2026</a></li></ul>
     </section>
 
-    <section class="post-cta">
-      <h2>Probar Skim</h2>
-      <p>Cliente de correo rápido, gratis y de código abierto para Windows con IA en tu propia clave. ~5 MB, sin permisos de administrador, sin telemetría.</p>
-      <div class="cta-row">
-        <a class="btn primary" href="https://github.com/nikserg/skim/releases/latest">⬇  Descargar para Windows</a>
-        <a class="btn ghost" href="https://github.com/nikserg/skim">Ver en GitHub</a>
-      </div>
-    </section>
+        <section class="post-cta">
+          <h2>Probar Skim</h2>
+          <p>Cliente de correo rápido, gratis y de código abierto para Windows con IA en tu propia clave. ~5 MB, sin permisos de administrador, sin telemetría.</p>
+          <div class="cta-row">
+            <a class="btn-zine" href="https://github.com/nikserg/skim/releases/latest">⬇  Descargar para Windows</a>
+            <a class="btn-zine ink" href="https://github.com/nikserg/skim">Ver en GitHub</a>
+          </div>
+        </section>
 
-    <p class="back-link"><a href="/es/blog/">← Volver al blog</a></p>
-  </article>
-</main>
+        <p class="back-link"><a href="/es/blog/">← Volver al blog</a></p>
+      </article>
+    </main>
 
-<footer class="site-footer">
-  <span>MIT © Colaboradores de Skim</span>
-  <span>
-    <a href="https://github.com/nikserg/skim">Código fuente</a>
-    <a href="https://github.com/nikserg/skim/releases">Versiones</a>
-    <a href="/privacy.html">Privacy</a>
-    <a href="/terms.html">Terms</a>
-  </span>
-</footer>
+    <footer class="zine-footer">
+      <span>MIT © Colaboradores de Skim</span>
+      <span class="foot-links">
+        <a href="https://github.com/nikserg/skim">Código fuente</a>
+        <a href="https://github.com/nikserg/skim/releases">Versiones</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </span>
+    </footer>
+  </div>
+</div>
 
+<script src="/assets/locales.js?v=3"></script>
+<script src="/assets/app.js?v=3"></script>
 </body>
 </html>
