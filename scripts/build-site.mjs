@@ -283,7 +283,24 @@ function hreflangBlock({ pathAfterLang, availableLangs }) {
  * via data-i18n / data-i18n-html, inject hreflang + <html lang>, write.
  * ------------------------------------------------------------------ */
 
-function buildLandingPages(i18n) {
+function renderBlogTeaserCards(lang, articles, i18n) {
+  if (!articles.length) return "";
+  const dict = i18n[lang];
+  const topN = articles.slice(0, 3);
+  return topN.map(a => {
+    const useLang = a.byLang[lang] ? lang : "en";
+    const d = a.byLang[useLang].data;
+    return `
+        <a class="blog-scrap" href="${articleHref(useLang, a.slug)}">
+          <div class="tape tape-pink"></div>
+          <h3>${escapeHTML(d.title)}</h3>
+          <p>${escapeHTML(d.description || "")}</p>
+          <span class="blog-scrap-read">${escapeHTML(dict.blog_read_more || "Read →")}</span>
+        </a>`;
+  }).join("");
+}
+
+function buildLandingPages(i18n, articles) {
   const tplPath = path.join(SITE, "template.html");
   const tpl = fs.readFileSync(tplPath, "utf8");
 
@@ -367,6 +384,14 @@ function buildLandingPages(i18n) {
     const blogHref = urlPathFor(lang, "blog/");
     html = html.replace(/\{\{nav_blog_href\}\}/g, blogHref);
     html = html.replace(/\{\{nav_blog_label\}\}/g, escapeHTML(dict.nav_blog || "Blog"));
+
+    // 8b. blog teaser block on the landing
+    html = html.replace(/\{\{landing_blog_kicker\}\}/g,
+      escapeHTML(dict.landing_blog_kicker || enDict.landing_blog_kicker || ""));
+    html = html.replace(/\{\{landing_blog_h2\}\}/g,
+      escapeHTML(dict.landing_blog_h2 || enDict.landing_blog_h2 || ""));
+    html = html.replace(/\{\{blog_teaser_cards\}\}/g,
+      renderBlogTeaserCards(lang, articles, i18n));
 
     // 9. Write
     const out = fsPathFor(lang, "index.html");
@@ -737,7 +762,7 @@ function main() {
   const articles = loadBlogArticles();
   console.log(`i18n languages: ${LANGS.join(', ')}`);
   console.log(`blog articles: ${articles.length}`);
-  buildLandingPages(i18n);
+  buildLandingPages(i18n, articles);
   buildBlog(i18n, articles);
   buildSitemap(articles);
   console.log("done.");

@@ -19,7 +19,9 @@
     "blog_cta_gh": "View on GitHub",
     "blog_translated_from_en": "Translated from English. The English version is authoritative.",
     "page_title_blog": "Skim Blog — notes on Windows email clients and AI mail",
-    "page_desc_blog": "Articles about picking a fast, free email client for Windows, AI email tools, Outlook and Thunderbird alternatives, and how Skim fits in."
+    "page_desc_blog": "Articles about picking a fast, free email client for Windows, AI email tools, Outlook and Thunderbird alternatives, and how Skim fits in.",
+    "landing_blog_kicker": "// read the blog //",
+    "landing_blog_h2": "Longer reads for picking an email client"
   },
   "ru": {
     "nav_blog": "Блог",
@@ -40,7 +42,9 @@
     "blog_cta_gh": "Смотреть на GitHub",
     "blog_translated_from_en": "Переведено с английского. Английская версия — эталонная.",
     "page_title_blog": "Блог Skim — о почтовых клиентах для Windows и ИИ-почте",
-    "page_desc_blog": "Статьи о том, как выбрать быстрый бесплатный почтовый клиент для Windows, об ИИ-почте, альтернативах Outlook и Thunderbird и о месте Skim среди них."
+    "page_desc_blog": "Статьи о том, как выбрать быстрый бесплатный почтовый клиент для Windows, об ИИ-почте, альтернативах Outlook и Thunderbird и о месте Skim среди них.",
+    "landing_blog_kicker": "// читать блог //",
+    "landing_blog_h2": "Длинные тексты про выбор почтового клиента"
   },
   "sr": {
     "nav_blog": "Blog",
@@ -61,7 +65,9 @@
     "blog_cta_gh": "Pogledaj na GitHub-u",
     "blog_translated_from_en": "Prevedeno sa engleskog. Engleska verzija je merodavna.",
     "page_title_blog": "Skim Blog — o Windows email klijentima i AI pošti",
-    "page_desc_blog": "Članci o biranju brzog besplatnog email klijenta za Windows, o AI pošti, alternativama Outlook-u i Thunderbird-u i o tome gde se Skim uklapa."
+    "page_desc_blog": "Članci o biranju brzog besplatnog email klijenta za Windows, o AI pošti, alternativama Outlook-u i Thunderbird-u i o tome gde se Skim uklapa.",
+    "landing_blog_kicker": "// čitaj blog //",
+    "landing_blog_h2": "Duži tekstovi o izboru email klijenta"
   },
   "fr": {
     "nav_blog": "Blog",
@@ -82,7 +88,9 @@
     "blog_cta_gh": "Voir sur GitHub",
     "blog_translated_from_en": "Traduit de l'anglais. La version anglaise fait foi.",
     "page_title_blog": "Blog Skim — notes sur les clients email Windows et l'IA",
-    "page_desc_blog": "Articles pour choisir un client email rapide et gratuit sous Windows, sur l'IA pour l'email, les alternatives à Outlook et Thunderbird, et la place de Skim."
+    "page_desc_blog": "Articles pour choisir un client email rapide et gratuit sous Windows, sur l'IA pour l'email, les alternatives à Outlook et Thunderbird, et la place de Skim.",
+    "landing_blog_kicker": "// lire le blog //",
+    "landing_blog_h2": "Lectures longues pour choisir un client email"
   },
   "de": {
     "nav_blog": "Blog",
@@ -103,7 +111,9 @@
     "blog_cta_gh": "Auf GitHub ansehen",
     "blog_translated_from_en": "Aus dem Englischen übersetzt. Maßgeblich ist die englische Fassung.",
     "page_title_blog": "Skim-Blog — Windows-E-Mail-Clients und KI-Mail",
-    "page_desc_blog": "Artikel darüber, wie du einen schnellen, kostenlosen E-Mail-Client für Windows wählst, über KI-Mail, Alternativen zu Outlook und Thunderbird und wo Skim passt."
+    "page_desc_blog": "Artikel darüber, wie du einen schnellen, kostenlosen E-Mail-Client für Windows wählst, über KI-Mail, Alternativen zu Outlook und Thunderbird und wo Skim passt.",
+    "landing_blog_kicker": "// den Blog lesen //",
+    "landing_blog_h2": "Längere Texte zur Wahl des E-Mail-Clients"
   },
   "es": {
     "nav_blog": "Blog",
@@ -124,7 +134,9 @@
     "blog_cta_gh": "Ver en GitHub",
     "blog_translated_from_en": "Traducido del inglés. La versión en inglés es la autoritativa.",
     "page_title_blog": "Blog de Skim — clientes de correo para Windows y correo con IA",
-    "page_desc_blog": "Artículos para elegir un cliente de correo rápido y gratuito en Windows, sobre IA aplicada al email, alternativas a Outlook y Thunderbird, y dónde encaja Skim."
+    "page_desc_blog": "Artículos para elegir un cliente de correo rápido y gratuito en Windows, sobre IA aplicada al email, alternativas a Outlook y Thunderbird, y dónde encaja Skim.",
+    "landing_blog_kicker": "// leer el blog //",
+    "landing_blog_h2": "Lecturas largas para elegir un cliente de correo"
   },
   "it": {
     "nav_blog": "Blog",
@@ -145,7 +157,9 @@
     "blog_cta_gh": "Vedi su GitHub",
     "blog_translated_from_en": "Tradotto dall'inglese. La versione inglese è quella autoritativa.",
     "page_title_blog": "Blog di Skim — client email Windows e posta con AI",
-    "page_desc_blog": "Articoli su come scegliere un client email veloce e gratuito per Windows, sulla posta con AI, sulle alternative a Outlook e Thunderbird, e sul posto di Skim."
+    "page_desc_blog": "Articoli su come scegliere un client email veloce e gratuito per Windows, sulla posta con AI, sulle alternative a Outlook e Thunderbird, e sul posto di Skim.",
+    "landing_blog_kicker": "// leggi il blog //",
+    "landing_blog_h2": "Letture lunghe per scegliere un client email"
   },
   "pl": {
     "nav_blog": "Blog",
@@ -166,7 +180,9 @@
     "blog_cta_gh": "Zobacz na GitHub",
     "blog_translated_from_en": "Przetłumaczone z angielskiego. Wersja angielska jest wiążąca.",
     "page_title_blog": "Blog Skim — o klientach poczty na Windows i AI w mailu",
-    "page_desc_blog": "Artykuły o wyborze szybkiego, darmowego klienta poczty na Windows, o AI w poczcie, o alternatywach dla Outlooka i Thunderbirda, i o miejscu Skim."
+    "page_desc_blog": "Artykuły o wyborze szybkiego, darmowego klienta poczty na Windows, o AI w poczcie, o alternatywach dla Outlooka i Thunderbirda, i o miejscu Skim.",
+    "landing_blog_kicker": "// czytaj blog //",
+    "landing_blog_h2": "Dłuższe teksty o wyborze klienta poczty"
   },
   "zh": {
     "nav_blog": "博客",
@@ -187,7 +203,9 @@
     "blog_cta_gh": "在 GitHub 查看",
     "blog_translated_from_en": "译自英文。以英文版本为准。",
     "page_title_blog": "Skim 博客 — Windows 邮件客户端与 AI 邮件",
-    "page_desc_blog": "介绍如何选择快速、免费的 Windows 邮件客户端，讲 AI 邮件、Outlook 与 Thunderbird 的替代方案，以及 Skim 的位置。"
+    "page_desc_blog": "介绍如何选择快速、免费的 Windows 邮件客户端，讲 AI 邮件、Outlook 与 Thunderbird 的替代方案，以及 Skim 的位置。",
+    "landing_blog_kicker": "// 阅读博客 //",
+    "landing_blog_h2": "关于选择邮件客户端的长文"
   },
   "ja": {
     "nav_blog": "ブログ",
@@ -208,7 +226,9 @@
     "blog_cta_gh": "GitHub で見る",
     "blog_translated_from_en": "英語から翻訳しました。正本は英語版です。",
     "page_title_blog": "Skim ブログ — Windows のメールクライアントと AI メール",
-    "page_desc_blog": "Windows で速くて無料のメールクライアントを選ぶ記事、AI メール、Outlook / Thunderbird の代替、そして Skim の立ち位置について。"
+    "page_desc_blog": "Windows で速くて無料のメールクライアントを選ぶ記事、AI メール、Outlook / Thunderbird の代替、そして Skim の立ち位置について。",
+    "landing_blog_kicker": "// ブログを読む //",
+    "landing_blog_h2": "メールクライアント選びのための長文"
   },
   "ko": {
     "nav_blog": "블로그",
@@ -229,6 +249,8 @@
     "blog_cta_gh": "GitHub에서 보기",
     "blog_translated_from_en": "영문에서 번역되었습니다. 영문판이 원본입니다.",
     "page_title_blog": "Skim 블로그 — Windows 이메일 클라이언트와 AI 메일",
-    "page_desc_blog": "Windows에서 빠르고 무료인 이메일 클라이언트를 고르는 글, AI 메일, Outlook·Thunderbird 대안, 그리고 Skim의 자리에 대한 글."
+    "page_desc_blog": "Windows에서 빠르고 무료인 이메일 클라이언트를 고르는 글, AI 메일, Outlook·Thunderbird 대안, 그리고 Skim의 자리에 대한 글.",
+    "landing_blog_kicker": "// 블로그 읽기 //",
+    "landing_blog_h2": "이메일 클라이언트 고르기 긴 글"
   }
 }
