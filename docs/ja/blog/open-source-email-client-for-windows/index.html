@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Windows 向けオープンソースのメールクライアント — 2026 年の現実的な短いリスト — Skim Blog</title>
+  <meta name="description" content="2026 年に実際にメンテされている Windows 向けオープンソースのメールクライアント 5 つ、ライセンス・認証情報の保管場所、そして「オープンソース」にアスタリスクが付く時。">
+  <link rel="canonical" href="https://skim-tech.com/ja/blog/open-source-email-client-for-windows/">
+  <link rel="alternate" hreflang="x-default" href="https://skim-tech.com/blog/open-source-email-client-for-windows/">
+  <link rel="alternate" hreflang="en" href="https://skim-tech.com/blog/open-source-email-client-for-windows/">
+  <link rel="alternate" hreflang="ru" href="https://skim-tech.com/ru/blog/open-source-email-client-for-windows/">
+  <link rel="alternate" hreflang="sr" href="https://skim-tech.com/sr/blog/open-source-email-client-for-windows/">
+  <link rel="alternate" hreflang="fr" href="https://skim-tech.com/fr/blog/open-source-email-client-for-windows/">
+  <link rel="alternate" hreflang="de" href="https://skim-tech.com/de/blog/open-source-email-client-for-windows/">
+  <link rel="alternate" hreflang="es" href="https://skim-tech.com/es/blog/open-source-email-client-for-windows/">
+  <link rel="alternate" hreflang="it" href="https://skim-tech.com/it/blog/open-source-email-client-for-windows/">
+  <link rel="alternate" hreflang="pl" href="https://skim-tech.com/pl/blog/open-source-email-client-for-windows/">
+  <link rel="alternate" hreflang="zh" href="https://skim-tech.com/zh/blog/open-source-email-client-for-windows/">
+  <link rel="alternate" hreflang="ja" href="https://skim-tech.com/ja/blog/open-source-email-client-for-windows/">
+  <link rel="alternate" hreflang="ko" href="https://skim-tech.com/ko/blog/open-source-email-client-for-windows/">
+
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Skim">
+  <meta property="og:title" content="Windows 向けオープンソースのメールクライアント — 2026 年の現実的な短いリスト">
+  <meta property="og:description" content="2026 年に実際にメンテされている Windows 向けオープンソースのメールクライアント 5 つ、ライセンス・認証情報の保管場所、そして「オープンソース」にアスタリスクが付く時。">
+  <meta property="og:url" content="https://skim-tech.com/ja/blog/open-source-email-client-for-windows/">
+  <meta property="og:image" content="https://skim-tech.com/social-preview.jpg">
+  <meta property="og:locale" content="ja_JP">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Windows 向けオープンソースのメールクライアント — 2026 年の現実的な短いリスト">
+  <meta name="twitter:description" content="2026 年に実際にメンテされている Windows 向けオープンソースのメールクライアント 5 つ、ライセンス・認証情報の保管場所、そして「オープンソース」にアスタリスクが付く時。">
+  <meta name="twitter:image" content="https://skim-tech.com/social-preview.jpg">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23eadfc2'/%3E%3Cg fill='%230d0d10'%3E%3Crect x='25' y='39' width='46' height='8.5' rx='4.25'/%3E%3Crect x='25' y='55' width='29' height='8.5' rx='4.25' fill-opacity='0.55'/%3E%3C/g%3E%3C/svg%3E">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="/assets/blog.css" rel="stylesheet">
+
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Windows 向けオープンソースのメールクライアント — 2026 年の現実的な短いリスト","description":"2026 年に実際にメンテされている Windows 向けオープンソースのメールクライアント 5 つ、ライセンス・認証情報の保管場所、そして「オープンソース」にアスタリスクが付く時。","datePublished":"2026-10-24","dateModified":"2026-10-28","author":{"@type":"Organization","name":"Skim contributors","url":"https://github.com/nikserg/skim"},"publisher":{"@type":"Organization","name":"Skim","logo":{"@type":"ImageObject","url":"https://skim-tech.com/social-preview.jpg"}},"image":"https://skim-tech.com/social-preview.jpg","mainEntityOfPage":"https://skim-tech.com/ja/blog/open-source-email-client-for-windows/","inLanguage":"ja"}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://skim-tech.com/ja/"},{"@type":"ListItem","position":2,"name":"ブログ","item":"https://skim-tech.com/ja/blog/"},{"@type":"ListItem","position":3,"name":"Windows 向けオープンソースのメールクライアント — 2026 年の現実的な短いリスト","item":"https://skim-tech.com/ja/blog/open-source-email-client-for-windows/"}]}</script>
+</head>
+<body class="article-page">
+
+<header class="site-header">
+  <a class="site-logo" href="/ja/">Skim</a>
+  <nav>
+    <a href="/ja/#product">機能</a>
+    <a href="/ja/#ai">AI</a>
+    <a href="/ja/blog/" class="current">ブログ</a>
+    <a href="https://github.com/nikserg/skim">GitHub</a>
+    <label class="lang">
+      <select onchange="window.location=this.value"><option value="/blog/open-source-email-client-for-windows/">English</option><option value="/ru/blog/open-source-email-client-for-windows/">Русский</option><option value="/sr/blog/open-source-email-client-for-windows/">Srpski</option><option value="/fr/blog/open-source-email-client-for-windows/">Français</option><option value="/de/blog/open-source-email-client-for-windows/">Deutsch</option><option value="/es/blog/open-source-email-client-for-windows/">Español</option><option value="/it/blog/open-source-email-client-for-windows/">Italiano</option><option value="/pl/blog/open-source-email-client-for-windows/">Polski</option><option value="/zh/blog/open-source-email-client-for-windows/">中文</option><option value="/ja/blog/open-source-email-client-for-windows/" selected>日本語</option><option value="/ko/blog/open-source-email-client-for-windows/">한국어</option></select>
+    </label>
+  </nav>
+</header>
+
+<main>
+  <article>
+    <nav class="breadcrumbs">
+      <a href="/ja/">Skim</a> / <a href="/ja/blog/">ブログ</a> / <span>Windows 向けオープンソースのメールクライアント — 2026 年の現実的な短いリスト</span>
+    </nav>
+
+    <h1>Windows 向けオープンソースのメールクライアント — 2026 年の現実的な短いリスト</h1>
+    <p class="dek">2026 年に実際にメンテされている Windows 向けオープンソースのメールクライアント 5 つ、ライセンス・認証情報の保管場所、そして「オープンソース」にアスタリスクが付く時。</p>
+    <div class="meta">
+      <time datetime="2026-10-24">公開日 2026-10-24</time>
+      · 1 分で読める
+    </div>
+    
+    <nav class="toc" aria-label="Table of contents"><ol><li><a href="#">確認すべきこと</a></li><li><a href="#">短いリスト</a></li><li><a href="#">比較</a></li><li><a href="#">オープンソースがここで重要な理由</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+
+    <p>メールクライアントのランディングページの「オープンソース」は意味が様々です。時には「クライアントは MIT、サーバーなし、コードを読んでください」。時には「クライアントは開かれているが、便利な機能（検索、送信遅延、既読通知）は我々のサーバーで動き、認証情報もそこにある」。どちらも正当ですが同じではありません。</p>
+<h2 id="">確認すべきこと</h2>
+<p>三つの質問：認証情報はどこに？サーバーコンポーネントもオープンソース？今もメンテされている（最終コミット日）？</p>
+<h2 id="">短いリスト</h2>
+<h3 id="thunderbirdmpl-20">Thunderbird（MPL 2.0）</h3>
+<p>事実上の標準。すべてローカル、ベンダーのサーバーはメール経路になし。Supernova と 2026 の統合受信箱。アイドル 300–500 MB。</p>
+<h3 id="betterbirdmpl-20">Betterbird（MPL 2.0）</h3>
+<p>コミュニティフォーク、修正が速い。完全なオープンソース、サーバーなし。</p>
+<h3 id="skimmit">Skim（MIT）</h3>
+<p><a href="/">Skim</a> は Windows 向けネイティブ Rust のメールクライアント、UI は Svelte 5 と WebView2。~5 MB のインストーラ、管理者権限不要。IMAP で FTS5 検索付きのローカル SQLite へ；すべての変更はローカルの offline-first キュー経由, アーカイブ/削除/送信は UI 上で即時完了し、後でサーバーと整合。</p>
+<p><a href="/#ai">AI 機能</a> は BYOK かつローカル対応：Anthropic / OpenRouter / OpenAI 互換エンドポイント、または <code>localhost:11434</code> の Ollama/LM Studio。認証情報と API キーは Windows 資格情報マネージャーへ。</p>
+<p>範囲：メールのみ。カレンダー、連絡先、フィルタ、PGP なし。</p>
+<p>リポジトリ：github.com/nikserg/skim。ライセンス：MIT。</p>
+<h3 id="mailspring-gpl-30">Mailspring（クライアント GPL-3.0）</h3>
+<p>クライアントはオープン、Pro バックエンドはクローズでセルフホスト不可。</p>
+<h3 id="claws-mailgpl-30">Claws Mail（GPL-3.0）</h3>
+<p>Linux の古典、Windows でも動作。GTK、2008 風の美学。</p>
+<h2 id="">比較</h2>
+<div class="table-wrap"><table><thead><tr><th>クライアント</th><th>ライセンス</th><th>ネイティブ UI</th><th>クラウド</th><th>セルフホスト可</th><th>メールのみ</th></tr></thead><tbody><tr><td>Thunderbird</td><td>MPL 2.0</td><td>はい（Gecko）</td><td>いいえ</td><td>N/A</td><td>いいえ</td></tr><tr><td>Betterbird</td><td>MPL 2.0</td><td>はい（Gecko）</td><td>いいえ</td><td>N/A</td><td>いいえ</td></tr><tr><td>Skim</td><td>MIT</td><td>はい（Rust+WebView2）</td><td>いいえ</td><td>N/A</td><td>はい</td></tr><tr><td>Mailspring</td><td>GPL-3.0（クライアント）</td><td>Electron</td><td>Pro に必要</td><td>いいえ</td><td>はい</td></tr><tr><td>Claws Mail</td><td>GPL-3.0</td><td>はい（GTK）</td><td>いいえ</td><td>N/A</td><td>ほぼ</td></tr></tbody></table></div>
+<h2 id="">オープンソースがここで重要な理由</h2>
+<p>メールはあなたのデジタル全体のパスワードリセットの経路です。クローズドなクライアントは, 意図的かどうかに関わらず, 認証情報を漏らしたりサーバー側で索引化したりし得ます。ネイティブで開かれ、ローカルファーストのクライアント（Thunderbird、Betterbird、Skim）は信頼面を、読めるアプリと呼べる API に絞ります。</p>
+<h2 id="faq">FAQ</h2>
+<p><strong>2026 年 Windows 向け最良のオープンソースメールクライアント？</strong> 何でもやるなら Thunderbird、速さなら Skim、Thunderbird-ゴツゴツ無しなら Betterbird。</p>
+<p><strong>Windows の Thunderbird ポータブル版？</strong> Portableapps.com。</p>
+<p><strong>新しい Outlook はオープンソース？</strong> いいえ。</p>
+<p><strong>Skim は Thunderbird のような拡張エコシステムを持つ？</strong> いいえ、意図的に。</p>
+<p><strong>Mailspring のバックエンドはセルフホスト可？</strong> いいえ、クライアントのみオープン。</p>
+<p><strong>Thunderbird に AI は？</strong> 組み込みなし。アドオンあり。Skim は自分のキーで製品内に AI を持つ, <a href="/#ai">AI</a>。</p>
+
+    
+    <section class="related">
+      <h2>関連記事</h2>
+      <ul><li><a href="/ja/blog/best-free-email-client-for-windows-11/">2026 年 Windows 11 向け最良の無料メールクライアント</a></li><li><a href="/ja/blog/thunderbird-alternatives-in-2026/">2026 年の Thunderbird 代替 — Windows 向け 6 つの正直な選択肢</a></li><li><a href="/ja/blog/best-email-client-for-windows-2026/">2026 年 Windows 最良のメールクライアント — 正直なランキング</a></li></ul>
+    </section>
+
+    <section class="post-cta">
+      <h2>Skim を試す</h2>
+      <p>Windows 向けの高速・無料・オープンソースのメールクライアント。AI は自分のキーで。約 5 MB、管理者権限不要、テレメトリーなし。</p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://github.com/nikserg/skim/releases/latest">⬇  Windows 版をダウンロード</a>
+        <a class="btn ghost" href="https://github.com/nikserg/skim">GitHub で見る</a>
+      </div>
+    </section>
+
+    <p class="back-link"><a href="/ja/blog/">← ブログに戻る</a></p>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <span>MIT © Skim contributors</span>
+  <span>
+    <a href="https://github.com/nikserg/skim">ソース</a>
+    <a href="https://github.com/nikserg/skim/releases">リリース</a>
+    <a href="/privacy.html">Privacy</a>
+    <a href="/terms.html">Terms</a>
+  </span>
+</footer>
+
+</body>
+</html>

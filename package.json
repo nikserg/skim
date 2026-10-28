@@ -22,7 +22,8 @@
     "demo:build": "vite build --config demo/vite.demo.config.ts",
     "demo:record": "node demo/record.mjs",
     "demo:encode": "node demo/encode.mjs",
-    "demo:shots": "node demo/screenshots.mjs"
+    "demo:shots": "node demo/screenshots.mjs",
+    "docs:build": "node scripts/build-site.mjs"
   },
   "dependencies": {
     "@fontsource-variable/hanken-grotesk": "^5.2.0",

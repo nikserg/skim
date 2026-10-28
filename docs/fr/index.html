@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Skim — client email IA rapide et open-source pour Windows</title>
+  <meta name="description" content="Skim est un client email gratuit et open-source pour Windows avec un assistant IA intégré. Cœur Rust natif, installeur ~5 Mo, hors-ligne, recherche instantanée — apportez votre clé IA.">
+  <link rel="canonical" href="https://skim-tech.com/fr/">
+  <link rel="alternate" hreflang="x-default" href="https://skim-tech.com/">
+  <link rel="alternate" hreflang="en" href="https://skim-tech.com/">
+  <link rel="alternate" hreflang="ru" href="https://skim-tech.com/ru/">
+  <link rel="alternate" hreflang="sr" href="https://skim-tech.com/sr/">
+  <link rel="alternate" hreflang="fr" href="https://skim-tech.com/fr/">
+  <link rel="alternate" hreflang="de" href="https://skim-tech.com/de/">
+  <link rel="alternate" hreflang="es" href="https://skim-tech.com/es/">
+  <link rel="alternate" hreflang="it" href="https://skim-tech.com/it/">
+  <link rel="alternate" hreflang="pl" href="https://skim-tech.com/pl/">
+  <link rel="alternate" hreflang="zh" href="https://skim-tech.com/zh/">
+  <link rel="alternate" hreflang="ja" href="https://skim-tech.com/ja/">
+  <link rel="alternate" hreflang="ko" href="https://skim-tech.com/ko/">
+
+  <!-- Open Graph / social preview -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Skim">
+  <meta property="og:title" content="Skim — client email IA rapide et open-source pour Windows">
+  <meta property="og:description" content="Skim est un client email gratuit et open-source pour Windows avec un assistant IA intégré. Cœur Rust natif, installeur ~5 Mo, hors-ligne, recherche instantanée — apportez votre clé IA.">
+  <meta property="og:image" content="https://skim-tech.com/social-preview.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Skim — a free AI email client for Windows that doesn't suck (that hard). Open source, native & fast, local-first.">
+  <meta property="og:url" content="https://skim-tech.com/fr/">
+  <meta property="og:locale" content="fr_FR">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Skim — client email IA rapide et open-source pour Windows">
+  <meta name="twitter:description" content="Skim est un client email gratuit et open-source pour Windows avec un assistant IA intégré. Cœur Rust natif, installeur ~5 Mo, hors-ligne, recherche instantanée — apportez votre clé IA.">
+  <meta name="twitter:image" content="https://skim-tech.com/social-preview.jpg">
+  <meta name="twitter:image:alt" content="Skim — a free AI email client for Windows that doesn't suck (that hard). Open source, native & fast, local-first.">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23eadfc2'/%3E%3Cg fill='%230d0d10'%3E%3Crect x='25' y='39' width='46' height='8.5' rx='4.25'/%3E%3Crect x='25' y='55' width='29' height='8.5' rx='4.25' fill-opacity='0.55'/%3E%3C/g%3E%3C/svg%3E">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@500;600;700&family=Oswald:wght@600;700&family=Permanent+Marker&family=Rock+Salt&family=Special+Elite&display=swap" rel="stylesheet">
+  <link href="assets/zine.css" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Skim",
+    "operatingSystem": "Windows 10, Windows 11",
+    "applicationCategory": "CommunicationApplication",
+    "applicationSubCategory": "Email Client",
+    "description": "A fast, free, open-source email client for Windows with a built-in AI copilot. Native Rust core, ~5 MB installer, offline-first, instant full-text search.",
+    "url": "https://skim-tech.com/",
+    "downloadUrl": "https://github.com/nikserg/skim/releases/latest",
+    "screenshot": [
+      "https://skim-tech.com/skim-light.jpg",
+      "https://skim-tech.com/skim-dark.jpg"
+    ],
+    "license": "https://github.com/nikserg/skim/blob/main/LICENSE",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "sameAs": ["https://github.com/nikserg/skim"]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is Skim free?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Skim is free and open source under the MIT license — no subscription, no account, no upsell. The AI features are optional and use your own API key, so you pay your AI provider directly at cost." }
+      },
+      {
+        "@type": "Question",
+        "name": "Which email providers does Skim support?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Gmail (one-click Google sign-in or an app password), Outlook, Yahoo and iCloud via app passwords, and any other mailbox over standard IMAP/SMTP. Server settings are filled in automatically for the big providers." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does the AI read my email?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Only when you ask it to. AI features stay off until you paste your own key — Anthropic, OpenRouter, or any OpenAI-compatible endpoint (a local model via Ollama, LM Studio or vLLM included) — and every request goes directly from your machine to the provider, no middleman servers. The key is stored in Windows Credential Manager." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does Skim run on Windows 10 and Windows 11?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes — Skim supports Windows 10 and 11 with WebView2 (preinstalled on Windows 11). The installer is about 5 MB and installs per-user, no admin rights required." }
+      },
+      {
+        "@type": "Question",
+        "name": "How is Skim different from Outlook or Thunderbird?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Skim is deliberately small: a fast, keyboard-first Windows email client with a native Rust core instead of Electron, offline-first actions, instant local search, and an AI copilot that works with your own key. No calendar, no rules engine, no bloat." }
+      },
+      {
+        "@type": "Question",
+        "name": "Is my email stored locally?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Mail syncs over IMAP straight into a local SQLite cache on your device, so Skim works offline and search is instant. There are no Skim servers and zero telemetry." }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+<div class="frame">
+  <div class="sheet">
+    <div class="grain"></div>
+    <div class="holes"></div>
+
+    <!-- ===================== MASTHEAD ===================== -->
+    <header class="masthead">
+      <a class="mast-logo" href="./">Skim</a>
+      <nav class="mast-nav">
+        <a href="#product" data-i18n="nav_features">Fonctionnalités</a>
+        <a href="#ai" data-i18n="nav_ai">IA</a>
+        <a href="#install" data-i18n="nav_install">Installation</a>
+        <a href="#faq" data-i18n="nav_faq">FAQ</a>
+        <a href="/fr/blog/">Blog</a>
+        <a href="https://github.com/nikserg/skim" data-i18n="nav_github">GitHub</a>
+        <label class="lang" title="Language">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <select id="langSelect" aria-label="Language"></select>
+        </label>
+      </nav>
+    </header>
+
+    <!-- ===================== HERO ===================== -->
+    <header class="section hero" id="top">
+      <div class="hero-swash-a"></div>
+      <div class="hero-swash-b"></div>
+      <img class="decal sm" src="stickers/safety_pin_top.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="64" style="top:8px;left:-6px;transform:rotate(-8deg);z-index:4;">
+
+      <div class="hero-inner">
+        <div class="eyebrow" data-i18n="hero_eyebrow">// GRATUIT · OPEN SOURCE · ~5MO · WINDOWS · BYOK //</div>
+
+        <h1 class="ransom" data-i18n-html="hero_h1"><span class='rn rn-lead f-black bx-dark r-3'>UN CLIENT</span><span class='rn rn-lead f-serif bx-cream bx-out r2'>MAIL</span><span class='rn rn-lead f-type bx-pink r-1'>IA</span><span class='rn rn-lead f-black bx-teal r1'>GRATUIT</span><span class='rn rn-lead f-serif bx-cream bx-out r-2'>POUR WINDOWS</span><br><span class='rn rn-lead f-black bx-dark r-2'>QUI N'EST PAS DE LA</span><span class='rn rn-punch f-black bx-pink r-4'>M</span><span class='rn rn-punch f-serif bx-cream bx-out r3'>E</span><span class='rn rn-punch f-black bx-dark r-2'>R</span><span class='rn rn-punch f-type bx-cream bx-out r2'>D</span><span class='rn rn-punch f-serif bx-teal r-3'>E</span><span class='rn f-marker ink-red r-3' style='font-size:26px'>(enfin, pas trop)</span></h1>
+
+        <div class="hero-cols">
+          <div class="hero-dek">
+            <div class="dek-tag" data-i18n="hero_dek_tag">— extrait du journal, ~2 h du matin</div>
+            <p class="dek" data-i18n-html="hero_sub">J'ai enfin installé Skim ! Minimaliste, natif, rapide. <span class='tip' data-tip='byok'>BYOK</span> pour l'assistant et le co-rédacteur IA. Aucun abonnement — gratuit pour toujours. Open source. Je kiffe.</p>
+            <div class="dek-cta">
+              <a class="btn-zine" href="https://github.com/nikserg/skim/releases/latest" data-i18n="hero_cta_download">⬇  Télécharger pour Windows</a>
+              <span class="cta-side">
+                <a class="ph-badge" href="https://www.producthunt.com/products/skim-5/reviews/new?utm_source=badge-product_review&amp;utm_medium=badge&amp;utm_source=badge-skim-5" target="_blank" rel="noopener noreferrer" aria-label="Review Skim on Product Hunt">
+                  <img src="https://api.producthunt.com/widgets/embed-image/v1/product_review.svg?product_id=1273953&amp;theme=light" alt="Skim - Free, open-source AI email client for Windows | Product Hunt" width="250" height="54" loading="lazy" decoding="async">
+                </a>
+                <a class="link-marker" href="https://github.com/nikserg/skim" data-i18n="hero_cta_github">Voir sur GitHub</a>
+              </span>
+            </div>
+            <div class="dek-note" data-i18n-html="hero_cta_note">Gratuit et open source · installateur d'environ 5 Mo · aucun droit administrateur · récupérez <code>Skim_x.y.z_x64-setup.exe</code></div>
+          </div>
+
+          <figure class="polaroid">
+            <div class="tape-c"></div>
+            <img class="decal" src="stickers/anarchy_a.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:-40px;right:-22px;transform:rotate(10deg);">
+            <img class="decal sm" src="stickers/star_circle.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="64" style="bottom:44px;left:-30px;transform:rotate(-14deg);">
+            <img src="skim-light.jpg" alt="Skim — light theme, three-pane email client">
+            <figcaption data-i18n="hero_shot_cap">ma boîte, enfin tranquille ♥</figcaption>
+          </figure>
+        </div>
+      </div>
+
+    </header>
+
+    <!-- ===================== DEMO VIDEO ===================== -->
+    <section class="section" id="demo">
+      <img class="decal" src="stickers/cassette.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="bottom:16px;left:-4px;transform:rotate(-7deg);">
+      <div class="zine-kicker" data-i18n="demo_kicker">▶ voir en action</div>
+      <figure class="demo-frame">
+        <div class="shot-plain">
+          <video class="demo-vid" autoplay muted loop playsinline preload="metadata"
+                 poster="skim-light.jpg" aria-label="Skim in action">
+            <source src="skim-demo.mp4" type="video/mp4">
+          </video>
+        </div>
+        <figcaption class="demo-note" data-i18n="demo_note">sans le son 🔇</figcaption>
+      </figure>
+    </section>
+
+    <!-- ===================== FEATURES ===================== -->
+    <section class="section" id="product">
+      <img class="decal" src="stickers/diy_text.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:12px;right:6px;transform:rotate(6deg);">
+      <div class="zine-h2" data-i18n="why_h2">Moins de boutons. Moins de douleur.</div>
+      <p class="zine-lead" data-i18n-html="why_lead">Les clients mail se déclinent d'ordinaire en deux genres : un navigateur déguisé en application, ou une usine à gaz aux airs d'<span class='tip' data-tip='icq'>époque ICQ</span>. Skim n'est ni l'un ni l'autre.</p>
+
+      <div class="scraps">
+        <div class="scrap">
+          <div class="tape tape-teal"></div>
+          <svg class="ic" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+          <h3 data-i18n="why_1_h">Natif, pas Chromium</h3>
+          <p data-i18n="why_1_p">Un cœur en Rust avec une interface WebView2 du système — sans navigateur embarqué comme Electron. L&#39;installateur pèse quelques mégaoctets, le démarrage à froid est instantané, la mémoire au repos est modeste. S&#39;installe sans droits administrateur.</p>
+        </div>
+        <div class="scrap">
+          <div class="tape tape-pink"></div>
+          <svg class="ic" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="2" aria-hidden="true"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M8 7.6 20 18M8 16.4 20 6"/></svg>
+          <h3 data-i18n="why_2_h">On a coupé la moitié des fonctions. Exprès.</h3>
+          <p data-i18n="why_2_p">Pas de calendrier, pas de gestionnaire de contacts, pas de règles, pas de filtres, pas de rappel différé — rien de ce que vous n&#39;utilisez de toute façon jamais. Moins de boutons, c&#39;est moins de charge mentale, donc moins d&#39;agacement. Besoin d&#39;une usine à gaz ? Installez Outlook.</p>
+        </div>
+        <div class="scrap">
+          <div class="tape tape-gold"></div>
+          <svg class="ic" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="1.7" fill="#171310" stroke="none"/></svg>
+          <h3 data-i18n="why_3_h">Les actions apparaissent quand vous en avez besoin</h3>
+          <p data-i18n-html="why_3_p">Les boutons n'apparaissent que lorsqu'ils servent. Il n'y a aucune barre de menu. Tout le travail de Skim consiste à proposer la bonne action au bon moment. Y parvient-il vraiment ? C'est discutable — mais <a href='https://github.com/nikserg/skim/blob/main/CONTRIBUTING.md'>vous pouvez aider</a> !</p>
+        </div>
+        <div class="scrap">
+          <div class="tape tape-teal"></div>
+          <svg class="ic" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 20 6v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3Z"/></svg>
+          <h3 data-i18n="why_4_h">Local et privé par défaut</h3>
+          <p data-i18n="why_4_p">Le courrier se synchronise via IMAP directement dans une base SQLite locale. Il fonctionne hors ligne, la recherche est instantanée (FTS5), et chaque action s&#39;applique aussitôt et se met en file — Skim rattrape son retard au retour du réseau. Zéro télémétrie, zéro sonde anale.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== COMMAND PALETTE ===================== -->
+    <section class="section" id="palette">
+      <img class="decal" src="stickers/no_future.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="bottom:40px;right:8px;transform:rotate(-5deg);">
+      <div class="zine-kicker" data-i18n="feat_kicker">&gt;_ un raccourci pour tout</div>
+      <div class="zine-h2" data-i18n="feat_h2">Ctrl+K, et c&#39;est déjà fait</div>
+      <p class="zine-lead" data-i18n="feat_lead">Un raccourci pour tout. Cherchez votre courrier, sautez vers n&#39;importe quel dossier, lancez des commandes rapides et interrogez l&#39;IA sur toute votre boîte — une fenêtre, sans souris.</p>
+
+      <div class="pal-row">
+        <div class="pal-card" aria-hidden="true">
+          <div class="tape"></div>
+          <div class="pd-input">
+            <span class="prompt">&gt;</span>
+            <span data-i18n="pal_ph">Rechercher un mail ou taper une commande…</span><span class="pd-caret"></span>
+          </div>
+          <div class="pd-section" data-i18n="pal_cmd">Commandes</div>
+          <div class="pd-row"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="1.9"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="M14 6l4 4"/></svg><span data-i18n="pal_new">Nouveau message</span><kbd>Ctrl N</kbd></div>
+          <div class="pd-row"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="1.9"><circle cx="12" cy="12" r="8"/><path d="M12 4v16" fill="#171310"/></svg><span data-i18n="pal_theme">Changer de thème</span></div>
+          <div class="pd-row"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="1.9"><path d="M20 8A8 8 0 0 0 5 8M4 4v4h4"/><path d="M4 16a8 8 0 0 0 15 0M20 20v-4h-4"/></svg><span data-i18n="pal_sync">Synchroniser</span></div>
+          <div class="pd-row"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="1.9"><path d="M4 12h14M13 6l6 6-6 6"/></svg><span data-i18n="pal_goto">Aller à la boîte de réception</span></div>
+          <div class="pd-section ai">✦ AI</div>
+          <div class="pd-row ai"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ec1c7d" stroke-width="1.7"><path d="M12 3l1.9 6.1L20 11l-6.1 1.9L12 19l-1.9-6.1L4 11l6.1-1.9L12 3Z"/></svg><span data-i18n="pal_ai_label">Demander à Skim AI :</span> <span class="q" data-i18n="pal_ai_q">quelles factures ne sont pas encore payées ?</span></div>
+          <div class="pd-answer">
+            <span data-i18n="pal_answer">Deux sont encore ouvertes — Acme n°1042 et Globex n°88.</span>
+            <div class="pd-chips">
+              <span class="src-lbl" data-i18n="pal_sources">Sources</span>
+              <span>Acme Inc. · #1042</span>
+              <span>Globex · reminder</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="keycaps-col">
+          <div class="keycaps-lead" data-i18n="feat_keys_lead">sans souris →</div>
+          <div class="keycaps">
+            <span><b>Ctrl K</b> <span data-i18n="key_palette">palette</span></span>
+            <span><b>Ctrl N</b> <span data-i18n="key_compose">rédiger</span></span>
+            <span><b>j</b>/<b>k</b> <span data-i18n="key_move">déplacer</span></span>
+            <span><b>e</b> <span data-i18n="key_archive">archiver</span></span>
+            <span><b>#</b> <span data-i18n="key_delete">supprimer</span></span>
+            <span><b>s</b> <span data-i18n="key_star">étoiler</span></span>
+            <span><b>u</b> <span data-i18n="key_unread">non lu</span></span>
+            <span><b>r</b> <span data-i18n="key_reply">répondre</span></span>
+            <span><b>/</b> <span data-i18n="key_search">rechercher</span></span>
+          </div>
+          <div class="keycaps-tag">EMAIL'S NOT DEAD.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== AI ===================== -->
+    <section class="section" id="ai">
+      <img class="decal lg" src="stickers/skull_mohawk.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="116" style="top:120px;left:-30px;transform:rotate(-9deg);">
+      <img class="decal decal-ai" src="stickers/fight_back.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:660px;right:54px;transform:rotate(6deg);">
+      <img class="decal decal-ai lg" src="stickers/punk_person.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="116" style="top:905px;right:14px;transform:rotate(-7deg);">
+      <img class="decal decal-ai" src="stickers/star_circle.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:1170px;right:64px;transform:rotate(4deg);">
+      <div class="ai-eyebrow" data-i18n="ai_eyebrow">✦ Votre clé, votre facture</div>
+      <div class="ai-h2" data-i18n-html="ai_h2">Une IA qui sait qu'on est <span class='tip' data-tip='thu'>jeudi</span> et qui écrit comme vous</div>
+      <p class="zine-lead" data-i18n="ai_lead">Il n&#39;existe pas d&#39;abonnement « Skim Pro », et il n&#39;en existera jamais. Collez votre propre clé Anthropic (Claude) ou OpenRouter (Claude, GPT, Gemini, Grok et des centaines d&#39;autres modèles) — ou pointez Skim vers n&#39;importe quel endpoint compatible OpenAI, un modèle local via Ollama, LM Studio ou vLLM inclus — et les boutons ✦ violets s&#39;activent. Les requêtes vont directement de votre machine au fournisseur : sans nos proxys ni marge. Vous payez le fournisseur au prix coûtant, la clé reste dans le Windows Credential Manager. Pas de clé ? Skim fonctionne simplement comme un client mail rapide (bof, d&#39;accord, mais pourquoi pas ?).</p>
+
+      <ul class="ai-list">
+        <li><span class="num">[01]</span><p data-i18n-html="ai_1"><b>Des brouillons à votre voix</b> — dites-lui quoi écrire et obtenez un mail fini, à la première personne. Skim peut analyser jusqu'à une centaine de vos messages envoyés et écrire comme vous écrivez : mêmes salutations, longueur de phrases, ponctuation. Il répond dans la langue de l'expéditeur, même une que vous ne parlez pas.</p></li>
+        <li><span class="num">[02]</span><p data-i18n-html="ai_2"><b>Des brouillons affinés en dialogue</b> — « plus court », « ajoute une échéance », « enlève les points d'exclamation ». Chaque retouche s'applique au texte courant, en gardant tout ce que vous n'avez pas demandé de changer. Modifiez à la main et l'IA en tient compte aussi.</p></li>
+        <li><span class="num">[03]</span><p data-i18n-html="ai_3"><b>Poser une question sur un mail</b> — une question sur un message ou tout le fil (jusqu'à 25 mails en contexte), avec relances. Il répond uniquement à partir du contenu : si la réponse n'est pas dans l'échange, il le dit.</p></li>
+        <li><span class="num">[04]</span><p data-i18n-html="ai_4"><b>Discuter avec toute votre boîte</b> — « quelles factures ne sont pas encore payées ce mois-ci ? » directement dans la palette de commandes. Skim cherche dans votre courrier (FTS5/bm25), répond et cite les mails sources sous forme de puces cliquables.</p></li>
+        <li><span class="num">[05]</span><p data-i18n-html="ai_5"><b>Récap IA de vos non-lus</b> — un clic résume jusqu'à 20 mails non lus : d'abord ce qui appelle une réponse, avec échéances et sources citées, les newsletters mises de côté. Il marque comme lu ce qu'il a traité.</p></li>
+        <li><span class="num">[06]</span><p data-i18n-html="ai_6"><b>Elle connaît le contexte</b> — chaque requête embarque la date du jour, le jour de la semaine, l'heure et votre fuseau, la langue de l'interface et — le cas échéant — tout le fil. Ainsi « réponds que j'y arriverai pour vendredi » devient une date concrète, pas une abstraction.</p></li>
+      </ul>
+    </section>
+
+    <!-- ===================== DARK SCREENSHOT ===================== -->
+    <section class="section" id="screenshot">
+      <div class="shot-plain"><img src="skim-dark.jpg" alt="Skim — dark theme with AI features"></div>
+    </section>
+
+    <!-- ===================== CONTRIBUTE ===================== -->
+    <section class="section" id="contribute">
+      <img class="decal" src="stickers/rebel_text.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:-8px;right:18px;transform:rotate(5deg);">
+      <div class="paper-card">
+        <div class="txt">
+          <h3 data-i18n="contrib_h2">Forkez, cassez, recommencez</h3>
+          <p data-i18n="contrib_lead">Skim est distribué sous licence MIT — du code ouvert que vous pouvez utiliser comme bon vous semble. Un bug ou une idée ? Ouvrez un ticket. Mieux encore, envoyez directement une pull request.</p>
+        </div>
+        <div class="card-cta">
+          <a class="btn-zine" href="https://github.com/nikserg/skim/blob/main/CONTRIBUTING.md" data-i18n="contrib_btn_dev">Comment contribuer</a>
+          <a class="btn-zine ink" href="https://github.com/nikserg/skim/issues" data-i18n="contrib_btn_issue">Ouvrir un ticket sur GitHub</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== INSTALL ===================== -->
+    <section class="section" id="install">
+      <img class="decal sm" src="stickers/peace_hand.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="64" style="top:30px;left:-6px;transform:rotate(-8deg);">
+      <div class="paper-card">
+        <div class="txt">
+          <h3 data-i18n="install_h3">Installez en quelques secondes</h3>
+          <p data-i18n-html="install_p">Téléchargez le dernier installateur — le <code>.exe</code> (NSIS) s'installe par utilisateur sans droits administrateur ; un <code>.msi</code> est publié pour les environnements gérés. Nécessite Windows 10/11 avec WebView2 (préinstallé sur Windows 11).</p>
+          <p data-i18n-html="install_pkg">Vous préférez un gestionnaire de paquets ? <code>scoop bucket add skim https://github.com/nikserg/skim</code> puis <code>scoop install skim/skim</code>.</p>
+        </div>
+        <a class="btn-zine" href="https://github.com/nikserg/skim/releases/latest" data-i18n="install_btn">⬇  Obtenir la dernière version</a>
+      </div>
+    </section>
+
+    <!-- ===================== FAQ ===================== -->
+    <section class="section" id="faq">
+      <img class="decal" src="stickers/viva_la_punk.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:24px;right:10px;transform:rotate(-6deg);">
+      <div class="zine-h2" data-i18n="faq_h2">Questions fréquentes</div>
+      <p class="zine-lead" data-i18n="faq_lead">Tout ce que l&#39;on demande généralement avant de changer de client e-mail sous Windows.</p>
+      <div class="faq-list">
+        <details>
+          <summary data-i18n="faq_0_q">Tout ça, c&#39;est vibe-codé ?</summary>
+          <p data-i18n="faq_0_a">Oui, évidemment. On est en 2026 — réveille-toi, samouraï ! Plus personne n&#39;écrit de code à la main.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_1_q">Skim est-il gratuit ?</summary>
+          <p data-i18n="faq_1_a">Oui. Skim est gratuit et open source sous licence MIT — pas d&#39;abonnement, pas de compte, pas de vente forcée. Les fonctions IA sont optionnelles et utilisent votre propre clé API : vous payez votre fournisseur d&#39;IA directement, au prix coûtant.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_2_q">Quels fournisseurs de messagerie sont pris en charge ?</summary>
+          <p data-i18n="faq_2_a">Gmail (connexion Google en un clic ou mot de passe d&#39;application), Outlook, Yahoo et iCloud via des mots de passe d&#39;application, et toute autre boîte via IMAP/SMTP standard. Les paramètres serveur se remplissent automatiquement pour les grands fournisseurs.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_3_q">L&#39;IA lit-elle mes e-mails ?</summary>
+          <p data-i18n="faq_3_a">Seulement quand vous le lui demandez. Les fonctions IA restent désactivées tant que vous n&#39;avez pas collé votre propre clé — Anthropic, OpenRouter ou n&#39;importe quel endpoint compatible OpenAI (un modèle local via Ollama, LM Studio ou vLLM inclus) — et chaque requête part directement de votre machine vers le fournisseur, sans serveur intermédiaire. La clé est stockée dans le Gestionnaire d&#39;identifiants Windows.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_4_q">Skim fonctionne-t-il sous Windows 10 et Windows 11 ?</summary>
+          <p data-i18n="faq_4_a">Oui — Skim prend en charge Windows 10 et 11 avec WebView2 (préinstallé sur Windows 11). L&#39;installateur pèse environ 5 Mo et s&#39;installe par utilisateur, sans droits administrateur.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_5_q">En quoi Skim diffère-t-il d&#39;Outlook ou de Thunderbird ?</summary>
+          <p data-i18n="faq_5_a">Skim est volontairement petit : un client e-mail Windows rapide, pensé pour le clavier, avec un cœur natif en Rust plutôt qu&#39;Electron, des actions offline-first, une recherche locale instantanée et un copilote IA qui fonctionne avec votre propre clé. Pas de calendrier, pas de moteur de règles, pas de superflu.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_6_q">Mes e-mails sont-ils stockés localement ?</summary>
+          <p data-i18n="faq_6_a">Oui. Le courrier se synchronise via IMAP directement dans un cache SQLite local sur votre appareil : Skim fonctionne hors ligne et la recherche est instantanée. Aucun serveur Skim, zéro télémétrie.</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- ===================== FOOTER ===================== -->
+    <footer class="zine-footer">
+      <span data-i18n="foot_copy">MIT © Les contributeurs de Skim</span>
+      <span class="foot-links">
+        <a href="https://github.com/nikserg/skim" data-i18n="foot_source">Source</a>
+        <a href="https://github.com/nikserg/skim/releases" data-i18n="foot_releases">Versions</a>
+        <a href="privacy.html" data-i18n="foot_privacy">Privacy</a>
+        <a href="terms.html" data-i18n="foot_terms">Terms</a>
+        <a href="https://github.com/nikserg/skim/issues" data-i18n="foot_issues">Problèmes</a>
+      </span>
+      <span class="page-no">page 1 / 1</span>
+    </footer>
+
+  </div>
+</div>
+
+  <script src="assets/locales.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>

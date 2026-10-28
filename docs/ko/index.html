@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Skim — Windows용 빠른 오픈소스 AI 이메일 클라이언트</title>
+  <meta name="description" content="Skim은 AI 코파일럿이 내장된 무료 오픈소스 Windows 이메일 클라이언트입니다. 네이티브 Rust 코어, 약 5 MB 설치 파일, 오프라인 우선, 즉시 검색 — 자신의 AI 키를 가져오세요.">
+  <link rel="canonical" href="https://skim-tech.com/ko/">
+  <link rel="alternate" hreflang="x-default" href="https://skim-tech.com/">
+  <link rel="alternate" hreflang="en" href="https://skim-tech.com/">
+  <link rel="alternate" hreflang="ru" href="https://skim-tech.com/ru/">
+  <link rel="alternate" hreflang="sr" href="https://skim-tech.com/sr/">
+  <link rel="alternate" hreflang="fr" href="https://skim-tech.com/fr/">
+  <link rel="alternate" hreflang="de" href="https://skim-tech.com/de/">
+  <link rel="alternate" hreflang="es" href="https://skim-tech.com/es/">
+  <link rel="alternate" hreflang="it" href="https://skim-tech.com/it/">
+  <link rel="alternate" hreflang="pl" href="https://skim-tech.com/pl/">
+  <link rel="alternate" hreflang="zh" href="https://skim-tech.com/zh/">
+  <link rel="alternate" hreflang="ja" href="https://skim-tech.com/ja/">
+  <link rel="alternate" hreflang="ko" href="https://skim-tech.com/ko/">
+
+  <!-- Open Graph / social preview -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Skim">
+  <meta property="og:title" content="Skim — Windows용 빠른 오픈소스 AI 이메일 클라이언트">
+  <meta property="og:description" content="Skim은 AI 코파일럿이 내장된 무료 오픈소스 Windows 이메일 클라이언트입니다. 네이티브 Rust 코어, 약 5 MB 설치 파일, 오프라인 우선, 즉시 검색 — 자신의 AI 키를 가져오세요.">
+  <meta property="og:image" content="https://skim-tech.com/social-preview.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Skim — a free AI email client for Windows that doesn't suck (that hard). Open source, native & fast, local-first.">
+  <meta property="og:url" content="https://skim-tech.com/ko/">
+  <meta property="og:locale" content="ko_KR">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Skim — Windows용 빠른 오픈소스 AI 이메일 클라이언트">
+  <meta name="twitter:description" content="Skim은 AI 코파일럿이 내장된 무료 오픈소스 Windows 이메일 클라이언트입니다. 네이티브 Rust 코어, 약 5 MB 설치 파일, 오프라인 우선, 즉시 검색 — 자신의 AI 키를 가져오세요.">
+  <meta name="twitter:image" content="https://skim-tech.com/social-preview.jpg">
+  <meta name="twitter:image:alt" content="Skim — a free AI email client for Windows that doesn't suck (that hard). Open source, native & fast, local-first.">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23eadfc2'/%3E%3Cg fill='%230d0d10'%3E%3Crect x='25' y='39' width='46' height='8.5' rx='4.25'/%3E%3Crect x='25' y='55' width='29' height='8.5' rx='4.25' fill-opacity='0.55'/%3E%3C/g%3E%3C/svg%3E">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@500;600;700&family=Oswald:wght@600;700&family=Permanent+Marker&family=Rock+Salt&family=Special+Elite&display=swap" rel="stylesheet">
+  <link href="assets/zine.css" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Skim",
+    "operatingSystem": "Windows 10, Windows 11",
+    "applicationCategory": "CommunicationApplication",
+    "applicationSubCategory": "Email Client",
+    "description": "A fast, free, open-source email client for Windows with a built-in AI copilot. Native Rust core, ~5 MB installer, offline-first, instant full-text search.",
+    "url": "https://skim-tech.com/",
+    "downloadUrl": "https://github.com/nikserg/skim/releases/latest",
+    "screenshot": [
+      "https://skim-tech.com/skim-light.jpg",
+      "https://skim-tech.com/skim-dark.jpg"
+    ],
+    "license": "https://github.com/nikserg/skim/blob/main/LICENSE",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "sameAs": ["https://github.com/nikserg/skim"]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is Skim free?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Skim is free and open source under the MIT license — no subscription, no account, no upsell. The AI features are optional and use your own API key, so you pay your AI provider directly at cost." }
+      },
+      {
+        "@type": "Question",
+        "name": "Which email providers does Skim support?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Gmail (one-click Google sign-in or an app password), Outlook, Yahoo and iCloud via app passwords, and any other mailbox over standard IMAP/SMTP. Server settings are filled in automatically for the big providers." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does the AI read my email?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Only when you ask it to. AI features stay off until you paste your own key — Anthropic, OpenRouter, or any OpenAI-compatible endpoint (a local model via Ollama, LM Studio or vLLM included) — and every request goes directly from your machine to the provider, no middleman servers. The key is stored in Windows Credential Manager." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does Skim run on Windows 10 and Windows 11?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes — Skim supports Windows 10 and 11 with WebView2 (preinstalled on Windows 11). The installer is about 5 MB and installs per-user, no admin rights required." }
+      },
+      {
+        "@type": "Question",
+        "name": "How is Skim different from Outlook or Thunderbird?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Skim is deliberately small: a fast, keyboard-first Windows email client with a native Rust core instead of Electron, offline-first actions, instant local search, and an AI copilot that works with your own key. No calendar, no rules engine, no bloat." }
+      },
+      {
+        "@type": "Question",
+        "name": "Is my email stored locally?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Mail syncs over IMAP straight into a local SQLite cache on your device, so Skim works offline and search is instant. There are no Skim servers and zero telemetry." }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+<div class="frame">
+  <div class="sheet">
+    <div class="grain"></div>
+    <div class="holes"></div>
+
+    <!-- ===================== MASTHEAD ===================== -->
+    <header class="masthead">
+      <a class="mast-logo" href="./">Skim</a>
+      <nav class="mast-nav">
+        <a href="#product" data-i18n="nav_features">기능</a>
+        <a href="#ai" data-i18n="nav_ai">AI</a>
+        <a href="#install" data-i18n="nav_install">설치</a>
+        <a href="#faq" data-i18n="nav_faq">FAQ</a>
+        <a href="/ko/blog/">블로그</a>
+        <a href="https://github.com/nikserg/skim" data-i18n="nav_github">GitHub</a>
+        <label class="lang" title="Language">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <select id="langSelect" aria-label="Language"></select>
+        </label>
+      </nav>
+    </header>
+
+    <!-- ===================== HERO ===================== -->
+    <header class="section hero" id="top">
+      <div class="hero-swash-a"></div>
+      <div class="hero-swash-b"></div>
+      <img class="decal sm" src="stickers/safety_pin_top.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="64" style="top:8px;left:-6px;transform:rotate(-8deg);z-index:4;">
+
+      <div class="hero-inner">
+        <div class="eyebrow" data-i18n="hero_eyebrow">// 무료 · 오픈소스 · ~5MB · WINDOWS · BYOK //</div>
+
+        <h1 class="ransom" data-i18n-html="hero_h1"><span class='rn rn-lead f-black bx-dark r-3'>무료</span><span class='rn rn-lead f-type bx-pink r2'>AI</span><span class='rn rn-lead f-serif bx-cream bx-out r-1'>이메일</span><span class='rn rn-lead f-black bx-teal r1'>클라이언트</span><span class='rn rn-lead f-serif bx-cream bx-out r-2'>WINDOWS</span><br><span class='rn rn-lead f-black bx-dark r-2'>그렇게</span><span class='rn rn-punch f-black bx-pink r-3'>구리지</span><span class='rn rn-punch f-serif bx-dark r2'>않음</span><span class='rn f-marker ink-red r-3' style='font-size:24px'>(그렇게까지는)</span></h1>
+
+        <div class="hero-cols">
+          <div class="hero-dek">
+            <div class="dek-tag" data-i18n="hero_dek_tag">— 일기에서, 새벽 2시쯤</div>
+            <p class="dek" data-i18n-html="hero_sub">드디어 Skim 깔았다! 미니멀하고 네이티브하며 빠릅니다. AI 어시스턴트 겸 공동 작성자를 위한 <span class='tip' data-tip='byok'>BYOK</span>. 구독 없음 — 영원히 무료. 오픈 소스. 완전 좋아.</p>
+            <div class="dek-cta">
+              <a class="btn-zine" href="https://github.com/nikserg/skim/releases/latest" data-i18n="hero_cta_download">⬇  Windows용 다운로드</a>
+              <span class="cta-side">
+                <a class="ph-badge" href="https://www.producthunt.com/products/skim-5/reviews/new?utm_source=badge-product_review&amp;utm_medium=badge&amp;utm_source=badge-skim-5" target="_blank" rel="noopener noreferrer" aria-label="Review Skim on Product Hunt">
+                  <img src="https://api.producthunt.com/widgets/embed-image/v1/product_review.svg?product_id=1273953&amp;theme=light" alt="Skim - Free, open-source AI email client for Windows | Product Hunt" width="250" height="54" loading="lazy" decoding="async">
+                </a>
+                <a class="link-marker" href="https://github.com/nikserg/skim" data-i18n="hero_cta_github">GitHub에서 보기</a>
+              </span>
+            </div>
+            <div class="dek-note" data-i18n-html="hero_cta_note">무료 & 오픈소스 · 약 5MB 설치 파일 · 관리자 권한 불필요 · <code>Skim_x.y.z_x64-setup.exe</code> 받기</div>
+          </div>
+
+          <figure class="polaroid">
+            <div class="tape-c"></div>
+            <img class="decal" src="stickers/anarchy_a.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:-40px;right:-22px;transform:rotate(10deg);">
+            <img class="decal sm" src="stickers/star_circle.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="64" style="bottom:44px;left:-30px;transform:rotate(-14deg);">
+            <img src="skim-light.jpg" alt="Skim — light theme, three-pane email client">
+            <figcaption data-i18n="hero_shot_cap">내 받은편지함, 드디어 조용해요 ♥</figcaption>
+          </figure>
+        </div>
+      </div>
+
+    </header>
+
+    <!-- ===================== DEMO VIDEO ===================== -->
+    <section class="section" id="demo">
+      <img class="decal" src="stickers/cassette.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="bottom:16px;left:-4px;transform:rotate(-7deg);">
+      <div class="zine-kicker" data-i18n="demo_kicker">▶ 움직이는 걸 보세요</div>
+      <figure class="demo-frame">
+        <div class="shot-plain">
+          <video class="demo-vid" autoplay muted loop playsinline preload="metadata"
+                 poster="skim-light.jpg" aria-label="Skim in action">
+            <source src="skim-demo.mp4" type="video/mp4">
+          </video>
+        </div>
+        <figcaption class="demo-note" data-i18n="demo_note">소리 없이 🔇</figcaption>
+      </figure>
+    </section>
+
+    <!-- ===================== FEATURES ===================== -->
+    <section class="section" id="product">
+      <img class="decal" src="stickers/diy_text.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:12px;right:6px;transform:rotate(6deg);">
+      <div class="zine-h2" data-i18n="why_h2">버튼은 더 적게. 고통도 더 적게.</div>
+      <p class="zine-lead" data-i18n-html="why_lead">이메일 클라이언트는 보통 두 종류입니다. 앱인 척하는 브라우저이거나, <span class='tip' data-tip='icq'>ICQ 시대</span> 감성의 괴물 같은 올인원 제품이거나. Skim은 둘 다 아닙니다.</p>
+
+      <div class="scraps">
+        <div class="scrap">
+          <div class="tape tape-teal"></div>
+          <svg class="ic" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+          <h3 data-i18n="why_1_h">네이티브, Chromium 아님</h3>
+          <p data-i18n="why_1_p">Rust 코어에 시스템 WebView2 UI — Electron처럼 브라우저를 통째로 넣지 않습니다. 설치 파일은 몇 메가바이트, 콜드 스타트는 즉시, 유휴 메모리도 적습니다. 관리자 권한 없이 설치됩니다.</p>
+        </div>
+        <div class="scrap">
+          <div class="tape tape-pink"></div>
+          <svg class="ic" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="2" aria-hidden="true"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M8 7.6 20 18M8 16.4 20 6"/></svg>
+          <h3 data-i18n="why_2_h">기능의 절반을 덜어냈습니다. 일부러요.</h3>
+          <p data-i18n="why_2_p">달력 없음, 연락처 관리자 없음, 규칙 없음, 필터 없음, 미루기 없음 — 어차피 안 쓰는 것들은 전부 없습니다. 버튼이 적을수록 인지 부담이 줄고, 그만큼 짜증도 줄어듭니다. 올인원이 필요하세요? Outlook을 설치하세요.</p>
+        </div>
+        <div class="scrap">
+          <div class="tape tape-gold"></div>
+          <svg class="ic" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="1.7" fill="#171310" stroke="none"/></svg>
+          <h3 data-i18n="why_3_h">필요할 때 동작이 나타납니다</h3>
+          <p data-i18n-html="why_3_p">버튼은 쓸모 있을 때만 나타납니다. 메뉴 막대는 아예 없습니다. Skim의 임무는 알맞은 동작을 알맞은 순간에 내미는 것. 얼마나 잘 해내는지는 논쟁거리지만 — <a href='https://github.com/nikserg/skim/blob/main/CONTRIBUTING.md'>당신이 도울 수 있습니다</a>!</p>
+        </div>
+        <div class="scrap">
+          <div class="tape tape-teal"></div>
+          <svg class="ic" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 20 6v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3Z"/></svg>
+          <h3 data-i18n="why_4_h">기본적으로 로컬 &amp; 프라이빗</h3>
+          <p data-i18n="why_4_p">메일은 IMAP으로 로컬 SQLite 데이터베이스에 곧장 동기화됩니다. 오프라인에서도 작동하고, 검색은 즉각적이며(FTS5), 모든 동작은 즉시 적용되어 대기열에 들어갑니다 — 네트워크가 돌아오면 Skim이 따라잡습니다. 텔레메트리 제로, 항문 탐침 제로.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== COMMAND PALETTE ===================== -->
+    <section class="section" id="palette">
+      <img class="decal" src="stickers/no_future.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="bottom:40px;right:8px;transform:rotate(-5deg);">
+      <div class="zine-kicker" data-i18n="feat_kicker">&gt;_ 단축키 하나로 뭐든지</div>
+      <div class="zine-h2" data-i18n="feat_h2">Ctrl+K, 이미 끝났습니다</div>
+      <p class="zine-lead" data-i18n="feat_lead">단축키 하나로 무엇이든. 메일 검색, 어느 폴더로든 이동, 빠른 명령 실행, 그리고 메일함 전체에 대해 AI에게 질문 — 창 하나, 마우스 불필요.</p>
+
+      <div class="pal-row">
+        <div class="pal-card" aria-hidden="true">
+          <div class="tape"></div>
+          <div class="pd-input">
+            <span class="prompt">&gt;</span>
+            <span data-i18n="pal_ph">메일 검색 또는 명령 입력…</span><span class="pd-caret"></span>
+          </div>
+          <div class="pd-section" data-i18n="pal_cmd">명령</div>
+          <div class="pd-row"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="1.9"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="M14 6l4 4"/></svg><span data-i18n="pal_new">새 메시지</span><kbd>Ctrl N</kbd></div>
+          <div class="pd-row"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="1.9"><circle cx="12" cy="12" r="8"/><path d="M12 4v16" fill="#171310"/></svg><span data-i18n="pal_theme">테마 전환</span></div>
+          <div class="pd-row"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="1.9"><path d="M20 8A8 8 0 0 0 5 8M4 4v4h4"/><path d="M4 16a8 8 0 0 0 15 0M20 20v-4h-4"/></svg><span data-i18n="pal_sync">지금 동기화</span></div>
+          <div class="pd-row"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="1.9"><path d="M4 12h14M13 6l6 6-6 6"/></svg><span data-i18n="pal_goto">받은편지함으로 이동</span></div>
+          <div class="pd-section ai">✦ AI</div>
+          <div class="pd-row ai"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ec1c7d" stroke-width="1.7"><path d="M12 3l1.9 6.1L20 11l-6.1 1.9L12 19l-1.9-6.1L4 11l6.1-1.9L12 3Z"/></svg><span data-i18n="pal_ai_label">Skim AI에 질문:</span> <span class="q" data-i18n="pal_ai_q">아직 미결제된 청구서는?</span></div>
+          <div class="pd-answer">
+            <span data-i18n="pal_answer">두 건이 아직 미결제 — Acme #1042, Globex #88.</span>
+            <div class="pd-chips">
+              <span class="src-lbl" data-i18n="pal_sources">출처</span>
+              <span>Acme Inc. · #1042</span>
+              <span>Globex · reminder</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="keycaps-col">
+          <div class="keycaps-lead" data-i18n="feat_keys_lead">마우스 필요 없음 →</div>
+          <div class="keycaps">
+            <span><b>Ctrl K</b> <span data-i18n="key_palette">팔레트</span></span>
+            <span><b>Ctrl N</b> <span data-i18n="key_compose">작성</span></span>
+            <span><b>j</b>/<b>k</b> <span data-i18n="key_move">이동</span></span>
+            <span><b>e</b> <span data-i18n="key_archive">보관</span></span>
+            <span><b>#</b> <span data-i18n="key_delete">삭제</span></span>
+            <span><b>s</b> <span data-i18n="key_star">별표</span></span>
+            <span><b>u</b> <span data-i18n="key_unread">안읽음</span></span>
+            <span><b>r</b> <span data-i18n="key_reply">답장</span></span>
+            <span><b>/</b> <span data-i18n="key_search">검색</span></span>
+          </div>
+          <div class="keycaps-tag">EMAIL'S NOT DEAD.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== AI ===================== -->
+    <section class="section" id="ai">
+      <img class="decal lg" src="stickers/skull_mohawk.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="116" style="top:120px;left:-30px;transform:rotate(-9deg);">
+      <img class="decal decal-ai" src="stickers/fight_back.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:660px;right:54px;transform:rotate(6deg);">
+      <img class="decal decal-ai lg" src="stickers/punk_person.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="116" style="top:905px;right:14px;transform:rotate(-7deg);">
+      <img class="decal decal-ai" src="stickers/star_circle.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:1170px;right:64px;transform:rotate(4deg);">
+      <div class="ai-eyebrow" data-i18n="ai_eyebrow">✦ 당신의 키, 당신의 청구서</div>
+      <div class="ai-h2" data-i18n-html="ai_h2">오늘이 <span class='tip' data-tip='thu'>목요일</span>인 걸 알고, 당신처럼 쓰는 AI</div>
+      <p class="zine-lead" data-i18n="ai_lead">「Skim Pro」 구독은 없고 앞으로도 없습니다. 본인의 Anthropic(Claude) 또는 OpenRouter 키(Claude, GPT, Gemini, Grok 등 수백 개 모델)를 붙여넣거나 Skim을 OpenAI 호환 엔드포인트(Ollama, LM Studio, vLLM로 구동하는 로컬 모델 포함)로 지정하면 보라색 ✦ 버튼이 살아납니다. 요청은 당신의 컴퓨터에서 제공업체로 곧장 갑니다: 우리 프록시도, 마진도 없습니다. 제공업체에 원가로 지불하고, 키는 Windows 자격 증명 관리자에 보관됩니다. 키가 없다고요? Skim은 그냥 빠른 이메일 클라이언트로 작동합니다(그저 그렇지만, 안 될 거 있나요?).</p>
+
+      <ul class="ai-list">
+        <li><span class="num">[01]</span><p data-i18n-html="ai_1"><b>당신의 목소리로 초안</b> — 무슨 말을 할지 알려주면 1인칭으로 완성된 이메일을 받습니다. Skim은 보낸 메일을 최대 100통까지 분석해 당신처럼 씁니다: 같은 인사말, 문장 길이, 문장부호. 답장은 보낸 사람의 언어로, 당신이 모르는 언어라도 씁니다.</p></li>
+        <li><span class="num">[02]</span><p data-i18n-html="ai_2"><b>대화로 다듬는 초안</b> — 「더 짧게」, 「마감일 추가」, 「느낌표 빼」. 모든 수정은 현재 텍스트에 적용되며, 바꾸라고 하지 않은 건 그대로 둡니다. 직접 손보면 AI도 그것을 반영합니다.</p></li>
+        <li><span class="num">[03]</span><p data-i18n-html="ai_3"><b>이 메일에 대해 질문</b> — 한 통이나 스레드 전체(최대 25통을 문맥으로)에 대해 질문하고 추가 질문도 가능합니다. 내용에서만 답합니다: 대화에 답이 없으면 없다고 말합니다.</p></li>
+        <li><span class="num">[04]</span><p data-i18n-html="ai_4"><b>메일함 전체와 채팅</b> — 「이번 달 아직 미결제된 청구서는?」을 명령 팔레트에서 바로. Skim은 메일을 검색해(FTS5/bm25) 답하고, 출처 메일을 클릭 가능한 칩으로 인용합니다.</p></li>
+        <li><span class="num">[05]</span><p data-i18n-html="ai_5"><b>안 읽은 메일 AI 요약</b> — 클릭 한 번으로 최대 20통의 안 읽은 메일을 요약합니다: 답장이 필요한 것부터, 마감일과 인용 출처와 함께, 뉴스레터는 한쪽으로. 처리한 것은 읽음으로 표시합니다.</p></li>
+        <li><span class="num">[06]</span><p data-i18n-html="ai_6"><b>맥락을 압니다</b> — 모든 프롬프트에 현재 날짜, 요일, 시각과 당신의 시간대, 인터페이스 언어, 그리고 필요할 때는 스레드 전체가 실립니다. 그래서 「금요일까지 끝낼 수 있다고 답장해」가 추상이 아니라 구체적인 날짜가 됩니다.</p></li>
+      </ul>
+    </section>
+
+    <!-- ===================== DARK SCREENSHOT ===================== -->
+    <section class="section" id="screenshot">
+      <div class="shot-plain"><img src="skim-dark.jpg" alt="Skim — dark theme with AI features"></div>
+    </section>
+
+    <!-- ===================== CONTRIBUTE ===================== -->
+    <section class="section" id="contribute">
+      <img class="decal" src="stickers/rebel_text.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:-8px;right:18px;transform:rotate(5deg);">
+      <div class="paper-card">
+        <div class="txt">
+          <h3 data-i18n="contrib_h2">포크하고, 부수고, 반복</h3>
+          <p data-i18n="contrib_lead">Skim은 MIT 라이선스로 배포됩니다 — 원하는 대로 쓸 수 있는 오픈 소스입니다. 버그를 찾았거나 아이디어가 있나요? 이슈를 여세요. 더 좋은 건, 바로 풀 리퀘스트를 보내는 겁니다.</p>
+        </div>
+        <div class="card-cta">
+          <a class="btn-zine" href="https://github.com/nikserg/skim/blob/main/CONTRIBUTING.md" data-i18n="contrib_btn_dev">기여하는 방법</a>
+          <a class="btn-zine ink" href="https://github.com/nikserg/skim/issues" data-i18n="contrib_btn_issue">GitHub에 이슈 열기</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== INSTALL ===================== -->
+    <section class="section" id="install">
+      <img class="decal sm" src="stickers/peace_hand.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="64" style="top:30px;left:-6px;transform:rotate(-8deg);">
+      <div class="paper-card">
+        <div class="txt">
+          <h3 data-i18n="install_h3">몇 초 만에 설치</h3>
+          <p data-i18n-html="install_p">최신 설치 파일을 다운로드하세요 — <code>.exe</code>(NSIS)는 관리자 권한 없이 사용자별로 설치되고, 관리형 환경을 위한 <code>.msi</code>도 함께 제공됩니다. WebView2가 포함된 Windows 10/11이 필요합니다(Windows 11에는 기본 설치됨).</p>
+          <p data-i18n-html="install_pkg">패키지 관리자를 선호하신다면 <code>scoop bucket add skim https://github.com/nikserg/skim</code> 후 <code>scoop install skim/skim</code>.</p>
+        </div>
+        <a class="btn-zine" href="https://github.com/nikserg/skim/releases/latest" data-i18n="install_btn">⬇  최신 릴리스 받기</a>
+      </div>
+    </section>
+
+    <!-- ===================== FAQ ===================== -->
+    <section class="section" id="faq">
+      <img class="decal" src="stickers/viva_la_punk.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:24px;right:10px;transform:rotate(-6deg);">
+      <div class="zine-h2" data-i18n="faq_h2">자주 묻는 질문</div>
+      <p class="zine-lead" data-i18n="faq_lead">Windows에서 이메일 클라이언트를 바꾸기 전에 흔히 묻는 것들.</p>
+      <div class="faq-list">
+        <details>
+          <summary data-i18n="faq_0_q">이거 다 바이브 코딩한 거예요?</summary>
+          <p data-i18n="faq_0_a">당연하죠. 2026년입니다 — 일어나요, 사무라이! 이제 아무도 손으로 코드 안 짜요.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_1_q">Skim은 무료인가요?</summary>
+          <p data-i18n="faq_1_a">네. Skim은 MIT 라이선스의 무료 오픈소스입니다 — 구독도, 계정도, 추가 판매도 없습니다. AI 기능은 선택 사항이며 본인의 API 키를 사용하므로, AI 제공업체에 원가 그대로 직접 지불합니다.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_2_q">어떤 이메일 서비스를 지원하나요?</summary>
+          <p data-i18n="faq_2_a">Gmail(원클릭 Google 로그인 또는 앱 비밀번호), 앱 비밀번호를 통한 Outlook·Yahoo·iCloud, 그리고 표준 IMAP/SMTP를 쓰는 모든 메일함을 지원합니다. 주요 서비스는 서버 설정이 자동으로 채워집니다.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_3_q">AI가 내 메일을 읽나요?</summary>
+          <p data-i18n="faq_3_a">요청할 때만 읽습니다. 본인의 키(Anthropic, OpenRouter 또는 OpenAI 호환 엔드포인트 — Ollama, LM Studio, vLLM로 구동하는 로컬 모델 포함)를 붙여넣기 전까지 AI 기능은 꺼져 있으며, 모든 요청은 내 컴퓨터에서 제공업체로 직접 전송됩니다 — 중간 서버는 없습니다. 키는 Windows 자격 증명 관리자에 저장됩니다.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_4_q">Windows 10과 Windows 11에서 실행되나요?</summary>
+          <p data-i18n="faq_4_a">네 — Skim은 WebView2가 있는 Windows 10/11을 지원합니다(Windows 11에는 기본 설치). 설치 파일은 약 5 MB이며 사용자별로 설치되어 관리자 권한이 필요 없습니다.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_5_q">Outlook이나 Thunderbird와 무엇이 다른가요?</summary>
+          <p data-i18n="faq_5_a">Skim은 의도적으로 작게 만들어졌습니다. Electron 대신 네이티브 Rust 코어를 쓰는 빠르고 키보드 중심적인 Windows 이메일 클라이언트로, 오프라인 우선 동작, 즉각적인 로컬 검색, 내 키로 동작하는 AI 코파일럿을 갖췄습니다. 캘린더도, 규칙 엔진도, 군더더기도 없습니다.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_6_q">내 메일은 로컬에 저장되나요?</summary>
+          <p data-i18n="faq_6_a">네. 메일은 IMAP을 통해 기기의 로컬 SQLite 캐시로 바로 동기화되므로 Skim은 오프라인에서도 동작하고 검색은 즉각적입니다. Skim 서버는 없고 텔레메트리도 전혀 없습니다.</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- ===================== FOOTER ===================== -->
+    <footer class="zine-footer">
+      <span data-i18n="foot_copy">MIT © Skim contributors</span>
+      <span class="foot-links">
+        <a href="https://github.com/nikserg/skim" data-i18n="foot_source">소스</a>
+        <a href="https://github.com/nikserg/skim/releases" data-i18n="foot_releases">릴리스</a>
+        <a href="privacy.html" data-i18n="foot_privacy">Privacy</a>
+        <a href="terms.html" data-i18n="foot_terms">Terms</a>
+        <a href="https://github.com/nikserg/skim/issues" data-i18n="foot_issues">이슈</a>
+      </span>
+      <span class="page-no">page 1 / 1</span>
+    </footer>
+
+  </div>
+</div>
+
+  <script src="assets/locales.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>

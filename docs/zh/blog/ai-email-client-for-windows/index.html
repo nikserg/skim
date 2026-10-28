@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Windows 上的 AI 邮件客户端 — 2026 年的诚实简短名单 — Skim Blog</title>
+  <meta name="description" content="AI 邮件客户端到底做了什么，谁为此收订阅费，谁允许你自带密钥，以及什么时候 Ollama 上的本地 LLM 更合理。">
+  <link rel="canonical" href="https://skim-tech.com/zh/blog/ai-email-client-for-windows/">
+  <link rel="alternate" hreflang="x-default" href="https://skim-tech.com/blog/ai-email-client-for-windows/">
+  <link rel="alternate" hreflang="en" href="https://skim-tech.com/blog/ai-email-client-for-windows/">
+  <link rel="alternate" hreflang="ru" href="https://skim-tech.com/ru/blog/ai-email-client-for-windows/">
+  <link rel="alternate" hreflang="sr" href="https://skim-tech.com/sr/blog/ai-email-client-for-windows/">
+  <link rel="alternate" hreflang="fr" href="https://skim-tech.com/fr/blog/ai-email-client-for-windows/">
+  <link rel="alternate" hreflang="de" href="https://skim-tech.com/de/blog/ai-email-client-for-windows/">
+  <link rel="alternate" hreflang="es" href="https://skim-tech.com/es/blog/ai-email-client-for-windows/">
+  <link rel="alternate" hreflang="it" href="https://skim-tech.com/it/blog/ai-email-client-for-windows/">
+  <link rel="alternate" hreflang="pl" href="https://skim-tech.com/pl/blog/ai-email-client-for-windows/">
+  <link rel="alternate" hreflang="zh" href="https://skim-tech.com/zh/blog/ai-email-client-for-windows/">
+  <link rel="alternate" hreflang="ja" href="https://skim-tech.com/ja/blog/ai-email-client-for-windows/">
+  <link rel="alternate" hreflang="ko" href="https://skim-tech.com/ko/blog/ai-email-client-for-windows/">
+
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Skim">
+  <meta property="og:title" content="Windows 上的 AI 邮件客户端 — 2026 年的诚实简短名单">
+  <meta property="og:description" content="AI 邮件客户端到底做了什么，谁为此收订阅费，谁允许你自带密钥，以及什么时候 Ollama 上的本地 LLM 更合理。">
+  <meta property="og:url" content="https://skim-tech.com/zh/blog/ai-email-client-for-windows/">
+  <meta property="og:image" content="https://skim-tech.com/social-preview.jpg">
+  <meta property="og:locale" content="zh_CN">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Windows 上的 AI 邮件客户端 — 2026 年的诚实简短名单">
+  <meta name="twitter:description" content="AI 邮件客户端到底做了什么，谁为此收订阅费，谁允许你自带密钥，以及什么时候 Ollama 上的本地 LLM 更合理。">
+  <meta name="twitter:image" content="https://skim-tech.com/social-preview.jpg">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23eadfc2'/%3E%3Cg fill='%230d0d10'%3E%3Crect x='25' y='39' width='46' height='8.5' rx='4.25'/%3E%3Crect x='25' y='55' width='29' height='8.5' rx='4.25' fill-opacity='0.55'/%3E%3C/g%3E%3C/svg%3E">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="/assets/blog.css" rel="stylesheet">
+
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Windows 上的 AI 邮件客户端 — 2026 年的诚实简短名单","description":"AI 邮件客户端到底做了什么，谁为此收订阅费，谁允许你自带密钥，以及什么时候 Ollama 上的本地 LLM 更合理。","datePublished":"2026-10-26","dateModified":"2026-10-28","author":{"@type":"Organization","name":"Skim contributors","url":"https://github.com/nikserg/skim"},"publisher":{"@type":"Organization","name":"Skim","logo":{"@type":"ImageObject","url":"https://skim-tech.com/social-preview.jpg"}},"image":"https://skim-tech.com/social-preview.jpg","mainEntityOfPage":"https://skim-tech.com/zh/blog/ai-email-client-for-windows/","inLanguage":"zh"}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://skim-tech.com/zh/"},{"@type":"ListItem","position":2,"name":"博客","item":"https://skim-tech.com/zh/blog/"},{"@type":"ListItem","position":3,"name":"Windows 上的 AI 邮件客户端 — 2026 年的诚实简短名单","item":"https://skim-tech.com/zh/blog/ai-email-client-for-windows/"}]}</script>
+</head>
+<body class="article-page">
+
+<header class="site-header">
+  <a class="site-logo" href="/zh/">Skim</a>
+  <nav>
+    <a href="/zh/#product">功能</a>
+    <a href="/zh/#ai">AI</a>
+    <a href="/zh/blog/" class="current">博客</a>
+    <a href="https://github.com/nikserg/skim">GitHub</a>
+    <label class="lang">
+      <select onchange="window.location=this.value"><option value="/blog/ai-email-client-for-windows/">English</option><option value="/ru/blog/ai-email-client-for-windows/">Русский</option><option value="/sr/blog/ai-email-client-for-windows/">Srpski</option><option value="/fr/blog/ai-email-client-for-windows/">Français</option><option value="/de/blog/ai-email-client-for-windows/">Deutsch</option><option value="/es/blog/ai-email-client-for-windows/">Español</option><option value="/it/blog/ai-email-client-for-windows/">Italiano</option><option value="/pl/blog/ai-email-client-for-windows/">Polski</option><option value="/zh/blog/ai-email-client-for-windows/" selected>中文</option><option value="/ja/blog/ai-email-client-for-windows/">日本語</option><option value="/ko/blog/ai-email-client-for-windows/">한국어</option></select>
+    </label>
+  </nav>
+</header>
+
+<main>
+  <article>
+    <nav class="breadcrumbs">
+      <a href="/zh/">Skim</a> / <a href="/zh/blog/">博客</a> / <span>Windows 上的 AI 邮件客户端 — 2026 年的诚实简短名单</span>
+    </nav>
+
+    <h1>Windows 上的 AI 邮件客户端 — 2026 年的诚实简短名单</h1>
+    <p class="dek">AI 邮件客户端到底做了什么，谁为此收订阅费，谁允许你自带密钥，以及什么时候 Ollama 上的本地 LLM 更合理。</p>
+    <div class="meta">
+      <time datetime="2026-10-26">发布于 2026-10-26</time>
+      · 1 分钟阅读
+    </div>
+    
+    <nav class="toc" aria-label="Table of contents"><ol><li><a href="#ai">AI 在邮件里真的有什么用</a></li><li><a href="#2026-windows-ai">2026 年 Windows 上的 AI 邮件客户端</a></li><li><a href="#">对比</a></li><li><a href="#byok">BYOK 对比订阅：真实数字</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+
+    <p>"AI 邮件客户端"对不同厂商意味着不同的东西。Gmail：长线程顶部的 Gemini 摘要气泡。Spark+ 和 Canary：一个"用 AI 撰写"按钮和一张月度账单。Skim：你自己的 API 密钥、你自己的模型、你的邮件留在你的机器上。</p>
+<h2 id="ai">AI 在邮件里真的有什么用</h2>
+<p>四件事，按节省时间排序：写第一稿回复（最好的客户端从"已发送"里学习你的风格）、总结长线程、回答关于整个邮箱的问题，以及未读邮件的摘要。其余是营销包装。</p>
+<h2 id="2026-windows-ai">2026 年 Windows 上的 AI 邮件客户端</h2>
+<h3 id="skim-byok">Skim, BYOK、本地优先、免费</h3>
+<p><a href="/">Skim</a> 是一款面向 Windows 的免费开源邮件客户端，使用原生 Rust 内核。<a href="/#ai">AI 功能</a>--草稿、润色、线程问答、整个邮箱的聊天、未读摘要--使用<em>你的</em> API 密钥。粘贴 Anthropic（Claude）、OpenRouter 或任何 OpenAI 兼容端点的密钥，紫色 AI 按钮即被点亮。密钥存放于 Windows 凭据管理器；请求从你的机器直达提供商。</p>
+<p>将 Skim 指向 Ollama、LM Studio 或 vLLM 上的本地模型--"Windows 的 AI 邮件客户端"就从不打电话回家。</p>
+<h3 id="sparkreaddle">Spark+（Readdle）</h3>
+<p>"用 AI 撰写"、建议、分类。邮件经由 Readdle 服务器。~5–8 USD/月。</p>
+<h3 id="canary-mail">Canary Mail</h3>
+<p>"Sidekick" 撰写、总结、回复。~20–50 USD/年。</p>
+<h3 id="outlook-copilot">Outlook + Copilot</h3>
+<p>Microsoft 365 Copilot 把 AI 带进 Outlook。~30 USD/用户/月。</p>
+<h3 id="thunderbird">Thunderbird + 插件</h3>
+<p>没有内置 AI，但社区插件把 ChatGPT/Claude 接入撰写窗口。</p>
+<h2 id="">对比</h2>
+<div class="table-wrap"><table><thead><tr><th>客户端</th><th>产品内 AI</th><th>付给谁</th><th>本地 LLM</th><th>邮件留本地</th><th>免费</th></tr></thead><tbody><tr><td>Skim</td><td>草稿、线程问答、邮箱聊天、摘要</td><td>你 → Anthropic/OpenRouter</td><td>是（Ollama）</td><td>是</td><td>是</td></tr><tr><td>Spark+</td><td>Compose、replies</td><td>Readdle</td><td>否</td><td>否</td><td>有限</td></tr><tr><td>Canary</td><td>Compose、总结</td><td>Canary</td><td>否</td><td>部分</td><td>有限</td></tr><tr><td>Outlook + Copilot</td><td>草稿、总结</td><td>微软</td><td>否</td><td>否</td><td>否</td></tr><tr><td>Thunderbird + 插件</td><td>看插件</td><td>你</td><td>是（插件）</td><td>是</td><td>是</td></tr></tbody></table></div>
+<h2 id="byok">BYOK 对比订阅：真实数字</h2>
+<p>每天 20 条 AI 草稿和 3 条线程摘要：Claude Haiku 约 $1–3/月，GPT-4 经 OpenRouter 约 $5–8/月，Ollama 上的本地 Llama-3 为 $0。</p>
+<h2 id="faq">FAQ</h2>
+<p><strong>Windows 上最好的 AI 邮件客户端？</strong> 多数人：不把你锁进订阅的那个。<a href="/">Skim</a>. BYOK，免费。</p>
+<p><strong>AI 会读我的邮件吗？</strong> 像 Skim 这样的 BYOK 客户端中，只有你请求时才读，直接连到你选择的提供商。</p>
+<p><strong>能用 ChatGPT 吗？</strong> 通过 OpenRouter 或 OpenAI API--Skim 可以。</p>
+<p><strong>能用本地 LLM 吗？</strong> Skim 可以--任何 OpenAI 兼容端点。</p>
+<p><strong>和 Gmail 的 Gemini 有什么不同？</strong> 有。Gemini 跑在你 Google 账户的服务端；不需要桌面客户端。BYOK 桌面 AI 面向希望用自己密钥本地处理邮件的用户。</p>
+
+    
+    <section class="related">
+      <h2>相关阅读</h2>
+      <ul><li><a href="/zh/blog/best-free-email-client-for-windows-11/">2026 年最好的 Windows 11 免费邮件客户端</a></li><li><a href="/zh/blog/outlook-alternatives-for-windows/">Windows 上的 Outlook 替代品 — 2026 年的安静简短名单</a></li><li><a href="/zh/blog/open-source-email-client-for-windows/">Windows 上的开源邮件客户端 — 2026 年的现实简短名单</a></li></ul>
+    </section>
+
+    <section class="post-cta">
+      <h2>试用 Skim</h2>
+      <p>一款快速、免费、开源的 Windows 邮件客户端，AI 使用你自己的密钥。约 5 MB，无需管理员权限，零遥测。</p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://github.com/nikserg/skim/releases/latest">⬇  Windows 下载</a>
+        <a class="btn ghost" href="https://github.com/nikserg/skim">在 GitHub 查看</a>
+      </div>
+    </section>
+
+    <p class="back-link"><a href="/zh/blog/">← 返回博客</a></p>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <span>MIT © Skim contributors</span>
+  <span>
+    <a href="https://github.com/nikserg/skim">源码</a>
+    <a href="https://github.com/nikserg/skim/releases">版本发布</a>
+    <a href="/privacy.html">Privacy</a>
+    <a href="/terms.html">Terms</a>
+  </span>
+</footer>
+
+</body>
+</html>

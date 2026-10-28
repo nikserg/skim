@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="sr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Skim — brz, open-source AI email klijent za Windows</title>
+  <meta name="description" content="Skim je besplatan open-source email klijent za Windows sa ugrađenim AI asistentom. Nativno Rust jezgro, instalacija ~5 MB, radi offline, trenutna pretraga — koristi svoj AI ključ.">
+  <link rel="canonical" href="https://skim-tech.com/sr/">
+  <link rel="alternate" hreflang="x-default" href="https://skim-tech.com/">
+  <link rel="alternate" hreflang="en" href="https://skim-tech.com/">
+  <link rel="alternate" hreflang="ru" href="https://skim-tech.com/ru/">
+  <link rel="alternate" hreflang="sr" href="https://skim-tech.com/sr/">
+  <link rel="alternate" hreflang="fr" href="https://skim-tech.com/fr/">
+  <link rel="alternate" hreflang="de" href="https://skim-tech.com/de/">
+  <link rel="alternate" hreflang="es" href="https://skim-tech.com/es/">
+  <link rel="alternate" hreflang="it" href="https://skim-tech.com/it/">
+  <link rel="alternate" hreflang="pl" href="https://skim-tech.com/pl/">
+  <link rel="alternate" hreflang="zh" href="https://skim-tech.com/zh/">
+  <link rel="alternate" hreflang="ja" href="https://skim-tech.com/ja/">
+  <link rel="alternate" hreflang="ko" href="https://skim-tech.com/ko/">
+
+  <!-- Open Graph / social preview -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Skim">
+  <meta property="og:title" content="Skim — brz, open-source AI email klijent za Windows">
+  <meta property="og:description" content="Skim je besplatan open-source email klijent za Windows sa ugrađenim AI asistentom. Nativno Rust jezgro, instalacija ~5 MB, radi offline, trenutna pretraga — koristi svoj AI ključ.">
+  <meta property="og:image" content="https://skim-tech.com/social-preview.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Skim — a free AI email client for Windows that doesn't suck (that hard). Open source, native & fast, local-first.">
+  <meta property="og:url" content="https://skim-tech.com/sr/">
+  <meta property="og:locale" content="sr_RS">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Skim — brz, open-source AI email klijent za Windows">
+  <meta name="twitter:description" content="Skim je besplatan open-source email klijent za Windows sa ugrađenim AI asistentom. Nativno Rust jezgro, instalacija ~5 MB, radi offline, trenutna pretraga — koristi svoj AI ključ.">
+  <meta name="twitter:image" content="https://skim-tech.com/social-preview.jpg">
+  <meta name="twitter:image:alt" content="Skim — a free AI email client for Windows that doesn't suck (that hard). Open source, native & fast, local-first.">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23eadfc2'/%3E%3Cg fill='%230d0d10'%3E%3Crect x='25' y='39' width='46' height='8.5' rx='4.25'/%3E%3Crect x='25' y='55' width='29' height='8.5' rx='4.25' fill-opacity='0.55'/%3E%3C/g%3E%3C/svg%3E">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@500;600;700&family=Oswald:wght@600;700&family=Permanent+Marker&family=Rock+Salt&family=Special+Elite&display=swap" rel="stylesheet">
+  <link href="assets/zine.css" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Skim",
+    "operatingSystem": "Windows 10, Windows 11",
+    "applicationCategory": "CommunicationApplication",
+    "applicationSubCategory": "Email Client",
+    "description": "A fast, free, open-source email client for Windows with a built-in AI copilot. Native Rust core, ~5 MB installer, offline-first, instant full-text search.",
+    "url": "https://skim-tech.com/",
+    "downloadUrl": "https://github.com/nikserg/skim/releases/latest",
+    "screenshot": [
+      "https://skim-tech.com/skim-light.jpg",
+      "https://skim-tech.com/skim-dark.jpg"
+    ],
+    "license": "https://github.com/nikserg/skim/blob/main/LICENSE",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "sameAs": ["https://github.com/nikserg/skim"]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is Skim free?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Skim is free and open source under the MIT license — no subscription, no account, no upsell. The AI features are optional and use your own API key, so you pay your AI provider directly at cost." }
+      },
+      {
+        "@type": "Question",
+        "name": "Which email providers does Skim support?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Gmail (one-click Google sign-in or an app password), Outlook, Yahoo and iCloud via app passwords, and any other mailbox over standard IMAP/SMTP. Server settings are filled in automatically for the big providers." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does the AI read my email?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Only when you ask it to. AI features stay off until you paste your own key — Anthropic, OpenRouter, or any OpenAI-compatible endpoint (a local model via Ollama, LM Studio or vLLM included) — and every request goes directly from your machine to the provider, no middleman servers. The key is stored in Windows Credential Manager." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does Skim run on Windows 10 and Windows 11?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes — Skim supports Windows 10 and 11 with WebView2 (preinstalled on Windows 11). The installer is about 5 MB and installs per-user, no admin rights required." }
+      },
+      {
+        "@type": "Question",
+        "name": "How is Skim different from Outlook or Thunderbird?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Skim is deliberately small: a fast, keyboard-first Windows email client with a native Rust core instead of Electron, offline-first actions, instant local search, and an AI copilot that works with your own key. No calendar, no rules engine, no bloat." }
+      },
+      {
+        "@type": "Question",
+        "name": "Is my email stored locally?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Mail syncs over IMAP straight into a local SQLite cache on your device, so Skim works offline and search is instant. There are no Skim servers and zero telemetry." }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+<div class="frame">
+  <div class="sheet">
+    <div class="grain"></div>
+    <div class="holes"></div>
+
+    <!-- ===================== MASTHEAD ===================== -->
+    <header class="masthead">
+      <a class="mast-logo" href="./">Skim</a>
+      <nav class="mast-nav">
+        <a href="#product" data-i18n="nav_features">Mogućnosti</a>
+        <a href="#ai" data-i18n="nav_ai">AI</a>
+        <a href="#install" data-i18n="nav_install">Instalacija</a>
+        <a href="#faq" data-i18n="nav_faq">FAQ</a>
+        <a href="/sr/blog/">Blog</a>
+        <a href="https://github.com/nikserg/skim" data-i18n="nav_github">GitHub</a>
+        <label class="lang" title="Language">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21C9.5 18.5 8.2 15.3 8.2 12S9.5 5.5 12 3z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <select id="langSelect" aria-label="Language"></select>
+        </label>
+      </nav>
+    </header>
+
+    <!-- ===================== HERO ===================== -->
+    <header class="section hero" id="top">
+      <div class="hero-swash-a"></div>
+      <div class="hero-swash-b"></div>
+      <img class="decal sm" src="stickers/safety_pin_top.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="64" style="top:8px;left:-6px;transform:rotate(-8deg);z-index:4;">
+
+      <div class="hero-inner">
+        <div class="eyebrow" data-i18n="hero_eyebrow">// BESPLATNO · OTVOREN KÔD · ~5MB · WINDOWS · BYOK //</div>
+
+        <h1 class="ransom" data-i18n-html="hero_h1"><span class='rn rn-lead f-black bx-dark r-3'>BESPLATAN</span><span class='rn rn-lead f-type bx-pink r2'>AI</span><span class='rn rn-lead f-serif bx-cream bx-out r-1'>MEJL</span><span class='rn rn-lead f-black bx-teal r1'>KLIJENT</span><span class='rn rn-lead f-serif bx-cream bx-out r-2'>ZA WINDOWS</span><br><span class='rn rn-lead f-black bx-dark r-2'>KOJI NIJE</span><span class='rn rn-punch f-black bx-dark r-4'>S</span><span class='rn rn-punch f-serif bx-cream bx-out r3'>R</span><span class='rn rn-punch f-black bx-pink r-2'>A</span><span class='rn rn-punch f-type bx-teal r2'>N</span><span class='rn rn-punch f-serif bx-cream bx-out r-3'>J</span><span class='rn rn-punch f-black bx-dark r3'>E</span><span class='rn f-marker ink-red r-3' style='font-size:28px'>(baš toliko)</span></h1>
+
+        <div class="hero-cols">
+          <div class="hero-dek">
+            <div class="dek-tag" data-i18n="hero_dek_tag">— iz dnevnika, ~2 ujutru</div>
+            <p class="dek" data-i18n-html="hero_sub">Konačno instalirao Skim! Minimalističan, nativan, brz. <span class='tip' data-tip='byok'>BYOK</span> za AI asistenta i koautora. Bez pretplata — besplatno zauvek. Otvoren kôd. Uživam.</p>
+            <div class="dek-cta">
+              <a class="btn-zine" href="https://github.com/nikserg/skim/releases/latest" data-i18n="hero_cta_download">⬇  Preuzmi za Windows</a>
+              <span class="cta-side">
+                <a class="ph-badge" href="https://www.producthunt.com/products/skim-5/reviews/new?utm_source=badge-product_review&amp;utm_medium=badge&amp;utm_source=badge-skim-5" target="_blank" rel="noopener noreferrer" aria-label="Review Skim on Product Hunt">
+                  <img src="https://api.producthunt.com/widgets/embed-image/v1/product_review.svg?product_id=1273953&amp;theme=light" alt="Skim - Free, open-source AI email client for Windows | Product Hunt" width="250" height="54" loading="lazy" decoding="async">
+                </a>
+                <a class="link-marker" href="https://github.com/nikserg/skim" data-i18n="hero_cta_github">Pogledaj na GitHub-u</a>
+              </span>
+            </div>
+            <div class="dek-note" data-i18n-html="hero_cta_note">Besplatno i otvorenog koda · instalacija ~5 MB · bez administratorskih prava · uzmite <code>Skim_x.y.z_x64-setup.exe</code></div>
+          </div>
+
+          <figure class="polaroid">
+            <div class="tape-c"></div>
+            <img class="decal" src="stickers/anarchy_a.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:-40px;right:-22px;transform:rotate(10deg);">
+            <img class="decal sm" src="stickers/star_circle.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="64" style="bottom:44px;left:-30px;transform:rotate(-14deg);">
+            <img src="skim-light.jpg" alt="Skim — light theme, three-pane email client">
+            <figcaption data-i18n="hero_shot_cap">moje sanduče, konačno mirno ♥</figcaption>
+          </figure>
+        </div>
+      </div>
+
+    </header>
+
+    <!-- ===================== DEMO VIDEO ===================== -->
+    <section class="section" id="demo">
+      <img class="decal" src="stickers/cassette.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="bottom:16px;left:-4px;transform:rotate(-7deg);">
+      <div class="zine-kicker" data-i18n="demo_kicker">▶ pogledaj u pokretu</div>
+      <figure class="demo-frame">
+        <div class="shot-plain">
+          <video class="demo-vid" autoplay muted loop playsinline preload="metadata"
+                 poster="skim-light.jpg" aria-label="Skim in action">
+            <source src="skim-demo.mp4" type="video/mp4">
+          </video>
+        </div>
+        <figcaption class="demo-note" data-i18n="demo_note">bez zvuka 🔇</figcaption>
+      </figure>
+    </section>
+
+    <!-- ===================== FEATURES ===================== -->
+    <section class="section" id="product">
+      <img class="decal" src="stickers/diy_text.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:12px;right:6px;transform:rotate(6deg);">
+      <div class="zine-h2" data-i18n="why_h2">Manje dugmadi. Manje muke.</div>
+      <p class="zine-lead" data-i18n-html="why_lead">Mejl klijenti obično dolaze u dve varijante: pregledač koji glumi aplikaciju, ili monstruozni sve-u-jednom paket sa vibracijama iz <span class='tip' data-tip='icq'>doba ICQ-a</span>. Skim nije nijedno.</p>
+
+      <div class="scraps">
+        <div class="scrap">
+          <div class="tape tape-teal"></div>
+          <svg class="ic" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+          <h3 data-i18n="why_1_h">Nativan, ne Chromium</h3>
+          <p data-i18n="why_1_p">Rust jezgro sa sistemskim WebView2 interfejsom — bez upakovanog pregledača kao Electron. Instalacija je nekoliko megabajta, hladno pokretanje je trenutno, potrošnja memorije skromna. Instalira se bez administratorskih prava.</p>
+        </div>
+        <div class="scrap">
+          <div class="tape tape-pink"></div>
+          <svg class="ic" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="2" aria-hidden="true"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M8 7.6 20 18M8 16.4 20 6"/></svg>
+          <h3 data-i18n="why_2_h">Izbacili smo pola funkcija. Namerno.</h3>
+          <p data-i18n="why_2_p">Bez kalendara, bez menadžera kontakata, bez pravila, bez filtera, bez odlaganja — ništa od onoga što ionako nikada ne koristite. Manje dugmadi znači manje kognitivnog opterećenja znači manje nerviranja. Treba vam sve-u-jednom? Instalirajte Outlook.</p>
+        </div>
+        <div class="scrap">
+          <div class="tape tape-gold"></div>
+          <svg class="ic" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="1.7" fill="#171310" stroke="none"/></svg>
+          <h3 data-i18n="why_3_h">Radnje se pojave kada vam trebaju</h3>
+          <p data-i18n-html="why_3_p">Dugmad se pojavljuju samo kada su korisna. Menija uopšte nema. Ceo posao Skima je da ponudi pravu radnju u pravom trenutku. Koliko mu to polazi za rukom — otvoreno je za raspravu, ali <a href='https://github.com/nikserg/skim/blob/main/CONTRIBUTING.md'>možete pomoći</a>!</p>
+        </div>
+        <div class="scrap">
+          <div class="tape tape-teal"></div>
+          <svg class="ic" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 20 6v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3Z"/></svg>
+          <h3 data-i18n="why_4_h">Lokalno i privatno podrazumevano</h3>
+          <p data-i18n="why_4_p">Pošta se sinhronizuje preko IMAP-a pravo u lokalnu SQLite bazu. Radi van mreže, pretraga je trenutna (FTS5), a svaka radnja se odmah primeni i stane u red — Skim nadoknadi kada se mreža vrati. Nula telemetrije, nula analnih sondi.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== COMMAND PALETTE ===================== -->
+    <section class="section" id="palette">
+      <img class="decal" src="stickers/no_future.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="bottom:40px;right:8px;transform:rotate(-5deg);">
+      <div class="zine-kicker" data-i18n="feat_kicker">&gt;_ jedan taster za sve</div>
+      <div class="zine-h2" data-i18n="feat_h2">Ctrl+K, i već je gotovo</div>
+      <p class="zine-lead" data-i18n="feat_lead">Jedan taster do svega. Pretražite poštu, skočite u bilo koji folder, pokrenite brze komande i pitajte AI kroz ceo sandučić — jedan prozor, bez miša.</p>
+
+      <div class="pal-row">
+        <div class="pal-card" aria-hidden="true">
+          <div class="tape"></div>
+          <div class="pd-input">
+            <span class="prompt">&gt;</span>
+            <span data-i18n="pal_ph">Pretraži poštu ili unesi komandu…</span><span class="pd-caret"></span>
+          </div>
+          <div class="pd-section" data-i18n="pal_cmd">Komande</div>
+          <div class="pd-row"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="1.9"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="M14 6l4 4"/></svg><span data-i18n="pal_new">Nova poruka</span><kbd>Ctrl N</kbd></div>
+          <div class="pd-row"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="1.9"><circle cx="12" cy="12" r="8"/><path d="M12 4v16" fill="#171310"/></svg><span data-i18n="pal_theme">Promeni temu</span></div>
+          <div class="pd-row"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="1.9"><path d="M20 8A8 8 0 0 0 5 8M4 4v4h4"/><path d="M4 16a8 8 0 0 0 15 0M20 20v-4h-4"/></svg><span data-i18n="pal_sync">Sinhronizuj</span></div>
+          <div class="pd-row"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#171310" stroke-width="1.9"><path d="M4 12h14M13 6l6 6-6 6"/></svg><span data-i18n="pal_goto">Idi u Prijemno</span></div>
+          <div class="pd-section ai">✦ AI</div>
+          <div class="pd-row ai"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ec1c7d" stroke-width="1.7"><path d="M12 3l1.9 6.1L20 11l-6.1 1.9L12 19l-1.9-6.1L4 11l6.1-1.9L12 3Z"/></svg><span data-i18n="pal_ai_label">Pitaj Skim AI:</span> <span class="q" data-i18n="pal_ai_q">koji računi još nisu plaćeni?</span></div>
+          <div class="pd-answer">
+            <span data-i18n="pal_answer">Dva su još otvorena — Acme #1042 i Globex #88.</span>
+            <div class="pd-chips">
+              <span class="src-lbl" data-i18n="pal_sources">Izvori</span>
+              <span>Acme Inc. · #1042</span>
+              <span>Globex · reminder</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="keycaps-col">
+          <div class="keycaps-lead" data-i18n="feat_keys_lead">bez miša →</div>
+          <div class="keycaps">
+            <span><b>Ctrl K</b> <span data-i18n="key_palette">paleta</span></span>
+            <span><b>Ctrl N</b> <span data-i18n="key_compose">sastavi</span></span>
+            <span><b>j</b>/<b>k</b> <span data-i18n="key_move">premesti</span></span>
+            <span><b>e</b> <span data-i18n="key_archive">arhiviraj</span></span>
+            <span><b>#</b> <span data-i18n="key_delete">obriši</span></span>
+            <span><b>s</b> <span data-i18n="key_star">zvezdica</span></span>
+            <span><b>u</b> <span data-i18n="key_unread">nepročitano</span></span>
+            <span><b>r</b> <span data-i18n="key_reply">odgovori</span></span>
+            <span><b>/</b> <span data-i18n="key_search">pretraži</span></span>
+          </div>
+          <div class="keycaps-tag">EMAIL'S NOT DEAD.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== AI ===================== -->
+    <section class="section" id="ai">
+      <img class="decal lg" src="stickers/skull_mohawk.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="116" style="top:120px;left:-30px;transform:rotate(-9deg);">
+      <img class="decal decal-ai" src="stickers/fight_back.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:660px;right:54px;transform:rotate(6deg);">
+      <img class="decal decal-ai lg" src="stickers/punk_person.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="116" style="top:905px;right:14px;transform:rotate(-7deg);">
+      <img class="decal decal-ai" src="stickers/star_circle.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:1170px;right:64px;transform:rotate(4deg);">
+      <div class="ai-eyebrow" data-i18n="ai_eyebrow">✦ Tvoj ključ, tvoj račun</div>
+      <div class="ai-h2" data-i18n-html="ai_h2">AI koji zna da je <span class='tip' data-tip='thu'>četvrtak</span> i piše kao ti</div>
+      <p class="zine-lead" data-i18n="ai_lead">Ne postoji „Skim Pro“ pretplata, i nikada neće. Nalepite sopstveni Anthropic (Claude) ili OpenRouter ključ (Claude, GPT, Gemini, Grok i stotine drugih modela) — ili usmerite Skim na bilo koji OpenAI-kompatibilan endpoint, uključujući lokalni model preko Ollame, LM Studija ili vLLM-a — i ljubičasta ✦ dugmad ožive. Zahtevi idu direktno sa vaše mašine ka provajderu: bez naših proksija i marže. Plaćate provajderu po ceni koštanja, ključ stoji u Windows Credential Manager-u. Nema ključa? Skim jednostavno radi kao brz mejl klijent (nije bog zna šta, ali zašto da ne?).</p>
+
+      <ul class="ai-list">
+        <li><span class="num">[01]</span><p data-i18n-html="ai_1"><b>Nacrti u tvom stilu</b> — recite šta da napiše i dobijte gotov mejl u prvom licu. Skim može analizirati do sto vaših poslatih poruka i pisati onako kako vi pišete: isti pozdravi, dužina rečenica, interpunkcija. Odgovara na jeziku pošiljaoca, čak i onom koji ne govorite.</p></li>
+        <li><span class="num">[02]</span><p data-i18n-html="ai_2"><b>Nacrte doterujete u dijalogu</b> — „kraće“, „dodaj rok“, „izbaci uzvičnike“. Svaka izmena se primeni na trenutni tekst, čuvajući sve što niste tražili da se menja. Izmenite ručno i AI to takođe uzme u obzir.</p></li>
+        <li><span class="num">[03]</span><p data-i18n-html="ai_3"><b>Pitajte o mejlu</b> — pitanje o jednoj poruci ili celom nizu (do 25 mejlova u kontekstu), sa dodatnim pitanjima. Odgovara samo iz sadržaja: ako odgovora nema u prepisci, tako i kaže.</p></li>
+        <li><span class="num">[04]</span><p data-i18n-html="ai_4"><b>Ćaskajte sa celim sandučićem</b> — „koji računi ovog meseca još nisu plaćeni?“ pravo u komandnoj paleti. Skim pretražuje poštu (FTS5/bm25), odgovara i navodi izvorne mejlove kao klikabilne čipove.</p></li>
+        <li><span class="num">[05]</span><p data-i18n-html="ai_5"><b>AI rezime nepročitanog</b> — jedan klik sažima do 20 nepročitanih mejlova: prvo ono što traži odgovor, sa rokovima i navedenim izvorima, bilteni na stranu. Označi ono što je obradio kao pročitano.</p></li>
+        <li><span class="num">[06]</span><p data-i18n-html="ai_6"><b>Zna kontekst</b> — svaki upit nosi trenutni datum, dan u nedelji, vreme i vašu vremensku zonu, jezik interfejsa i — gde je bitno — ceo niz poruka. Tako „odgovori da ću stići do petka“ postaje konkretan datum, a ne apstrakcija.</p></li>
+      </ul>
+    </section>
+
+    <!-- ===================== DARK SCREENSHOT ===================== -->
+    <section class="section" id="screenshot">
+      <div class="shot-plain"><img src="skim-dark.jpg" alt="Skim — dark theme with AI features"></div>
+    </section>
+
+    <!-- ===================== CONTRIBUTE ===================== -->
+    <section class="section" id="contribute">
+      <img class="decal" src="stickers/rebel_text.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:-8px;right:18px;transform:rotate(5deg);">
+      <div class="paper-card">
+        <div class="txt">
+          <h3 data-i18n="contrib_h2">Forkuj, slomi, ponovi</h3>
+          <p data-i18n="contrib_lead">Skim se distribuira pod MIT licencom — otvoren kôd koji možete koristiti kako god želite. Našli ste bag ili imate predlog? Otvorite tiket. Još bolje, odmah pošaljite pull request.</p>
+        </div>
+        <div class="card-cta">
+          <a class="btn-zine" href="https://github.com/nikserg/skim/blob/main/CONTRIBUTING.md" data-i18n="contrib_btn_dev">Kako doprineti</a>
+          <a class="btn-zine ink" href="https://github.com/nikserg/skim/issues" data-i18n="contrib_btn_issue">Otvori tiket na GitHub-u</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== INSTALL ===================== -->
+    <section class="section" id="install">
+      <img class="decal sm" src="stickers/peace_hand.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="64" style="top:30px;left:-6px;transform:rotate(-8deg);">
+      <div class="paper-card">
+        <div class="txt">
+          <h3 data-i18n="install_h3">Instalacija za nekoliko sekundi</h3>
+          <p data-i18n-html="install_p">Preuzmite najnoviju instalaciju — <code>.exe</code> (NSIS) instalira se po korisniku bez administratorskih prava; <code>.msi</code> se objavljuje za upravljana okruženja. Zahteva Windows 10/11 sa WebView2 (unapred instaliran na Windows 11).</p>
+          <p data-i18n-html="install_pkg">Više volite menadžer paketa? <code>scoop bucket add skim https://github.com/nikserg/skim</code> pa <code>scoop install skim/skim</code>.</p>
+        </div>
+        <a class="btn-zine" href="https://github.com/nikserg/skim/releases/latest" data-i18n="install_btn">⬇  Preuzmi najnovije izdanje</a>
+      </div>
+    </section>
+
+    <!-- ===================== FAQ ===================== -->
+    <section class="section" id="faq">
+      <img class="decal" src="stickers/viva_la_punk.webp" alt="" aria-hidden="true" loading="lazy" decoding="async" width="88" style="top:24px;right:10px;transform:rotate(-6deg);">
+      <div class="zine-h2" data-i18n="faq_h2">Česta pitanja</div>
+      <p class="zine-lead" data-i18n="faq_lead">Sve što ljudi obično pitaju pre nego što promene svoj klijent za e-poštu na Windows-u.</p>
+      <div class="faq-list">
+        <details>
+          <summary data-i18n="faq_0_q">Da li je ovo sve vibe-kodovano?</summary>
+          <p data-i18n="faq_0_a">Da, naravno. 2026. je — probudi se, samuraju! Niko više ne piše kôd ručno.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_1_q">Da li je Skim besplatan?</summary>
+          <p data-i18n="faq_1_a">Da. Skim je besplatan i otvorenog koda pod MIT licencom — bez pretplate, naloga i doplata. AI funkcije su opcione i koriste vaš sopstveni API ključ, pa provajdera plaćate direktno, po ceni koštanja.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_2_q">Koje provajdere e-pošte Skim podržava?</summary>
+          <p data-i18n="faq_2_a">Gmail (prijava preko Google-a jednim klikom ili lozinka za aplikaciju), Outlook, Yahoo i iCloud preko lozinki za aplikacije, kao i bilo koje drugo sanduče preko standardnog IMAP/SMTP-a. Podešavanja servera se automatski popunjavaju za velike provajdere.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_3_q">Da li AI čita moju poštu?</summary>
+          <p data-i18n="faq_3_a">Samo kada to zatražite. AI funkcije su isključene dok ne nalepite sopstveni ključ — Anthropic, OpenRouter ili bilo koji OpenAI-kompatibilan endpoint (uključujući lokalni model preko Ollame, LM Studija ili vLLM-a) — a svaki zahtev ide direktno sa vašeg računara ka provajderu, bez posredničkih servera. Ključ se čuva u Windows Credential Manager-u.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_4_q">Da li Skim radi na Windows-u 10 i 11?</summary>
+          <p data-i18n="faq_4_a">Da — Skim podržava Windows 10 i 11 sa WebView2 (unapred instaliran na Windows-u 11). Instalacija je oko 5 MB i vrši se po korisniku, bez administratorskih prava.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_5_q">Po čemu se Skim razlikuje od Outlook-a ili Thunderbird-a?</summary>
+          <p data-i18n="faq_5_a">Skim je namerno mali: brz Windows klijent za e-poštu vođen tastaturom, sa nativnim Rust jezgrom umesto Electron-a, offline-first akcijama, trenutnom lokalnom pretragom i AI kopilotom koji radi sa vašim sopstvenim ključem. Bez kalendara, bez pravila, bez viška.</p>
+        </details>
+        <details>
+          <summary data-i18n="faq_6_q">Da li se moja pošta čuva lokalno?</summary>
+          <p data-i18n="faq_6_a">Da. Pošta se sinhronizuje preko IMAP-a direktno u lokalni SQLite keš na vašem uređaju, pa Skim radi i van mreže, a pretraga je trenutna. Skim nema servere i nema telemetrije.</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- ===================== FOOTER ===================== -->
+    <footer class="zine-footer">
+      <span data-i18n="foot_copy">MIT © Skim saradnici</span>
+      <span class="foot-links">
+        <a href="https://github.com/nikserg/skim" data-i18n="foot_source">Izvorni kod</a>
+        <a href="https://github.com/nikserg/skim/releases" data-i18n="foot_releases">Izdanja</a>
+        <a href="privacy.html" data-i18n="foot_privacy">Privacy</a>
+        <a href="terms.html" data-i18n="foot_terms">Terms</a>
+        <a href="https://github.com/nikserg/skim/issues" data-i18n="foot_issues">Problemi</a>
+      </span>
+      <span class="page-no">page 1 / 1</span>
+    </footer>
+
+  </div>
+</div>
+
+  <script src="assets/locales.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>

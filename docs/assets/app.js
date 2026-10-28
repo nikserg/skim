@@ -1,65 +1,71 @@
-/* Skim site — language switcher & i18n runtime.
-   Translations live in locales.js (window.I18N). Only elements carrying
-   data-i18n / data-i18n-html are swapped, so untagged content (the English
-   legal text on privacy/terms) always stays English. */
+/* Skim site — URL-based language switcher, tooltip pop-up, demo video UX.
+
+   Pages are pre-rendered per language at build time (scripts/build-site.mjs),
+   so each language has its own URL (/, /ru/, /es/, etc.) and canonical. This
+   runtime still:
+     - renders the <select id="langSelect">, with onchange = navigate to the
+       equivalent URL in the chosen language;
+     - fills any content whose translation was not present at pre-render time
+       (data-i18n / data-i18n-html), as a safety net;
+     - powers inline tooltips (data-tip) and the click-to-pause demo video. */
 (function () {
   var LANGS = [
     ["en", "English"], ["ru", "Русский"], ["sr", "Srpski"], ["fr", "Français"],
     ["de", "Deutsch"], ["es", "Español"], ["it", "Italiano"], ["pl", "Polski"],
     ["zh", "中文"], ["ja", "日本語"], ["ko", "한국어"]
   ];
+  var LANG_CODES = LANGS.map(function (l) { return l[0]; });
 
-  var currentDict = {};
+  /* Detect the active language from the URL. The landing lives at `/` for
+     English and `/<lang>/` otherwise; blog pages at `/blog/...` and
+     `/<lang>/blog/...`. */
+  function currentLang() {
+    var p = window.location.pathname;
+    var m = p.match(/^\/([a-z]{2})(\/|$)/);
+    if (m && LANG_CODES.indexOf(m[1]) !== -1) return m[1];
+    return "en";
+  }
+
+  /* Build the URL for the same page in a different language. */
+  function urlFor(lang) {
+    var p = window.location.pathname;
+    var tail = p.replace(/^\/[a-z]{2}(\/|$)/, "/");
+    if (tail === "" || tail === "/") tail = "/";
+    return lang === "en" ? tail : "/" + lang + tail;
+  }
 
   function dict(code) {
     return (window.I18N && window.I18N[code]) || (window.I18N && window.I18N.en) || {};
   }
 
-  function pickInitial() {
-    try {
-      var saved = localStorage.getItem("skim_lang");
-      if (saved && window.I18N && window.I18N[saved]) return saved;
-    } catch (e) {}
-    var nav = (navigator.language || "en").slice(0, 2).toLowerCase();
-    if (nav === "sr" || nav === "hr" || nav === "bs") nav = "sr";
-    return (window.I18N && window.I18N[nav]) ? nav : "en";
-  }
-
-  function applyLang(code) {
+  /* Safety net: fill any element whose pre-rendered text is still the English
+     default (data-i18n keys present, but value hasn't been swapped). */
+  function fillMissing(code) {
     var d = dict(code), en = (window.I18N && window.I18N.en) || {};
-    currentDict = d;
     document.documentElement.lang = code;
     document.querySelectorAll("[data-i18n]").forEach(function (el) {
       var k = el.getAttribute("data-i18n");
       var v = d[k] != null ? d[k] : en[k];
-      if (v != null) el.textContent = v;
+      if (v != null && el.textContent !== v) el.textContent = v;
     });
     document.querySelectorAll("[data-i18n-html]").forEach(function (el) {
       var k = el.getAttribute("data-i18n-html");
       var v = d[k] != null ? d[k] : en[k];
-      if (v != null) el.innerHTML = v;
+      if (v != null && el.innerHTML.indexOf(v) === -1) el.innerHTML = v;
     });
-    try { localStorage.setItem("skim_lang", code); } catch (e) {}
-    var sel = document.getElementById("langSelect");
-    if (sel) sel.value = code;
-    hideTip();
-    bindTips();
   }
 
   /* ---- Inline tooltips (data-tip="byok" -> dict.tip_byok) ---- */
   var pop = null, popFor = null;
-
-  /* Easter egg: the "Uh-oh!" from ICQ when you open the ICQ-era tip */
   var icqSound = null;
   function playIcqSound() {
     try {
-      if (!icqSound) icqSound = new Audio("oh-oh-icq-sound.mp3");
+      if (!icqSound) icqSound = new Audio("/oh-oh-icq-sound.mp3");
       icqSound.currentTime = 0;
       var p = icqSound.play();
       if (p && p.catch) p.catch(function () {});
     } catch (e) {}
   }
-
   function ensurePop() {
     if (!pop) {
       pop = document.createElement("div");
@@ -68,13 +74,9 @@
     }
     return pop;
   }
-
-  function hideTip() {
-    if (pop) { pop.classList.remove("show"); }
-    popFor = null;
-  }
-
+  function hideTip() { if (pop) pop.classList.remove("show"); popFor = null; }
   function showTip(el) {
+    var currentDict = dict(currentLang());
     var en = (window.I18N && window.I18N.en) || {};
     var key = "tip_" + el.getAttribute("data-tip");
     var text = currentDict[key] != null ? currentDict[key] : en[key];
@@ -84,7 +86,6 @@
     p.classList.add("show");
     popFor = el;
     if (el.getAttribute("data-tip") === "icq") playIcqSound();
-    // position below the trigger, clamped to the viewport
     var r = el.getBoundingClientRect();
     var margin = 10, width = p.offsetWidth;
     var left = r.left + window.scrollX;
@@ -94,7 +95,6 @@
     p.style.left = left + "px";
     p.style.top = (r.bottom + window.scrollY + 8) + "px";
   }
-
   function bindTips() {
     document.querySelectorAll(".tip").forEach(function (el) {
       if (el.__tipBound) return;
@@ -111,7 +111,6 @@
       });
     });
   }
-
   document.addEventListener("click", function (e) {
     if (pop && popFor && !popFor.contains(e.target) && !pop.contains(e.target)) hideTip();
   });
@@ -124,20 +123,21 @@
     if (!v) return;
     var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduce) { v.removeAttribute("autoplay"); v.pause(); }
-    v.addEventListener("click", function () {
-      if (v.paused) v.play(); else v.pause();
-    });
+    v.addEventListener("click", function () { if (v.paused) v.play(); else v.pause(); });
   }
 
   function init() {
+    var cur = currentLang();
     var sel = document.getElementById("langSelect");
     if (sel) {
       sel.innerHTML = LANGS.map(function (l) {
-        return '<option value="' + l[0] + '">' + l[1] + "</option>";
+        return '<option value="' + l[0] + '"' + (l[0] === cur ? ' selected' : '') + '>' + l[1] + "</option>";
       }).join("");
-      sel.addEventListener("change", function (e) { applyLang(e.target.value); });
+      sel.addEventListener("change", function (e) {
+        window.location.href = urlFor(e.target.value);
+      });
     }
-    applyLang(pickInitial());
+    fillMissing(cur);
     bindTips();
     initDemoVideo();
   }
