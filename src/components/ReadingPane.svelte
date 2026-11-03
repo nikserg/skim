@@ -8,6 +8,7 @@
   import type { MessageMeta, RenderedBody, ThreadDetail } from "../lib/types";
   import AiAsk from "./AiAsk.svelte";
   import AttachmentChips from "./AttachmentChips.svelte";
+  import CopyAffordance from "./CopyAffordance.svelte";
   import HtmlViewer from "./HtmlViewer.svelte";
   import InviteCard from "./InviteCard.svelte";
 
@@ -39,6 +40,22 @@
   );
   // Per-message unsubscribe state: true once the user clicks the chip.
   let unsubscribed = $state<Record<number, boolean>>({});
+  // Per-message state for the recipients line: whether it overflows the one-line
+  // meta row (so a clickable "…" is worth showing) and whether the user has
+  // asked to see all of them. One-way for the session — opening to copy an
+  // address is the whole point, hiding again rarely is.
+  let recipientsOverflow = $state<Record<number, boolean>>({});
+  let recipientsExpanded = $state<Record<number, boolean>>({});
+
+  // Svelte action: calls back whenever the element's content stops fitting its
+  // box. Used only here, kept local.
+  function trackOverflow(node: HTMLElement, cb: (overflowing: boolean) => void) {
+    const check = () => cb(node.scrollWidth - node.clientWidth > 1);
+    const ro = new ResizeObserver(check);
+    ro.observe(node);
+    check();
+    return { destroy: () => ro.disconnect() };
+  }
   // Which view each message is being shown in. Kept so one toggle can't undo the
   // other: "show images" must not drop a translation, nor the reverse.
   let viewOpts = $state<Record<number, { images: boolean; translated: boolean }>>({});
@@ -445,12 +462,6 @@
     });
   }
 
-  function recipients(m: MessageMeta): string {
-    const all = [...m.to, ...m.cc];
-    if (all.length === 0) return t("reading.to_me");
-    return all.map((a) => a.name || a.addr).join(", ");
-  }
-
   async function reply(mode: "reply" | "reply_all" | "forward") {
     const target = replyTarget;
     if (!target) return;
@@ -533,7 +544,10 @@
     </header>
 
     <div class="scroll">
-      <h1 class="subject">{shownSubject}</h1>
+      <div class="subject-row copy-host">
+        <h1 class="subject">{shownSubject}</h1>
+        <CopyAffordance value={shownSubject} label={t("reading.copy_subject")} />
+      </div>
 
       {#if conversation}
         {#if newer.length > 0}
@@ -627,11 +641,14 @@
     <div class="meta">
       <span class="avatar">{initial(message.from.name ?? message.from.addr)}</span>
       <div class="who">
-        <div class="from">
-          {message.from.name ?? message.from.addr}
-          <span class="addr">&lt;{message.from.addr}&gt;</span>
+        <div class="from copy-host">
+          <span class="from-text">
+            {message.from.name ?? message.from.addr}
+            <span class="addr">&lt;{message.from.addr}&gt;</span>
+          </span>
+          <CopyAffordance value={message.from.addr} label={t("reading.copy_address")} />
         </div>
-        <div class="microlabel">{recipients(message)}</div>
+        {@render recipientsLine(message)}
       </div>
       <span class="date microlabel">{formatFull(message.date)}</span>
     </div>
@@ -768,6 +785,39 @@
       {/if}
     {/if}
   </article>
+{/snippet}
+
+{#snippet recipientsLine(m: MessageMeta)}
+  {@const all = [...m.to, ...m.cc]}
+  {@const expanded = recipientsExpanded[m.id] === true}
+  {@const overflow = recipientsOverflow[m.id] === true}
+  <div
+    class="microlabel recipients"
+    class:expanded
+    class:overflowing={overflow && !expanded}
+    use:trackOverflow={(o) => (recipientsOverflow[m.id] = o)}
+  >
+    {#if all.length === 0}
+      {t("reading.to_me")}
+    {:else}
+      {#each all as a, i (i)}
+        {#if i > 0}<span class="rcpt-sep">, </span>{/if}<span class="rcpt copy-host"
+          ><span class="rcpt-name">{a.name || a.addr}</span><CopyAffordance
+            value={a.addr}
+            label={t("reading.copy_address")}
+          /></span>
+      {/each}
+    {/if}
+    {#if overflow && !expanded}
+      <button
+        type="button"
+        class="rcpt-more"
+        aria-label={t("reading.show_all_recipients")}
+        title={t("reading.show_all_recipients")}
+        onclick={() => (recipientsExpanded[m.id] = true)}>…</button
+      >
+    {/if}
+  </div>
 {/snippet}
 
 {#snippet chatRow(m: MessageMeta)}
@@ -956,12 +1006,19 @@
     padding: 8px 36px 28px;
   }
 
+  .subject-row {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    margin-bottom: 8px;
+  }
   .subject {
     font-size: 21px;
     font-weight: 800;
     letter-spacing: -0.02em;
     line-height: 1.25;
-    margin-bottom: 8px;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .message {
@@ -1091,23 +1148,82 @@
     min-width: 0;
   }
   .from {
+    display: flex;
+    align-items: baseline;
+    gap: 0;
     font-weight: 600;
     font-size: 13.5px;
+    min-width: 0;
+  }
+  .from-text {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
+    flex: 0 1 auto;
   }
   .addr {
     color: var(--text-faint);
     font-weight: 400;
   }
   .who .microlabel {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     text-transform: none;
     letter-spacing: 0.02em;
     font-size: 11px;
+  }
+  .who .recipients {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    position: relative;
+  }
+  /* Overflowing: hide the native "…" so the clickable button carries it alone,
+     avoiding a dead ellipsis next to a live one. */
+  .who .recipients.overflowing {
+    text-overflow: clip;
+  }
+  /* Expanded: let the list wrap and the whole row grow — the "…" button is gone
+     at this point (rendered conditionally). */
+  .who .recipients.expanded {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  /* The clickable "…" at the end of a truncated recipients line. Sits inline so
+     it rides the baseline, but reserves a solid-background wedge over whatever
+     was clipped underneath — otherwise half-visible letters bleed through. */
+  .rcpt-more {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    padding: 0 6px 0 10px;
+    border: none;
+    background: linear-gradient(
+      to right,
+      transparent 0,
+      var(--surface) 8px,
+      var(--surface) 100%
+    );
+    color: var(--text-dim);
+    font: inherit;
+    line-height: inherit;
+    cursor: pointer;
+  }
+  .rcpt-more:hover {
+    color: var(--text);
+  }
+  /* Each recipient is its own hover-host so the copy icon reveals per-address.
+     inline-flex keeps the icon on the baseline next to the name. */
+  .rcpt {
+    display: inline-flex;
+    align-items: baseline;
+    max-width: 100%;
+    vertical-align: baseline;
+  }
+  .rcpt-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .date {
     flex-shrink: 0;
