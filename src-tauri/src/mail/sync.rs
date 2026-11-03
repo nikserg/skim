@@ -44,6 +44,9 @@ const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 // must stay instant. A minute is far below any server's idle timeout and above
 // any pause between two clicks.
 const PROBE_AFTER_IDLE: std::time::Duration = std::time::Duration::from_secs(60);
+// Nobody waits on a keepalive, so it can afford a server that is slow to
+// answer: under PROBE_TIMEOUT a live but sluggish session would be discarded.
+const KEEPALIVE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 // Everything one FetchBody may spend, counted from the click: time queued,
 // probe, login, SELECT, FETCH and the one retry. Stays under BODY_FETCH_WAIT so the worker's own error
 // always beats the caller's timeout to the reading pane.
@@ -86,6 +89,8 @@ pub enum SyncCommand {
     },
     /// Get the fetch connection ready for a click that is probably coming.
     WarmFetch,
+    /// Keep an open fetch session from being dropped while idle.
+    Keepalive,
     RunOps,
     Stop,
 }
@@ -407,6 +412,7 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
                     SyncCommand::PrefetchBodies { message_pks } => {
                         fetcher.prefetch_bodies(&message_pks, &mut queue).await;
                     }
+                    SyncCommand::Keepalive => fetcher.keepalive().await,
                     SyncCommand::WarmFetch => {
                         // The same leash a click gets: a warm-up performs
                         // exactly the work that click would have, so it may
@@ -469,10 +475,17 @@ pub fn spawn(app: AppHandle, db: Db, account: Account, data_dir: PathBuf) -> Syn
                         // message must not queue behind a long sync.
                         Some(SyncCommand::FetchBody { .. })
                         | Some(SyncCommand::PrefetchBodies { .. })
-                        | Some(SyncCommand::WarmFetch) => {}
+                        | Some(SyncCommand::WarmFetch)
+                        | Some(SyncCommand::Keepalive) => {}
                     }
                 }
                 _ = poll.tick() => {
+                    // Left idle between messages, the fetch connection was found
+                    // dead after a pause in 31 of 33 opens, and a fresh Gmail
+                    // login under a click costs 2–14 s. One NOOP keeps it — sent
+                    // from this tick rather than a timer of its own, so keeping
+                    // it wakes nothing that wasn't already awake.
+                    let _ = fetch_tx.send(SyncCommand::Keepalive);
                     engine.drain_ops().await;
                     engine.run_sync().await;
                 }
@@ -611,6 +624,30 @@ impl Engine {
             self.reset_session();
         }
         probed
+    }
+
+    /// Keep an idle session open with one NOOP, or drop it if it no longer
+    /// answers. Never logs in: a session that is gone is replaced on demand,
+    /// so a machine that is offline doesn't keep retrying.
+    async fn keepalive(&mut self) {
+        let Some(session) = self.session.as_mut() else {
+            return;
+        };
+        let started = std::time::Instant::now();
+        if noop_probe(session, KEEPALIVE_TIMEOUT).await {
+            self.last_ok = std::time::Instant::now();
+        } else {
+            // Worth a line: if these turn up, the sync tick is too slow a
+            // heartbeat for whatever is closing the connection.
+            crate::append_log(
+                "skim-slow.log",
+                &format!(
+                    "keepalive failed after {}ms, session dropped",
+                    started.elapsed().as_millis()
+                ),
+            );
+            self.reset_session();
+        }
     }
 
     /// Get this connection ready for the click that is probably coming: prove
@@ -1746,27 +1783,20 @@ impl Engine {
             phases.cred_ms = self.last_cred_ms;
 
             let at = std::time::Instant::now();
+            let was_selected = self.selected.as_deref() == Some(imap_name.as_str());
             self.ensure_selected(&imap_name).await?;
             phases.select_ms = at.elapsed().as_millis();
 
             let at = std::time::Instant::now();
             let session = self.session().await?;
-            let mut stream = session
-                .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
-                .await
-                .map_err(imap_err)?;
-            let mut raw: Option<Vec<u8>> = None;
-            while let Some(item) = stream.next().await {
-                let f = item.map_err(imap_err)?;
-                // Servers weave *unsolicited* flag-only FETCH responses for the
-                // same message into the reply. They carry no body, and letting
-                // one land after the real answer is how a healthy connection
-                // could report "server returned no message body".
-                if f.uid == Some(uid) {
-                    if let Some(body) = f.body() {
-                        raw = Some(body.to_vec());
-                    }
-                }
+            let mut raw = uid_fetch_body(session, uid).await?;
+            if raw.is_none() && was_selected {
+                // Gmail answers a UID FETCH for mail this session hasn't been
+                // told about yet with nothing at all — and a just-arrived
+                // message is exactly that. A NOOP lets the server announce it;
+                // dropping the session instead made the next click pay a login.
+                session.noop().await.map_err(imap_err)?;
+                raw = uid_fetch_body(session, uid).await?;
             }
             phases.fetch_ms = at.elapsed().as_millis();
             Ok::<_, SkimError>(raw)
@@ -2842,6 +2872,29 @@ fn select_err(imap_name: &str, e: async_imap::error::Error) -> SkimError {
 /// One NOOP on a short leash: does this session still have a server on the
 /// other end? Generic over the transport, and taking its own leash, so it can
 /// be tested without TLS and without waiting out [`PROBE_TIMEOUT`].
+/// One message's raw source, by UID, from the selected mailbox; `None` when
+/// the server's answer carried no body for it.
+async fn uid_fetch_body(session: &mut imap_client::Session, uid: u32) -> Result<Option<Vec<u8>>> {
+    let mut stream = session
+        .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
+        .await
+        .map_err(imap_err)?;
+    let mut raw: Option<Vec<u8>> = None;
+    while let Some(item) = stream.next().await {
+        let f = item.map_err(imap_err)?;
+        // Servers weave *unsolicited* flag-only FETCH responses for the same
+        // message into the reply. They carry no body, and letting one land
+        // after the real answer is how a healthy connection could report
+        // "server returned no message body".
+        if f.uid == Some(uid) {
+            if let Some(body) = f.body() {
+                raw = Some(body.to_vec());
+            }
+        }
+    }
+    Ok(raw)
+}
+
 async fn noop_probe<T>(session: &mut async_imap::Session<T>, leash: std::time::Duration) -> bool
 where
     T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + std::fmt::Debug + Send,
