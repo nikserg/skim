@@ -349,13 +349,20 @@ struct TranslationJob {
 }
 
 /// Spawn the streaming task and register it for cancellation.
+///
+/// `rounds` are the requests to send, one after another, under the same system
+/// prompt; their answers add up to one. Everything is a single round except
+/// the translation of a long message, which is split so each request stays
+/// within the output budget (see [`translate::Extracted::split`]). They run in
+/// the one task, so cancelling stops whichever round is in flight and nothing
+/// after it starts.
 #[allow(clippy::too_many_arguments)] // flat request parameters, one call path
 fn spawn_stream(
     state: &AppState,
     request_id: String,
     ctx: AiContext,
     system: String,
-    messages: Vec<ChatMessage>,
+    rounds: Vec<Vec<ChatMessage>>,
     media: Vec<MediaBlock>,
     max_tokens: u32,
     citations: Vec<Citation>,
@@ -390,31 +397,53 @@ fn spawn_stream(
             }
         };
         let mut on_reasoning = reasoning_once(&channel);
-        let result = match &ctx.endpoint {
-            None => {
-                let request = anthropic::Request {
-                    model: ctx.model,
-                    system,
-                    messages,
-                    media,
-                    max_tokens,
-                };
-                anthropic::stream(&ctx.key, &request, &mut on_delta, &mut on_reasoning).await
+        let mut media = media;
+        let mut result = Ok(());
+        for (n, messages) in rounds.into_iter().enumerate() {
+            if n > 0 {
+                // Only a translation has a second round, and its answer is the
+                // accumulated text: keep the next round's first marker off the
+                // previous round's last line.
+                on_delta(
+                    "
+",
+                );
             }
-            Some(ep) => {
-                // OpenAI-compatible endpoints have no native attachment path;
-                // content was folded into the prompt text as extracted text,
-                // so `media` is unused.
-                let request = openai_compat::Request {
-                    model: ctx.model,
-                    system,
-                    messages,
-                    max_tokens,
-                };
-                openai_compat::stream(ep, &ctx.key, &request, &mut on_delta, &mut on_reasoning)
-                    .await
+            // Attachments belong to the first user turn, so to the first round.
+            let media = std::mem::take(&mut media);
+            let round = match &ctx.endpoint {
+                None => {
+                    let request = anthropic::Request {
+                        model: ctx.model.clone(),
+                        system: system.clone(),
+                        messages,
+                        media,
+                        max_tokens,
+                    };
+                    anthropic::stream(&ctx.key, &request, &mut on_delta, &mut on_reasoning).await
+                }
+                Some(ep) => {
+                    // OpenAI-compatible endpoints have no native attachment
+                    // path; content was folded into the prompt text as
+                    // extracted text, so `media` is unused.
+                    let request = openai_compat::Request {
+                        model: ctx.model.clone(),
+                        system: system.clone(),
+                        messages,
+                        max_tokens,
+                    };
+                    openai_compat::stream(ep, &ctx.key, &request, &mut on_delta, &mut on_reasoning)
+                        .await
+                }
+            };
+            // A failed round fails the whole request. For a translation that
+            // means nothing is cached, so a second press starts over instead of
+            // finding a half-done message filed as finished.
+            if let Err(e) = round {
+                result = Err(e);
+                break;
             }
-        };
+        }
         match result {
             Ok(_) => {
                 if let Persist::Translation(job) = persist {
@@ -785,7 +814,7 @@ pub async fn ai_compose(
         request_id,
         ctx,
         system,
-        messages,
+        vec![messages],
         media,
         ONE_SHOT_MAX_TOKENS,
         Vec::new(),
@@ -1079,7 +1108,7 @@ pub async fn ai_recap(
         request_id,
         ctx,
         system,
-        user_turn(user),
+        vec![user_turn(user)],
         Vec::new(),
         ONE_SHOT_MAX_TOKENS,
         citations,
@@ -1099,12 +1128,17 @@ pub async fn ai_recap(
 /// per segment, and [`ONE_SHOT_MAX_TOKENS`] is shared with whatever reasoning
 /// the model does first. 10k source characters come back as roughly 5–6k tokens,
 /// which fits with margin — and covers all but the longest few percent of real
-/// mail. Anything past this keeps its original language rather than being
-/// chunked into a second request, which would double the latency and the price.
+/// mail in one request. A longer message goes in several, one after another:
+/// the prompt carries nothing but the segments, so splitting costs a system
+/// prompt per request, not a second copy of the mail.
 const TRANSLATE_MAX_CHARS: usize = 10_000;
-/// And a cap on the count, so a pathological newsletter can't become a thousand
-/// numbered lines.
+/// And a cap on the count per request, so a pathological newsletter can't
+/// become a thousand numbered lines in one answer.
 const TRANSLATE_MAX_SEGMENTS: usize = 250;
+/// Requests per message. Five full ones are ~50k characters, a long report;
+/// past that is a mailing-list digest or a pasted log, where waiting through
+/// another dozen round trips is worse than leaving the tail as it is.
+const TRANSLATE_MAX_REQUESTS: usize = 5;
 
 /// Translate one message's body into the user's language, in place.
 ///
@@ -1135,12 +1169,24 @@ pub async fn ai_translate(
     if extracted.is_empty() {
         return Err(SkimError::other("ai", "nothing to translate"));
     }
-    let truncated = extracted.truncate_to(TRANSLATE_MAX_CHARS, TRANSLATE_MAX_SEGMENTS);
+    let truncated = extracted.split(
+        TRANSLATE_MAX_CHARS,
+        TRANSLATE_MAX_SEGMENTS,
+        TRANSLATE_MAX_REQUESTS,
+    );
     // After the budget: the subject is one short line the pane shows above the
     // body, and it must never be what gets dropped.
     extracted.add_subject(&block.subject);
 
-    let (system, user) = prompts::translate(&block, &extracted.prompt_list(), &ctx.locale);
+    // One request per list. The system prompt depends only on the language,
+    // so every list builds the same one.
+    let mut system = String::new();
+    let mut rounds = Vec::new();
+    for list in extracted.prompt_lists() {
+        let (sys, user) = prompts::translate(&block, &list, &ctx.locale);
+        system = sys;
+        rounds.push(user_turn(user));
+    }
     let job = TranslationJob {
         db: state.db.clone(),
         message_id,
@@ -1155,7 +1201,7 @@ pub async fn ai_translate(
         request_id,
         ctx,
         system,
-        user_turn(user),
+        rounds,
         Vec::new(),
         ONE_SHOT_MAX_TOKENS,
         Vec::new(),
@@ -1354,6 +1400,64 @@ mod tests {
             got.html.unwrap(),
             "<p>Привет, <a href=\"https://x.test\">друг</a></p><p>Пока</p>"
         );
+        assert!(!got.truncated);
+    }
+
+    /// A message past one request's budget: each paragraph is asked for in its
+    /// own request, and the replies, joined the way `spawn_stream` joins them,
+    /// make one whole translation, cached without the "partly untranslated"
+    /// note.
+    #[tokio::test]
+    async fn a_message_split_over_several_requests_is_cached_whole() {
+        let db = Db::open_in_memory().unwrap();
+        let id = seed(&db).await;
+        let para = |n: usize| format!("<p>Paragraph {n} {}</p>", "x".repeat(900));
+        let html: String = (1..=12).map(para).collect();
+        let mut extracted = translate::extract(&html);
+        assert!(!extracted.split(
+            super::TRANSLATE_MAX_CHARS,
+            super::TRANSLATE_MAX_SEGMENTS,
+            super::TRANSLATE_MAX_REQUESTS,
+        ));
+        assert_eq!(extracted.prompt_lists().len(), 2);
+        let answer = extracted
+            .prompt_lists()
+            .iter()
+            .map(|list| {
+                list.lines()
+                    .map(|line| {
+                        let n = &line[2..line.find("]]").unwrap()];
+                        format!(
+                            "[[{n}]] Абзац {n}
+"
+                        )
+                    })
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join(
+                "
+",
+            );
+        let job = TranslationJob {
+            db: db.clone(),
+            message_id: id,
+            lang: "ru".into(),
+            html: Some(html),
+            text: None,
+            extracted,
+            truncated: false,
+        };
+        store_translation(job, &answer).await.unwrap();
+
+        let got = db
+            .call(move |conn| bodies::get_translation(conn, id, "ru"))
+            .await
+            .unwrap()
+            .expect("cached");
+        let body = got.html.unwrap();
+        let expected: String = (1..=12).map(|n| format!("<p>Абзац {n}</p>")).collect();
+        assert_eq!(body, expected);
         assert!(!got.truncated);
     }
 

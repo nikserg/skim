@@ -62,6 +62,9 @@ pub struct Extracted {
     /// put it in. No block references it — its translation is stored on its own
     /// rather than spliced into the body.
     subject: Option<u32>,
+    /// Where each request after the first starts, as indexes into `texts`; set
+    /// by [`Extracted::split`]. Empty means one request for everything.
+    breaks: Vec<usize>,
 }
 
 impl Extracted {
@@ -74,42 +77,83 @@ impl Extracted {
         self.texts.is_empty()
     }
 
-    /// The numbered list the model receives.
+    /// The numbered list for everything, as one request.
+    #[cfg(test)]
     pub fn prompt_list(&self) -> String {
+        self.list(0..self.texts.len())
+    }
+
+    fn list(&self, range: Range<usize>) -> String {
         let mut out = String::new();
-        for (i, text) in self.texts.iter().enumerate() {
-            out.push_str(&format!("[[{}]] {}\n", i + 1, text));
+        for (i, text) in self.texts[range.clone()].iter().enumerate() {
+            out.push_str(&format!("[[{}]] {}\n", range.start + i + 1, text));
         }
         out
     }
 
-    /// Drop the segments that don't fit the request budget. Returns whether
-    /// anything was dropped — their blocks simply keep the original text, so a
-    /// long message ends up translated down to a point and intact after it.
-    pub fn truncate_to(&mut self, max_chars: usize, max_segments: usize) -> bool {
-        let mut kept = 0;
-        let mut chars = 0;
-        for text in self.texts.iter().take(max_segments) {
+    /// Group the segments into requests of at most `max_chars` characters and
+    /// `max_segments` segments each, in document order. A long message is
+    /// translated whole, one request after another, instead of down to a point;
+    /// a short one stays a single request.
+    ///
+    /// A segment over `max_chars` on its own still makes a request of one: cut
+    /// mid-sentence it would translate worse than whole, and its blocks need it
+    /// in one piece to put the inline markup back.
+    ///
+    /// Past `max_batches` requests the rest is dropped, so a pathological
+    /// newsletter can't turn into a dozen round trips. Returns whether anything
+    /// was: those blocks keep their original text.
+    pub fn split(&mut self, max_chars: usize, max_segments: usize, max_batches: usize) -> bool {
+        self.breaks.clear();
+        let mut cut = None;
+        let (mut chars, mut count) = (0, 0);
+        for (i, text) in self.texts.iter().enumerate() {
             let len = text.chars().count();
-            if kept > 0 && chars + len > max_chars {
-                break;
+            if count > 0 && (count == max_segments || chars + len > max_chars) {
+                if self.breaks.len() + 1 >= max_batches {
+                    cut = Some(i);
+                    break;
+                }
+                self.breaks.push(i);
+                (chars, count) = (0, 0);
             }
             chars += len;
-            kept += 1;
+            count += 1;
         }
-        if kept >= self.texts.len() {
+        let Some(kept) = cut else {
             return false;
-        }
+        };
         self.texts.truncate(kept);
+        // Their blocks go too, not just their texts: a segment number past the
+        // end is the next one `add_subject` hands out, and a block still
+        // pointing at it would get the subject's translation spliced in.
+        self.blocks.retain(|b| b.id as usize <= kept);
         true
+    }
+
+    /// One numbered list per request, as [`Extracted::split`] grouped them.
+    /// Numbers stay global across the lists, so the replies, concatenated,
+    /// parse as one answer.
+    pub fn prompt_lists(&self) -> Vec<String> {
+        let starts = std::iter::once(0).chain(self.breaks.iter().copied());
+        let ends = self
+            .breaks
+            .iter()
+            .copied()
+            .chain(std::iter::once(self.texts.len()));
+        starts
+            .zip(ends)
+            .map(|(start, end)| self.list(start..end))
+            .collect()
     }
 
     /// Add the subject line as one more segment. The reading pane shows it above
     /// the body, so leaving it in the original language would make a translated
     /// message look half-done.
     ///
-    /// Call this *after* [`Extracted::truncate_to`]: the subject is one short
-    /// line and must never be the thing that gets dropped. A subject that
+    /// Call this *after* [`Extracted::split`]: the subject is one short line
+    /// and must never be the thing that gets dropped. It joins the last
+    /// request. A subject that
     /// already appears in the body (newsletters like to repeat it as a heading)
     /// shares that segment instead of paying for it twice.
     pub fn add_subject(&mut self, subject: &str) {
@@ -886,21 +930,79 @@ mod tests {
     }
 
     #[test]
-    fn truncation_leaves_the_tail_in_the_original_language() {
-        let html = "<p>The first paragraph of the message</p><p>The second paragraph</p>";
+    fn a_short_message_is_one_request() {
+        let html = "<p>The first paragraph</p><p>The second paragraph</p>";
         let mut ex = extract(html);
-        assert!(ex.truncate_to(20, 100));
-        assert_eq!(ex.len(), 1);
-        let out = apply(html, &ex, &translate_all(&ex, |_| "Первый абзац".into()));
-        assert_eq!(out, "<p>Первый абзац</p><p>The second paragraph</p>");
+        assert!(!ex.split(1000, 100, 5));
+        assert_eq!(ex.prompt_lists(), vec![ex.prompt_list()]);
+    }
+
+    /// The bug this replaces: past the budget, the tail was never sent at all.
+    /// Now it goes in the next request, numbered on from the first, so the
+    /// replies read back as one answer and every paragraph comes out translated.
+    #[test]
+    fn a_long_message_is_translated_whole_over_several_requests() {
+        let html =
+            "<p>The first paragraph</p><p>The second paragraph</p><p>The third paragraph</p>";
+        let mut ex = extract(html);
+        assert!(!ex.split(30, 100, 5));
+        let lists = ex.prompt_lists();
+        assert_eq!(
+            lists,
+            vec![
+                "[[1]] The first paragraph
+",
+                "[[2]] The second paragraph
+",
+                "[[3]] The third paragraph
+",
+            ]
+        );
+        let reply = "[[1]] Первый
+[[2]] Второй
+[[3]] Третий
+";
+        let out = apply(html, &ex, &parse_reply(reply));
+        assert_eq!(out, "<p>Первый</p><p>Второй</p><p>Третий</p>");
     }
 
     #[test]
-    fn truncation_always_keeps_at_least_one_segment() {
-        let html = "<p>A single very long paragraph that blows the whole budget on its own</p>";
+    fn the_segment_count_also_bounds_a_request() {
+        let html = "<p>One one</p><p>Two two</p><p>Three three</p>";
         let mut ex = extract(html);
-        assert!(!ex.truncate_to(5, 100));
-        assert_eq!(ex.len(), 1);
+        assert!(!ex.split(10_000, 2, 5));
+        assert_eq!(ex.prompt_lists().len(), 2);
+    }
+
+    #[test]
+    fn a_segment_over_the_budget_is_a_request_of_its_own() {
+        let html =
+            "<p>Short</p><p>A single very long paragraph that blows the budget</p><p>Tail</p>";
+        let mut ex = extract(html);
+        assert!(!ex.split(10, 100, 5));
+        assert_eq!(
+            ex.prompt_lists(),
+            vec![
+                "[[1]] Short
+",
+                "[[2]] A single very long paragraph that blows the budget
+",
+                "[[3]] Tail
+",
+            ]
+        );
+    }
+
+    #[test]
+    fn past_the_request_cap_the_tail_keeps_its_original_language() {
+        let html =
+            "<p>The first paragraph</p><p>The second paragraph</p><p>The third paragraph</p>";
+        let mut ex = extract(html);
+        assert!(ex.split(25, 100, 2));
+        assert_eq!(ex.len(), 2);
+        assert_eq!(ex.prompt_lists().len(), 2);
+        let out = apply(html, &ex, &translate_all(&ex, |_| "Абзац".into()));
+        assert_eq!(out, "<p>Абзац</p><p>Абзац</p><p>The third paragraph</p>");
     }
 
     #[test]
@@ -937,14 +1039,24 @@ mod tests {
         assert_eq!(ex.subject_id(), Some(1));
     }
 
+    /// The subject takes the number right after the last kept segment, which
+    /// is the number the first dropped paragraph had. That paragraph must stay
+    /// in its own language, not turn into the translated subject.
     #[test]
-    fn the_subject_survives_truncation() {
+    fn the_subject_survives_the_cap_without_landing_in_the_body() {
         let html = "<p>The first paragraph of the message</p><p>The second paragraph</p>";
         let mut ex = extract(html);
-        assert!(ex.truncate_to(20, 100));
+        assert!(ex.split(20, 100, 1));
         ex.add_subject("Still translated");
         assert_eq!(ex.subject_id(), Some(2));
         assert_eq!(ex.len(), 2);
+        let lists = ex.prompt_lists();
+        assert_eq!(lists.len(), 1, "the subject joins the last request");
+        let reply = "[[1]] Первый абзац
+[[2]] Тема
+";
+        let out = apply(html, &ex, &parse_reply(reply));
+        assert_eq!(out, "<p>Первый абзац</p><p>The second paragraph</p>");
     }
 
     #[test]
